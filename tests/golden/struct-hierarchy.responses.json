@@ -1,0 +1,2333 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Record",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Generic",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ThroughAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/other",
+        "kind": 5,
+        "name": "Exported",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 5,
+        "name": "PrivateImpl",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ViaPrivateAlias",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Blank",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 5,
+        "name": "PrivateImpl",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ViaPrivateAlias",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Tagged",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Bytes",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "EmptyTag",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Grouped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Grouped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 31
+          },
+          "start": {
+            "character": 5,
+            "line": 31
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 31
+          },
+          "start": {
+            "character": 5,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Nested",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Nested",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 35
+          },
+          "start": {
+            "character": 5,
+            "line": 35
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 35
+          },
+          "start": {
+            "character": 5,
+            "line": 35
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Pointer",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "GenericEmbed",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "ValueInt",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 36,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 5,
+        "name": "GenericValue",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "ValueString",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 24
+          },
+          "start": {
+            "character": 5,
+            "line": 24
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 24
+          },
+          "start": {
+            "character": 5,
+            "line": 24
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 39,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 5,
+        "name": "GenericValue",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 40,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "RepeatInt",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 42,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 5,
+        "name": "Repeated",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 43,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "RepeatMixed",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 45,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 46,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Empty",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 29
+          },
+          "start": {
+            "character": 5,
+            "line": 29
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 29
+          },
+          "start": {
+            "character": 5,
+            "line": 29
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 48,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Empty",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 49
+          },
+          "start": {
+            "character": 5,
+            "line": 49
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 49
+          },
+          "start": {
+            "character": 5,
+            "line": 49
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 49,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "RecursiveWant",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 33
+          },
+          "start": {
+            "character": 5,
+            "line": 33
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 33
+          },
+          "start": {
+            "character": 5,
+            "line": 33
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 51,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 52,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 11,
+        "name": "LocalPrivate",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 53,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 54,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Local",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 55,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 56,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Record",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 57,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 58,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ThroughAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 59,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Record",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 60,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 61,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ViaPrivateAlias",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 62,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Blank",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 63,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 64,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 65,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Bytes",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "EmptyTag",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Tagged",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 66,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 67,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Embedded",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "GenericEmbed",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Pointer",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 69,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 70,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Explicit",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 41
+          },
+          "start": {
+            "character": 5,
+            "line": 41
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 41
+          },
+          "start": {
+            "character": 5,
+            "line": 41
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 71,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 72,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 73,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "AliasEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 45
+          },
+          "start": {
+            "character": 5,
+            "line": 45
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 45
+          },
+          "start": {
+            "character": 5,
+            "line": 45
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 74,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 75,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 76,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Generic",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy/lib",
+        "kind": 11,
+        "name": "Record",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 79,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Generic",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ThroughAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/other",
+        "kind": 5,
+        "name": "Exported",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 80,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Generic",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 47
+          },
+          "start": {
+            "character": 5,
+            "line": 47
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "ThroughAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/structhierarchy/other",
+        "kind": 5,
+        "name": "Exported",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 81,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 82,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "WrongTags",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 83,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/structhierarchy",
+        "kind": 5,
+        "name": "Tags",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 84,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

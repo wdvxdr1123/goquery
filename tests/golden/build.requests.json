@@ -1,0 +1,123 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "initializationOptions": {
+        "buildTags": [
+          "feature"
+        ],
+        "goos": "linux",
+        "goarch": "arm64"
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 1,
+        "languageId": "go",
+        "text": "//go:build feature && !other\n\npackage p\nfunc Included() {}"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "//go:build other\n\npackage p\nfunc Excluded() {}"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Excluded"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$WINDOWS_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package p\nfunc WindowsPlatform() {}"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LINUX_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "//go:build unix\n\npackage p\nfunc LinuxPlatform() {}"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Platform"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$WINDOWS_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

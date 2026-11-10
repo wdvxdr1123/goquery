@@ -1,0 +1,259 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package scoped\nimport factory \"example.test/factory\"\nfunc Identity[T any](value T) T { return value }\nfunc Slice[T any](value T) []T { return []T{value} }\nfunc Mapping[T any](value T) map[string]T { return map[string]T{\"k\":value} }\nfunc Array[T any](value T) [2]T { return [2]T{value,value} }\nfunc PointerArray[T any](value T) *[2]T { return &[2]T{value,value} }\ntype hidden struct{ Wrong int }\nfunc (hidden) Read(name int) string { return \"\" }\nfunc Probe() {\n hidden := factory.New().Hidden()\n slice := Slice(hidden)\n slice[0].Read(\"slice\")\n array := Array(hidden)\n array[1].Read(\"array\")\n pointer := PointerArray(hidden)\n pointer[1].Read(\"pointer\")\n mapping := Mapping(hidden)\n value, ok := mapping[\"k\"]\n value.Read(\"map\")\n copy := Identity(slice[0])\n copy.Read(\"generic\")\n Slice(hidden)[0].Read(\"chain\")\n _ = ok\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 11
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Probe",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Probe",
+          "start": 450
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

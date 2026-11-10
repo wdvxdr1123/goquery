@@ -1,0 +1,259 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package typeoracle\n\nfunc Compact[S ~[]E, E comparable](value S) S { return value }\nfunc CloneMap[M ~map[K]V, K comparable, V any](value M) M { return value }\ntype Key struct{ ID int; _ int }\nfunc (key Key) Use(n int) {}\ntype OtherKey struct{ ID string }\nfunc (key OtherKey) Use(n int) {}\ntype Item struct{ Field int }\nfunc (item *Item) Use(n int) {}\ntype Other struct{ OtherField int }\nfunc (item *Other) Use(n int) {}\ntype Keys []Key\ntype Lookup map[Key]*Item\nfunc Navigate(values Keys, lookup Lookup) {\n checked := Compact(values)\n key := checked[0]\n key.Use(1)\n copied := CloneMap(lookup)\n copied[key].Use(2)\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 16
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Navigate",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 13
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Navigate",
+          "start": 466
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package typeoracle\n\nfunc Compact[S ~[]E, E comparable](value S) S { return value }\nfunc CloneMap[M ~map[K]V, K comparable, V any](value M) M { return value }\ntype Key struct{ ID int; _ int }\nfunc (key Key) Use(n int) {}\ntype OtherKey struct{ ID string }\nfunc (key OtherKey) Use(n int) {}\ntype Item struct{ Field int }\nfunc (item *Item) Use(n int) {}\ntype Other struct{ OtherField int }\nfunc (item *Other) Use(n int) {}\ntype Keys []OtherKey\ntype Lookup map[OtherKey]*Other\nfunc Navigate(values Keys, lookup Lookup) {\n checked := Compact(values)\n key := checked[0]\n key.Use(1)\n copied := CloneMap(lookup)\n copied[key].Use(2)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package typeoracle\n\nfunc Compact[S ~[]E, E comparable](value S) S { return value }\nfunc CloneMap[M ~map[K]V, K comparable, V any](value M) M { return value }\ntype Key struct{ ID int; _ int }\nfunc (key Key) Use(n int) {}\ntype OtherKey struct{ ID string }\nfunc (key OtherKey) Use(n int) {}\ntype Item struct{ Field int }\nfunc (item *Item) Use(n int) {}\ntype Other struct{ OtherField int }\nfunc (item *Other) Use(n int) {}\ntype Keys []OtherKey\ntype Lookup map[OtherKey]*Other\nfunc Navigate(values Keys, lookup Lookup) {\n checked := Compact(values)\n key := checked[0]\n key.Use(1)\n copied := CloneMap(lookup)\n copied[key].Use(2)\n}\ntype EmbedAlias[T any] = *T\ntype BadEmbedded[T any] struct{ EmbedAlias[T] }\nfunc Broken() {\n result := Compact([]BadEmbedded[Item]{{}})[0]\n result.Use(1)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "OtherKey.Use"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

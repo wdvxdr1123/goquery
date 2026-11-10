@@ -1,0 +1,804 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Payload struct { Value string }\ntype Base struct { Export int; hidden int; Fn func(x int) int; Next Payload }\nfunc (Base) Run() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$OTHER_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\nimport \"example.test/project/lib\"\ntype Wrap struct { lib.Base }\nfunc Use(v Wrap) { _ = v.Export }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport (lib \"example.test/project/lib\"; mid \"example.test/project/other\")\ntype Inner struct { Count int; 名 int; hidden int; Action func(x int) string }\nfunc (Inner) Run(x int) string { return \"\" }\ntype Outer struct { Inner; Label string }\ntype Other struct { Count string }\ntype Left struct { Inner }\ntype Right struct { Inner }\ntype Diamond struct { Left; Right }\ntype Block struct { Inner; Count string }\ntype Reader interface { Read(dst []byte) (int, error) }\ntype Wide interface { Reader; Close() error }\ntype Generic[T any] struct { Value T }\nfunc Factory() Outer { return Outer{} }\nfunc Probe(a Outer, b Diamond, c Block, r Wide, imported lib.Base) {\n _ = a.Count // promoted\n _ = a.Inner // embedded\n _ = b.Count // ambiguous\n _ = c.Count // shadow\n _ = r.Close // interface-own\n _ = r.Read // interface-promoted\n _ = imported.Export // imported\n _ = imported.hidden // private\n _ = imported.Fn // function-field\n _ = a.Inner.Count // field-chain\n _ = Factory().Count // call-receiver\n _ = imported.Next.Value // imported-chain\n _ = Outer{}.Count // composite-receiver\n _ = (a).Count // parenthesized\n _ = func() { _ = a.Count } // closure\n _ = \"🙂\"; _ = a.名 // unicode\n { a := Other{}; _ = a.Count } // local-shadow\n _ = Inner{Count: 1} // keyed-literal\n}\nfunc Unsupported(g Generic[int]) { _ = g.Value } // generic\nfunc KeyMap() { const Count = 1; _ = map[int]int{Count: 2} } // map-key\nfunc InvalidKey() { _ = Outer{Count: 1} } // promoted-key\nfunc MapField(a Outer) { _ = map[int]int{a.Count: 2} } // map-field-key\nfunc UseMembers(v Outer) { _ = v.hidden; _ = v.Action(1); _ = v.Count }\ntype NamedMap map[int]int\nfunc NamedKeys() { const Count = 1; _ = NamedMap{Count: 0} } // named-map-key\nfunc LocalKeys() { type LocalMap map[int]int; const Count = 1; _ = LocalMap{Count: 0} } // local-map-key\nfunc Indirect(v mid.Wrap) { _ = v.Export } // transitive-field\ntype Concrete struct{}\nfunc (Concrete) Read(dst []byte) (int,error) { return 0,nil }\nfunc Contract(v Concrete, r Reader) { _,_ = v.Read(nil); _,_ = r.Read(nil) }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 20
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 20
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 11
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 11
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 23
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 23
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 35,
+        "character": 49
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 35,
+        "character": 49
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 40,
+        "character": 49
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 40,
+        "character": 49
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 41,
+        "character": 76
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 41,
+        "character": 76
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 33
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 33
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 47
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 47
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 42,
+        "character": 34
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 42,
+        "character": 34
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 41
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 41
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 17
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 17
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 45,
+        "character": 46
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport (lib \"example.test/project/lib\"; mid \"example.test/project/other\")\ntype Inner struct { Count int; 名 int; hidden int; Action func(x int) string }\nfunc (Inner) Run(x int) string { return \"\" }\ntype Outer struct { Inner; Label string }\ntype Other struct { Count string }\ntype Left struct { Inner }\ntype Right struct { Inner }\ntype Diamond struct { Left; Right }\ntype Block struct { Inner; Count string }\ntype Reader interface { Read(dst []byte) (int, error) }\ntype Wide interface { Reader; Close() error }\ntype Generic[T any] struct { Value T }\nfunc Factory() Outer { return Outer{} }\nfunc Probe(a Outer, b Diamond, c Block, r Wide, imported lib.Base) {\n _ = a.Label // promoted\n _ = a.Inner // embedded\n _ = b.Count // ambiguous\n _ = c.Count // shadow\n _ = r.Close // interface-own\n _ = r.Read // interface-promoted\n _ = imported.Export // imported\n _ = imported.hidden // private\n _ = imported.Fn // function-field\n _ = a.Inner.Count // field-chain\n _ = Factory().Count // call-receiver\n _ = imported.Next.Value // imported-chain\n _ = Outer{}.Count // composite-receiver\n _ = (a).Count // parenthesized\n _ = func() { _ = a.Count } // closure\n _ = \"🙂\"; _ = a.名 // unicode\n { a := Other{}; _ = a.Count } // local-shadow\n _ = Inner{Count: 1} // keyed-literal\n}\nfunc Unsupported(g Generic[int]) { _ = g.Value } // generic\nfunc KeyMap() { const Count = 1; _ = map[int]int{Count: 2} } // map-key\nfunc InvalidKey() { _ = Outer{Count: 1} } // promoted-key\nfunc MapField(a Outer) { _ = map[int]int{a.Count: 2} } // map-field-key\nfunc UseMembers(v Outer) { _ = v.hidden; _ = v.Action(1); _ = v.Count }\ntype NamedMap map[int]int\nfunc NamedKeys() { const Count = 1; _ = NamedMap{Count: 0} } // named-map-key\nfunc LocalKeys() { type LocalMap map[int]int; const Count = 1; _ = LocalMap{Count: 0} } // local-map-key\nfunc Indirect(v mid.Wrap) { _ = v.Export } // transitive-field\ntype Concrete struct{}\nfunc (Concrete) Read(dst []byte) (int,error) { return 0,nil }\nfunc Contract(v Concrete, r Reader) { _,_ = v.Read(nil); _,_ = r.Read(nil) }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 20
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$OTHER_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

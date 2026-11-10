@@ -1,0 +1,208 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport lib \"example.test/project/lib\"\n\ntype Probe struct {\n Alpha, Beta int\n Shadow ProbeShadow\n ProbeShadow int\n Tagged string `json:\"probe\"`\n Fn func(ProbeParam int) (ProbeResult int)\n Nested struct { Deep int }\n *lib.Thing\n 世界, More int\n}\ntype ProbeFace interface {\n Step(arg int) (out int)\n Other()\n}\ntype ProbeShadow int\ntype ProbeGeneric[T any] struct { GenericField T }\ntype ProbeAlias = struct { AliasField int }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alpha$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Beta$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.ProbeShadow$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Tagged$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Fn$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeFace.Step$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeFace.Other$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeParam"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeResult"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.世界$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.More$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Nested.Deep$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "GenericField"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "AliasField"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Thing$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^main.Probe."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport lib \"example.test/project/lib\"\n\ntype Probe struct {\n Alter, Beta int\n Shadow ProbeShadow\n ProbeShadow int\n Tagged string `json:\"probe\"`\n Fn func(ProbeParam int) (ProbeResult int)\n Nested struct { Deep int }\n *lib.Thing\n 世界, More int\n}\ntype ProbeFace interface {\n Step(arg int) (out int)\n Other()\n}\ntype ProbeShadow int\ntype ProbeGeneric[T any] struct { GenericField T }\ntype ProbeAlias = struct { AliasField int }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alpha$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alter$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alter$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

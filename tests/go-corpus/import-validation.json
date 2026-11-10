@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-11-07T06:30:54.151957+00:00",
+  "go": "go version go1.27.3",
+  "commit": "2fd897aba3421486ad39b290a79d6c94fef6096b",
+  "passed": true,
+  "commands": [
+    "cargo test --workspace --offline",
+    "cargo clippy --workspace --all-targets --offline -- -D warnings",
+    "GOQUERY_GO_SCOPE=toolchain cargo test --test stdio go_source_package_corpus --offline -- --ignored --nocapture"
+  ],
+  "import_forms": 16,
+  "complete_lsp_responses": 27,
+  "matching_complete_gopls_responses": 27,
+  "comparison": "benchmarks/escaped-imports.json",
+  "coverage": [
+    "quoted, octal/hex byte and Unicode escapes",
+    "escaped separators and inferred aliases",
+    "raw strings with CR removal versus literal backslashes",
+    "explicit alias, dot import and blank import",
+    "invalid escape, invalid UTF-8 and unrelated path rejection",
+    "unsaved edits and close invalidation"
+  ],
+  "syntax_manifest_sha256": "0feb4b56f57fb28df9b7a50b2c2802977744039283a34465403c818fd8639ae8",
+  "manifest_hash_method": "SHA256 of sorted relative UTF-8 path, NUL, file SHA256 ASCII hex, newline; source paths relative to src, syntax paths relative to repository",
+  "runner_sha256": "863818736c769d5a0fec8bcda17d3ec201e7e68c83bfda0e96c21e3d81745df5",
+  "oracle_sha256": "0a0bed22a0031bf162a643b65bb6640126b022fbca98c58935a4b4dd5de2c5eb",
+  "request_fixture_sha256": "37c7efac1789cfa9ff267791f49ca703c9ce9ac70c51354f33ced100143d6e8a",
+  "response_fixture_sha256": "5df4d5f48305b0aa978dd8f4fb3168cafdc3642346909afc7d1cfb1eb8fd4bad",
+  "toolchain": {
+    "scope": "All src directories outside testdata, including cmd, vendor, tests and platform variants; no build-tag filtering",
+    "packages": 800,
+    "files": 6821,
+    "headers": 110203,
+    "types": 394492,
+    "initializers": 179374,
+    "bodies": 104246,
+    "source_manifest_sha256": "1b1d048d151ded1a741d7e0d94efc156881d33023462c9b230d87fbc661d15c5",
+    "full_file_validation": true
+  },
+  "limitations": [
+    "Invalid UTF-8 import values are omitted from String-based identity metadata without changing syntax acceptance",
+    "Complete Go semantic import-path validity checks and package-name inference beyond the path suffix remain unfinished",
+    "These definition/reference queries do not establish all feature or Go type-checker parity",
+    "No additional retained import spelling, sources, ASTs or per-file cache fields; runtime measurements are separate"
+  ]
+}

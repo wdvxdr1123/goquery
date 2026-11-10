@@ -1,0 +1,154 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": true,
+              "insertReplaceSupport": true
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 1,
+        "languageId": "go",
+        "text": "package main\ntype Record struct { Field int; Label string; \u00c5ngstr\u00f6m int }\nfunc (Record) Read(data []byte) int { return len(data) }\nfunc Probe(r Record) {\n _ = r.Field\n _ = r.Label\n _ = \"\ud83d\ude00\"; _ = r.\u00c5ngstr\u00f6m\n r.Read(nil)\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\ntype Record struct { Field int; Label string; \u00c5ngstr\u00f6m int }\nfunc (Record) Read(data []byte) int { return len(data) }\nfunc Probe(r Record) {\n _ = r.Fizz\n _ = r.Label\n _ = \"\ud83d\ude00\"; _ = r.\u00c5ngstr\u00f6m\n r.Read(nil)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

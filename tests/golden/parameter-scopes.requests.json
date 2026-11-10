@@ -1,0 +1,407 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\ntype Maps[K comparable] interface{ ~map[K][]*hidden }\ntype State[K comparable,S Maps[K]] struct{ Values S }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport bounds \"example.test/project/lib\"\ntype Holder[S bounds.Maps[K],K comparable] struct{ bounds.State[K,S] }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport bounds \"example.test/project/other\"\nvar _ = bounds.Public\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc (box *Holder[Values,Key]) Probe(key Key,keys []Key) {\n for _, direct := range box.Values[key] {\n  direct.Read(\"direct\")\n }\n for _, fromSlice := range box.Values[keys[0]] {\n  fromSlice.Read(\"slice key\")\n }\n for key := range box.Values {\n  for _, fromRange := range box.Values[key] {\n   fromRange.Read(\"range key\")\n  }\n }\n for _, sliced := range box.Values[key][1:] {\n  sliced.Read(\"slice value\")\n }\n {\n  Key := 1\n  _ = Key\n  var copied Values = box.Values\n  for _, shadowed := range copied[key] {\n   shadowed.Read(\"shadow\")\n  }\n }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 14
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 16
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 32
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Probe",
+        "kind": 12,
+        "uri": "$SIBLING_URI",
+        "range": {
+          "start": {
+            "line": 5,
+            "character": 31
+          },
+          "end": {
+            "line": 5,
+            "character": 36
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 5,
+            "character": 31
+          },
+          "end": {
+            "line": 5,
+            "character": 36
+          }
+        },
+        "data": {
+          "uri": "$SIBLING_URI",
+          "name": "Probe",
+          "start": 180
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\ntype Maps[K comparable] interface{ ~map[K][]*other }\ntype State[K comparable,S Maps[K]] struct{ Values S }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\ntype Maps[K comparable] interface{ ~map[K][]*hidden }\ntype State[K comparable,S Maps[K]] struct{ Values S }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport bounds \"example.test/project/other\"\nvar _ = bounds.Public\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc (box *Holder[Values,Key]) Probe(key Key,keys []Key) {\n for _, direct := range box.Values[key] {\n  direct.Read(\"direct\")\n }\n for _, fromSlice := range box.Values[keys[0]] {\n  fromSlice.Read(\"slice key\")\n }\n for key := range box.Values {\n  for _, fromRange := range box.Values[key] {\n   fromRange.Read(\"range key\")\n  }\n }\n for _, sliced := range box.Values[key][1:] {\n  sliced.Read(\"slice value\")\n }\n {\n  Key := 1\n  _ = Key\n  var copied Values = box.Values\n  for _, shadowed := range copied[key] {\n   shadowed.Read(\"shadow\")\n  }\n }\n}\nfunc (box *Holder[Values,Key]) InvalidKey(other int) {\n for _, invalid := range box.Values[other] {\n  invalid.Read(\"wrong key\")\n }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport bounds \"example.test/project/other\"\nvar _ = bounds.Public\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc (box *Holder[Values,Key]) Probe(key Key,keys []Key) {\n for _, direct := range box.Values[key] {\n  direct.Read(\"direct\")\n }\n for _, fromSlice := range box.Values[keys[0]] {\n  fromSlice.Read(\"slice key\")\n }\n for key := range box.Values {\n  for _, fromRange := range box.Values[key] {\n   fromRange.Read(\"range key\")\n  }\n }\n for _, sliced := range box.Values[key][1:] {\n  sliced.Read(\"slice value\")\n }\n {\n  Key := 1\n  _ = Key\n  var copied Values = box.Values\n  for _, shadowed := range copied[key] {\n   shadowed.Read(\"shadow\")\n  }\n }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$SIBLING_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

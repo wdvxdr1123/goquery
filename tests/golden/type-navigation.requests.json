@@ -1,0 +1,382 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/methods/lib\"\nconst Count = 2\ntype T struct{}\ntype Pair[A, B any] struct{}\ntype Method struct{}\ntype Record struct {\n T lib.T // field\n P *T // pointer\n Callback func(arg lib.T) (result T) // callback\n Nested interface { Method(value lib.T) T; ~int | ~string } // interface\n}\ntype Alias = *lib.T // alias\ntype Lookup map[T][]lib.T // map\ntype Array [Count]T // array\nfunc Signature[T interface{ Run() }](a Pair[T, lib.T], callback func(lib.T) T) (result []T) {\n type Local struct{ Child lib.T } // local-field\n var values map[T][]*Local // local\n var exact interface { M(lib.T) T } // local-method\n _ = values; _ = exact\n}\nfunc ArrayGeneric[T any](v [len([1]T{})]T) {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 4
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 34
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 37
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 40
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 24
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 30
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 21
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 29
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 32
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 39
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 44
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 51
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 73
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 76
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 89
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 35
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 99,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

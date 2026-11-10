@@ -1,0 +1,786 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Numeric",
+          "start": 123,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/project • main.go",
+        "kind": 12,
+        "name": "Numeric",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 14,
+              "line": 6
+            },
+            "start": {
+              "character": 10,
+              "line": 6
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Read",
+            "start": 48,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/project/lib • lib.go",
+          "kind": 12,
+          "name": "Read",
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 15,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 15,
+              "line": 2
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        29,
+        3,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        6,
+        1,
+        2,
+        0,
+        7,
+        6,
+        7,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        6,
+        6,
+        1,
+        0,
+        0,
+        8,
+        4,
+        3,
+        2,
+        0,
+        5,
+        4,
+        6,
+        2,
+        0,
+        5,
+        3,
+        1,
+        8,
+        0,
+        5,
+        6,
+        1,
+        8,
+        0,
+        9,
+        6,
+        7,
+        0,
+        0,
+        7,
+        2,
+        8,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        2,
+        2,
+        0,
+        8,
+        1,
+        12,
+        2,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        1,
+        3,
+        1,
+        8,
+        0,
+        4,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        11,
+        1,
+        0,
+        0,
+        12,
+        1,
+        12,
+        0,
+        0,
+        4,
+        6,
+        6,
+        2,
+        0,
+        7,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        2,
+        0,
+        3,
+        7,
+        4,
+        2,
+        0,
+        11,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        0,
+        1,
+        2,
+        7,
+        4,
+        0,
+        0,
+        8,
+        4,
+        3,
+        0,
+        0,
+        5,
+        8,
+        8,
+        0,
+        3,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        5,
+        2,
+        2,
+        0,
+        6,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        6,
+        1,
+        0,
+        0,
+        7,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        11,
+        1,
+        0,
+        0,
+        12,
+        1,
+        12,
+        0,
+        0,
+        4,
+        6,
+        6,
+        2,
+        0,
+        7,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        2,
+        0,
+        3,
+        5,
+        4,
+        2,
+        0,
+        9,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        0,
+        1,
+        2,
+        5,
+        4,
+        0,
+        0,
+        6,
+        4,
+        3,
+        0,
+        0,
+        5,
+        7,
+        8,
+        0,
+        3,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        2,
+        2,
+        0,
+        8,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        4,
+        1,
+        0,
+        0,
+        5,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        9,
+        1,
+        0,
+        0,
+        10,
+        1,
+        12,
+        0,
+        0,
+        4,
+        6,
+        6,
+        2,
+        0,
+        7,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        2,
+        0,
+        3,
+        7,
+        4,
+        2,
+        0,
+        11,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        0,
+        1,
+        2,
+        7,
+        4,
+        0,
+        0,
+        8,
+        4,
+        3,
+        0,
+        0,
+        5,
+        9,
+        8,
+        0,
+        3,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        2,
+        2,
+        0,
+        8,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        4,
+        1,
+        0,
+        0,
+        5,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        0,
+        0,
+        0,
+        4,
+        11,
+        1,
+        0,
+        0,
+        12,
+        1,
+        12,
+        0,
+        0,
+        4,
+        6,
+        6,
+        2,
+        0,
+        7,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        2,
+        0,
+        3,
+        7,
+        4,
+        2,
+        0,
+        11,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        0,
+        1,
+        2,
+        7,
+        4,
+        0,
+        0,
+        8,
+        4,
+        3,
+        0,
+        0,
+        5,
+        9,
+        8,
+        0
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

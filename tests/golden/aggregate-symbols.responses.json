@@ -1,0 +1,1112 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 6,
+              "line": 5
+            },
+            "start": {
+              "character": 1,
+              "line": 5
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Alpha"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 5
+            },
+            "start": {
+              "character": 8,
+              "line": 5
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Beta"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 7
+            },
+            "start": {
+              "character": 1,
+              "line": 7
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.ProbeShadow"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 7,
+              "line": 8
+            },
+            "start": {
+              "character": 1,
+              "line": 8
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Tagged"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 3,
+              "line": 9
+            },
+            "start": {
+              "character": 1,
+              "line": 9
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Fn"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 6,
+        "location": {
+          "range": {
+            "end": {
+              "character": 5,
+              "line": 15
+            },
+            "start": {
+              "character": 1,
+              "line": 15
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "ProbeFace.Step"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 6,
+        "location": {
+          "range": {
+            "end": {
+              "character": 6,
+              "line": 16
+            },
+            "start": {
+              "character": 1,
+              "line": 16
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "ProbeFace.Other"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 3,
+              "line": 12
+            },
+            "start": {
+              "character": 1,
+              "line": 12
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.世界"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 9,
+              "line": 12
+            },
+            "start": {
+              "character": 5,
+              "line": 12
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.More"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 21,
+              "line": 10
+            },
+            "start": {
+              "character": 17,
+              "line": 10
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Nested.Deep"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 46,
+              "line": 19
+            },
+            "start": {
+              "character": 34,
+              "line": 19
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "ProbeGeneric.GenericField"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 37,
+              "line": 20
+            },
+            "start": {
+              "character": 27,
+              "line": 20
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "ProbeAlias.AliasField"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project/lib",
+        "kind": 23,
+        "location": {
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "uri": "$LIB_URI"
+        },
+        "name": "Thing"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 48,
+              "line": 30
+            },
+            "start": {
+              "character": 24,
+              "line": 30
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Qualified.Thing"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 11
+            },
+            "start": {
+              "character": 1,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.*lib.Thing"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 3,
+              "line": 9
+            },
+            "start": {
+              "character": 1,
+              "line": 9
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Fn"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 5
+            },
+            "start": {
+              "character": 8,
+              "line": 5
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Beta"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 9,
+              "line": 12
+            },
+            "start": {
+              "character": 5,
+              "line": 12
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.More"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 6,
+              "line": 5
+            },
+            "start": {
+              "character": 1,
+              "line": 5
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Alpha"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 7,
+              "line": 10
+            },
+            "start": {
+              "character": 1,
+              "line": 10
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Nested"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 7,
+              "line": 6
+            },
+            "start": {
+              "character": 1,
+              "line": 6
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Shadow"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 7,
+              "line": 8
+            },
+            "start": {
+              "character": 1,
+              "line": 8
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Tagged"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 3,
+              "line": 12
+            },
+            "start": {
+              "character": 1,
+              "line": 12
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.世界"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 7
+            },
+            "start": {
+              "character": 1,
+              "line": 7
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.ProbeShadow"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 11
+            },
+            "start": {
+              "character": 1,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.*lib.Thing"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 21,
+              "line": 10
+            },
+            "start": {
+              "character": 17,
+              "line": 10
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "main.Probe.Nested.Deep"
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 7,
+              "line": 24
+            },
+            "start": {
+              "character": 1,
+              "line": 24
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.Gen[T]"
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 28,
+              "line": 25
+            },
+            "start": {
+              "character": 24,
+              "line": 25
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.First.Leaf"
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 28,
+              "line": 25
+            },
+            "start": {
+              "character": 24,
+              "line": 25
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.Second.Leaf"
+      }
+    ]
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 6,
+        "location": {
+          "range": {
+            "end": {
+              "character": 54,
+              "line": 25
+            },
+            "start": {
+              "character": 51,
+              "line": 25
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.First.Face.Run"
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 6,
+        "location": {
+          "range": {
+            "end": {
+              "character": 54,
+              "line": 25
+            },
+            "start": {
+              "character": 51,
+              "line": 25
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.Second.Face.Run"
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 2,
+              "line": 26
+            },
+            "start": {
+              "character": 1,
+              "line": 26
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo.A"
+      }
+    ]
+  },
+  {
+    "id": 36,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 44,
+              "line": 29
+            },
+            "start": {
+              "character": 22,
+              "line": 29
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Pointer.*Gen[int]"
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 48,
+              "line": 30
+            },
+            "start": {
+              "character": 24,
+              "line": 30
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Qualified.Thing"
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 11,
+        "location": {
+          "range": {
+            "end": {
+              "character": 42,
+              "line": 31
+            },
+            "start": {
+              "character": 28,
+              "line": 31
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Constraint.~int | ~string"
+      }
+    ]
+  },
+  {
+    "id": 39,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 11,
+        "location": {
+          "range": {
+            "end": {
+              "character": 54,
+              "line": 31
+            },
+            "start": {
+              "character": 44,
+              "line": 31
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Constraint.comparable"
+      }
+    ]
+  },
+  {
+    "id": 40,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 11,
+        "location": {
+          "range": {
+            "end": {
+              "character": 31,
+              "line": 32
+            },
+            "start": {
+              "character": 22,
+              "line": 32
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Face.ProbeFace"
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 33,
+              "line": 33
+            },
+            "start": {
+              "character": 29,
+              "line": 33
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Alias.Item"
+      }
+    ]
+  },
+  {
+    "id": 42,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 43,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 44,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 23,
+        "location": {
+          "range": {
+            "end": {
+              "character": 8,
+              "line": 22
+            },
+            "start": {
+              "character": 5,
+              "line": 22
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Gen"
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 23,
+        "location": {
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 23
+            },
+            "start": {
+              "character": 5,
+              "line": 23
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Combo"
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 23,
+        "location": {
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 33
+            },
+            "start": {
+              "character": 5,
+              "line": 33
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Alias"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 5,
+        "location": {
+          "range": {
+            "end": {
+              "character": 13,
+              "line": 34
+            },
+            "start": {
+              "character": 5,
+              "line": 34
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "BoxAlias"
+      },
+      {
+        "containerName": "example.test/project",
+        "kind": 23,
+        "location": {
+          "range": {
+            "end": {
+              "character": 15,
+              "line": 20
+            },
+            "start": {
+              "character": 5,
+              "line": 20
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "ProbeAlias"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/project",
+        "kind": 8,
+        "location": {
+          "range": {
+            "end": {
+              "character": 6,
+              "line": 5
+            },
+            "start": {
+              "character": 1,
+              "line": 5
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "name": "Probe.Alter"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

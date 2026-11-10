@@ -1,0 +1,512 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_EXTERNAL_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 64,
+            "line": 2
+          },
+          "start": {
+            "character": 44,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_EXTERNAL_HTTPGUTS_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 53,
+            "line": 2
+          },
+          "start": {
+            "character": 33,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_EXTERNAL_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "ValidHeaderFieldName",
+          "start": 53,
+          "uri": "$SDK_HTTPGUTS_URI"
+        },
+        "detail": "vendor/golang.org/x/net/http/httpguts • httplex.go",
+        "kind": 12,
+        "name": "ValidHeaderFieldName",
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "ToASCII",
+          "start": 18,
+          "uri": "$SDK_IDNA_URI"
+        },
+        "detail": "vendor/golang.org/x/net/idna • idna.go",
+        "kind": 12,
+        "name": "ToASCII",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        30,
+        8,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        5,
+        2,
+        2,
+        0,
+        6,
+        1,
+        6,
+        2,
+        0,
+        2,
+        6,
+        1,
+        8,
+        0,
+        8,
+        4,
+        1,
+        8,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        8,
+        0,
+        0,
+        0,
+        9,
+        20,
+        2,
+        0,
+        0,
+        21,
+        1,
+        6,
+        0
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        8,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        25,
+        4,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        20,
+        2,
+        2,
+        0,
+        21,
+        1,
+        6,
+        2,
+        0,
+        2,
+        6,
+        1,
+        8,
+        0,
+        8,
+        4,
+        1,
+        8,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        3,
+        2,
+        8,
+        0,
+        4,
+        4,
+        0,
+        0,
+        0,
+        5,
+        7,
+        2,
+        0,
+        0,
+        8,
+        1,
+        6,
+        0,
+        0,
+        4,
+        1,
+        11,
+        0,
+        0,
+        2,
+        1,
+        9,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        3,
+        2,
+        2,
+        0,
+        4,
+        1,
+        6,
+        2,
+        0,
+        2,
+        6,
+        1,
+        8,
+        0,
+        8,
+        4,
+        1,
+        8,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        20,
+        2,
+        0,
+        0,
+        21,
+        1,
+        6,
+        0
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

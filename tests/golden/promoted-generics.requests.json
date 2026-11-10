@@ -1,0 +1,542 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": true
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Payload struct { LibOnly int }\ntype Cell[T any] struct { Value T; Next *Cell[T]; Fn func(v T) T }\ntype Inner[T any] struct { Cell[T] }\ntype Wrap[T any] struct { Inner[T] }\ntype Alias[T any] = Wrap[T]\ntype Defined[T any] Wrap[T]\ntype Fixed[T any] struct { Cell[Payload] }\ntype Reader[T any] interface { Read(v T) T }\ntype Wide[T any] interface { Reader[T] }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/project/lib\"\ntype Payload struct { Leaf int; 名 int }\ntype Other struct { Leaf string; OtherOnly int }\ntype T struct { Wrong int }\ntype Local[T any] struct { lib.Wrap[T] }\ntype Defined[T any] Local[T]\ntype Alias[T any] = Defined[T]\ntype Ptr[T any] struct { *lib.Wrap[T] }\ntype Deep[T any] struct { Local[T] }\ntype Left[T any] struct { lib.Cell[T] }\ntype Right[T any] struct { lib.Cell[T] }\ntype Diamond[T any] struct { Left[T]; Right[T] }\ntype Shallow[A,B any] struct { Deep[A]; lib.Cell[B] }\ntype Shadow[T any] struct { Local[T]; Value Other }\ntype Cycle[T any] struct { *Cycle[T]; lib.Cell[T] }\ntype Reorder[A,B any] struct { lib.Wrap[B] }\nfunc Probe(a Local[Payload], d Defined[Payload], alias Alias[Payload], p Ptr[Payload], deep Deep[Payload], sh Shallow[Other,Payload], shadow Shadow[Payload], cycle Cycle[Payload], flip Reorder[Other,Payload], diamond Diamond[Payload], imported lib.Alias[Payload], importedDef lib.Defined[Payload], fixed lib.Fixed[Other], r lib.Wide[Payload]) {\n _ = a.Value.Leaf // promoted\n _ = d.Value.Leaf // defined\n _ = alias.Value.Leaf // alias\n _ = p.Value.Leaf // pointer-embed\n _ = deep.Value.Leaf // deep\n _ = sh.Value.Leaf // shallower\n _ = shadow.Value.Leaf // shadow\n _ = cycle.Value.Leaf // cycle\n _ = flip.Value.Leaf // reordered\n _ = diamond.Value.Leaf // ambiguous\n _ = imported.Value.Leaf // imported-alias\n _ = importedDef.Value.Leaf // imported-definition\n _ = a.Next.Value.Leaf // recursive-field\n _ = a.Next.Next.Value.Leaf // recursive-chain\n _ = fixed.Value.LibOnly // defining-package-scope\n _ = \"🙂\"; _ = a.Value.名 // unicode\n _ = new(Local[Payload]).Value.Leaf // new-receiver\n { a := Local[Other]{}; _ = a.Value.OtherOnly } // local-shadow\n _ = a.Value // complete-value\n _ = a.Next // complete-next\n _ = a.Fn // complete-function\n _ = r.Re // complete-interface\n}\nfunc Guard[T any](a Local[T]) { _ = a.Value.Wrong } // type-parameter-shadow\ntype Long0[T any] struct { Long1[T] }\ntype Long1[T any] struct { Long2[T] }\ntype Long2[T any] struct { Long3[T] }\ntype Long3[T any] struct { Long4[T] }\ntype Long4[T any] struct { Long5[T] }\ntype Long5[T any] struct { Long6[T] }\ntype Long6[T any] struct { Long7[T] }\ntype Long7[T any] struct { Long8[T] }\ntype Long8[T any] struct { Long9[T] }\ntype Long9[T any] struct { Long10[T] }\ntype Long10[T any] struct { Long11[T] }\ntype Long11[T any] struct { Long12[T] }\ntype Long12[T any] struct { Long13[T] }\ntype Long13[T any] struct { Long14[T] }\ntype Long14[T any] struct { Long15[T] }\ntype Long15[T any] struct { Long16[T] }\ntype Long16[T any] struct { Long17[T] }\ntype Long17[T any] struct { Long18[T] }\ntype Long18[T any] struct { Long19[T] }\ntype Long19[T any] struct { Long20[T] }\ntype Long20[T any] struct { Long21[T] }\ntype Long21[T any] struct { Long22[T] }\ntype Long22[T any] struct { Long23[T] }\ntype Long23[T any] struct { Long24[T] }\ntype Long24[T any] struct { Long25[T] }\ntype Long25[T any] struct { Long26[T] }\ntype Long26[T any] struct { Long27[T] }\ntype Long27[T any] struct { Long28[T] }\ntype Long28[T any] struct { Long29[T] }\ntype Long29[T any] struct { Long30[T] }\ntype Long30[T any] struct { Long31[T] }\ntype Long31[T any] struct { Long32[T] }\ntype Long32[T any] struct { Long33[T] }\ntype Long33[T any] struct { Long34[T] }\ntype Long34[T any] struct { Long35[T] }\ntype Long35[T any] struct { Long36[T] }\ntype Long36[T any] struct { Long37[T] }\ntype Long37[T any] struct { Long38[T] }\ntype Long38[T any] struct { Long39[T] }\ntype Long39[T any] struct { Long40[T] }\ntype Long40[T any] struct { Long41[T] }\ntype Long41[T any] struct { Long42[T] }\ntype Long42[T any] struct { Long43[T] }\ntype Long43[T any] struct { Long44[T] }\ntype Long44[T any] struct { Long45[T] }\ntype Long45[T any] struct { Long46[T] }\ntype Long46[T any] struct { Long47[T] }\ntype Long47[T any] struct { Long48[T] }\ntype Long48[T any] struct { Long49[T] }\ntype Long49[T any] struct { Long50[T] }\ntype Long50[T any] struct { Long51[T] }\ntype Long51[T any] struct { Long52[T] }\ntype Long52[T any] struct { Long53[T] }\ntype Long53[T any] struct { Long54[T] }\ntype Long54[T any] struct { Long55[T] }\ntype Long55[T any] struct { Long56[T] }\ntype Long56[T any] struct { Long57[T] }\ntype Long57[T any] struct { Long58[T] }\ntype Long58[T any] struct { Long59[T] }\ntype Long59[T any] struct { Long60[T] }\ntype Long60[T any] struct { Long61[T] }\ntype Long61[T any] struct { Long62[T] }\ntype Long62[T any] struct { Long63[T] }\ntype Long63[T any] struct { Long64[T] }\ntype Long64[T any] struct { Long65[T] }\ntype Long65[T any] struct { Long66[T] }\ntype Long66[T any] struct { Long67[T] }\ntype Long67[T any] struct { Long68[T] }\ntype Long68[T any] struct { Long69[T] }\ntype Long69[T any] struct { Long70[T] }\ntype Long70[T any] struct { Long71[T] }\ntype Long71[T any] struct { Long72[T] }\ntype Long72[T any] struct { Long73[T] }\ntype Long73[T any] struct { Long74[T] }\ntype Long74[T any] struct { Long75[T] }\ntype Long75[T any] struct { Long76[T] }\ntype Long76[T any] struct { Long77[T] }\ntype Long77[T any] struct { Long78[T] }\ntype Long78[T any] struct { Long79[T] }\ntype Long79[T any] struct { Long80[T] }\ntype Long80[T any] struct { Long81[T] }\ntype Long81[T any] struct { Long82[T] }\ntype Long82[T any] struct { Long83[T] }\ntype Long83[T any] struct { Long84[T] }\ntype Long84[T any] struct { Long85[T] }\ntype Long85[T any] struct { Long86[T] }\ntype Long86[T any] struct { Long87[T] }\ntype Long87[T any] struct { Long88[T] }\ntype Long88[T any] struct { Long89[T] }\ntype Long89[T any] struct { Long90[T] }\ntype Long90[T any] struct { Long91[T] }\ntype Long91[T any] struct { Long92[T] }\ntype Long92[T any] struct { Long93[T] }\ntype Long93[T any] struct { Long94[T] }\ntype Long94[T any] struct { Long95[T] }\ntype Long95[T any] struct { Long96[T] }\ntype Long96[T any] struct { Long97[T] }\ntype Long97[T any] struct { Long98[T] }\ntype Long98[T any] struct { Long99[T] }\ntype Long99[T any] struct { Long100[T] }\ntype Long100[T any] struct { Long101[T] }\ntype Long101[T any] struct { Long102[T] }\ntype Long102[T any] struct { Long103[T] }\ntype Long103[T any] struct { Long104[T] }\ntype Long104[T any] struct { Long105[T] }\ntype Long105[T any] struct { Long106[T] }\ntype Long106[T any] struct { Long107[T] }\ntype Long107[T any] struct { Long108[T] }\ntype Long108[T any] struct { Long109[T] }\ntype Long109[T any] struct { Long110[T] }\ntype Long110[T any] struct { Long111[T] }\ntype Long111[T any] struct { Long112[T] }\ntype Long112[T any] struct { Long113[T] }\ntype Long113[T any] struct { Long114[T] }\ntype Long114[T any] struct { Long115[T] }\ntype Long115[T any] struct { Long116[T] }\ntype Long116[T any] struct { Long117[T] }\ntype Long117[T any] struct { Long118[T] }\ntype Long118[T any] struct { Long119[T] }\ntype Long119[T any] struct { Long120[T] }\ntype Long120[T any] struct { Long121[T] }\ntype Long121[T any] struct { Long122[T] }\ntype Long122[T any] struct { Long123[T] }\ntype Long123[T any] struct { Long124[T] }\ntype Long124[T any] struct { Long125[T] }\ntype Long125[T any] struct { Long126[T] }\ntype Long126[T any] struct { Long127[T] }\ntype Long127[T any] struct { Long128[T] }\ntype Long128[T any] struct { Long129[T] }\ntype Long129[T any] struct { Long130[T] }\ntype Long130[T any] struct { Long131[T] }\ntype Long131[T any] struct { Long132[T] }\ntype Long132[T any] struct { Long133[T] }\ntype Long133[T any] struct { Long134[T] }\ntype Long134[T any] struct { Long135[T] }\ntype Long135[T any] struct { Long136[T] }\ntype Long136[T any] struct { Long137[T] }\ntype Long137[T any] struct { Long138[T] }\ntype Long138[T any] struct { Long139[T] }\ntype Long139[T any] struct {}\ntype WideShallow[T any] struct { Long0[T]; lib.Cell[T] }\nfunc WideProbe(w WideShallow[Payload]) { _ = w.Value.Leaf } // bounded-shallow\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 33,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 31
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 35,
+        "character": 36
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 41,
+        "character": 44
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 13
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 13
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 18
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 18
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 36,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 37,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 39,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 183,
+        "character": 53
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/project/lib\"\ntype Payload struct { Leaf int; 名 int }\ntype Other struct { Leaf string; OtherOnly int }\ntype T struct { Wrong int }\ntype Local[T any] struct { lib.Wrap[T] }\ntype Defined[T any] Local[T]\ntype Alias[T any] = Defined[T]\ntype Ptr[T any] struct { *lib.Wrap[T] }\ntype Deep[T any] struct { Local[T] }\ntype Left[T any] struct { lib.Cell[T] }\ntype Right[T any] struct { lib.Cell[T] }\ntype Diamond[T any] struct { Left[T]; Right[T] }\ntype Shallow[A,B any] struct { Deep[A]; lib.Cell[B] }\ntype Shadow[T any] struct { Local[T]; Value Other }\ntype Cycle[T any] struct { *Cycle[T]; lib.Cell[T] }\ntype Reorder[A,B any] struct { lib.Wrap[B] }\nfunc Probe(a Local[Other], d Defined[Payload], alias Alias[Payload], p Ptr[Payload], deep Deep[Payload], sh Shallow[Other,Payload], shadow Shadow[Payload], cycle Cycle[Payload], flip Reorder[Other,Payload], diamond Diamond[Payload], imported lib.Alias[Payload], importedDef lib.Defined[Payload], fixed lib.Fixed[Other], r lib.Wide[Payload]) {\n _ = a.Value.OtherOnly // promoted\n _ = d.Value.Leaf // defined\n _ = alias.Value.Leaf // alias\n _ = p.Value.Leaf // pointer-embed\n _ = deep.Value.Leaf // deep\n _ = sh.Value.Leaf // shallower\n _ = shadow.Value.Leaf // shadow\n _ = cycle.Value.Leaf // cycle\n _ = flip.Value.Leaf // reordered\n _ = diamond.Value.Leaf // ambiguous\n _ = imported.Value.Leaf // imported-alias\n _ = importedDef.Value.Leaf // imported-definition\n _ = a.Next.Value.Leaf // recursive-field\n _ = a.Next.Next.Value.Leaf // recursive-chain\n _ = fixed.Value.LibOnly // defining-package-scope\n _ = \"🙂\"; _ = a.Value.名 // unicode\n _ = new(Local[Payload]).Value.Leaf // new-receiver\n { a := Local[Other]{}; _ = a.Value.OtherOnly } // local-shadow\n _ = a.Value // complete-value\n _ = a.Next // complete-next\n _ = a.Fn // complete-function\n _ = r.Re // complete-interface\n}\nfunc Guard[T any](a Local[T]) { _ = a.Value.Wrong } // type-parameter-shadow\ntype Long0[T any] struct { Long1[T] }\ntype Long1[T any] struct { Long2[T] }\ntype Long2[T any] struct { Long3[T] }\ntype Long3[T any] struct { Long4[T] }\ntype Long4[T any] struct { Long5[T] }\ntype Long5[T any] struct { Long6[T] }\ntype Long6[T any] struct { Long7[T] }\ntype Long7[T any] struct { Long8[T] }\ntype Long8[T any] struct { Long9[T] }\ntype Long9[T any] struct { Long10[T] }\ntype Long10[T any] struct { Long11[T] }\ntype Long11[T any] struct { Long12[T] }\ntype Long12[T any] struct { Long13[T] }\ntype Long13[T any] struct { Long14[T] }\ntype Long14[T any] struct { Long15[T] }\ntype Long15[T any] struct { Long16[T] }\ntype Long16[T any] struct { Long17[T] }\ntype Long17[T any] struct { Long18[T] }\ntype Long18[T any] struct { Long19[T] }\ntype Long19[T any] struct { Long20[T] }\ntype Long20[T any] struct { Long21[T] }\ntype Long21[T any] struct { Long22[T] }\ntype Long22[T any] struct { Long23[T] }\ntype Long23[T any] struct { Long24[T] }\ntype Long24[T any] struct { Long25[T] }\ntype Long25[T any] struct { Long26[T] }\ntype Long26[T any] struct { Long27[T] }\ntype Long27[T any] struct { Long28[T] }\ntype Long28[T any] struct { Long29[T] }\ntype Long29[T any] struct { Long30[T] }\ntype Long30[T any] struct { Long31[T] }\ntype Long31[T any] struct { Long32[T] }\ntype Long32[T any] struct { Long33[T] }\ntype Long33[T any] struct { Long34[T] }\ntype Long34[T any] struct { Long35[T] }\ntype Long35[T any] struct { Long36[T] }\ntype Long36[T any] struct { Long37[T] }\ntype Long37[T any] struct { Long38[T] }\ntype Long38[T any] struct { Long39[T] }\ntype Long39[T any] struct { Long40[T] }\ntype Long40[T any] struct { Long41[T] }\ntype Long41[T any] struct { Long42[T] }\ntype Long42[T any] struct { Long43[T] }\ntype Long43[T any] struct { Long44[T] }\ntype Long44[T any] struct { Long45[T] }\ntype Long45[T any] struct { Long46[T] }\ntype Long46[T any] struct { Long47[T] }\ntype Long47[T any] struct { Long48[T] }\ntype Long48[T any] struct { Long49[T] }\ntype Long49[T any] struct { Long50[T] }\ntype Long50[T any] struct { Long51[T] }\ntype Long51[T any] struct { Long52[T] }\ntype Long52[T any] struct { Long53[T] }\ntype Long53[T any] struct { Long54[T] }\ntype Long54[T any] struct { Long55[T] }\ntype Long55[T any] struct { Long56[T] }\ntype Long56[T any] struct { Long57[T] }\ntype Long57[T any] struct { Long58[T] }\ntype Long58[T any] struct { Long59[T] }\ntype Long59[T any] struct { Long60[T] }\ntype Long60[T any] struct { Long61[T] }\ntype Long61[T any] struct { Long62[T] }\ntype Long62[T any] struct { Long63[T] }\ntype Long63[T any] struct { Long64[T] }\ntype Long64[T any] struct { Long65[T] }\ntype Long65[T any] struct { Long66[T] }\ntype Long66[T any] struct { Long67[T] }\ntype Long67[T any] struct { Long68[T] }\ntype Long68[T any] struct { Long69[T] }\ntype Long69[T any] struct { Long70[T] }\ntype Long70[T any] struct { Long71[T] }\ntype Long71[T any] struct { Long72[T] }\ntype Long72[T any] struct { Long73[T] }\ntype Long73[T any] struct { Long74[T] }\ntype Long74[T any] struct { Long75[T] }\ntype Long75[T any] struct { Long76[T] }\ntype Long76[T any] struct { Long77[T] }\ntype Long77[T any] struct { Long78[T] }\ntype Long78[T any] struct { Long79[T] }\ntype Long79[T any] struct { Long80[T] }\ntype Long80[T any] struct { Long81[T] }\ntype Long81[T any] struct { Long82[T] }\ntype Long82[T any] struct { Long83[T] }\ntype Long83[T any] struct { Long84[T] }\ntype Long84[T any] struct { Long85[T] }\ntype Long85[T any] struct { Long86[T] }\ntype Long86[T any] struct { Long87[T] }\ntype Long87[T any] struct { Long88[T] }\ntype Long88[T any] struct { Long89[T] }\ntype Long89[T any] struct { Long90[T] }\ntype Long90[T any] struct { Long91[T] }\ntype Long91[T any] struct { Long92[T] }\ntype Long92[T any] struct { Long93[T] }\ntype Long93[T any] struct { Long94[T] }\ntype Long94[T any] struct { Long95[T] }\ntype Long95[T any] struct { Long96[T] }\ntype Long96[T any] struct { Long97[T] }\ntype Long97[T any] struct { Long98[T] }\ntype Long98[T any] struct { Long99[T] }\ntype Long99[T any] struct { Long100[T] }\ntype Long100[T any] struct { Long101[T] }\ntype Long101[T any] struct { Long102[T] }\ntype Long102[T any] struct { Long103[T] }\ntype Long103[T any] struct { Long104[T] }\ntype Long104[T any] struct { Long105[T] }\ntype Long105[T any] struct { Long106[T] }\ntype Long106[T any] struct { Long107[T] }\ntype Long107[T any] struct { Long108[T] }\ntype Long108[T any] struct { Long109[T] }\ntype Long109[T any] struct { Long110[T] }\ntype Long110[T any] struct { Long111[T] }\ntype Long111[T any] struct { Long112[T] }\ntype Long112[T any] struct { Long113[T] }\ntype Long113[T any] struct { Long114[T] }\ntype Long114[T any] struct { Long115[T] }\ntype Long115[T any] struct { Long116[T] }\ntype Long116[T any] struct { Long117[T] }\ntype Long117[T any] struct { Long118[T] }\ntype Long118[T any] struct { Long119[T] }\ntype Long119[T any] struct { Long120[T] }\ntype Long120[T any] struct { Long121[T] }\ntype Long121[T any] struct { Long122[T] }\ntype Long122[T any] struct { Long123[T] }\ntype Long123[T any] struct { Long124[T] }\ntype Long124[T any] struct { Long125[T] }\ntype Long125[T any] struct { Long126[T] }\ntype Long126[T any] struct { Long127[T] }\ntype Long127[T any] struct { Long128[T] }\ntype Long128[T any] struct { Long129[T] }\ntype Long129[T any] struct { Long130[T] }\ntype Long130[T any] struct { Long131[T] }\ntype Long131[T any] struct { Long132[T] }\ntype Long132[T any] struct { Long133[T] }\ntype Long133[T any] struct { Long134[T] }\ntype Long134[T any] struct { Long135[T] }\ntype Long135[T any] struct { Long136[T] }\ntype Long136[T any] struct { Long137[T] }\ntype Long137[T any] struct { Long138[T] }\ntype Long138[T any] struct { Long139[T] }\ntype Long139[T any] struct {}\ntype WideShallow[T any] struct { Long0[T]; lib.Cell[T] }\nfunc WideProbe(w WideShallow[Payload]) { _ = w.Value.Leaf } // bounded-shallow\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

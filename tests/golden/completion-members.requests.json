@@ -1,0 +1,290 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": true
+            }
+          }
+        }
+      },
+      "initializationOptions": {
+        "usePlaceholders": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Base struct { Export int; hidden int; Fn func(x int) int }\nfunc (Base) Run() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/project/lib\"\ntype Inner struct { Count int; hidden int; Action func(x int) string }\nfunc (Inner) Run(x int) string { return \"\" }\ntype Outer struct { Inner; Label string }\ntype Left struct { Inner }\ntype Right struct { Inner }\ntype Diamond struct { Left; Right }\ntype Block struct { Inner; Count string }\ntype Reader interface { Read(dst []byte) (int, error) }\ntype Wide interface { Reader; Close() error }\nfunc Probe(a Outer, b Diamond, c Block, r Wide, imported lib.Base) {\n _ = a.Count\n _ = b.Left\n _ = c.Count\n _ = r.Close\n _ = imported.Export\n _ = a.hidden\n _ = a.Action\n _ = a.Label\n _ = a.Run\n _ = r.Read\n _ = imported.Fn\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype Base struct { Export int; hidden int; Fn func(x string) string }\nfunc (Base) Run() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/project/lib\"\ntype Inner struct { Count int; hidden int; Action func(x int) string }\nfunc (Inner) Run(x int) string { return \"\" }\ntype Outer struct { Inner; Label string }\ntype Left struct { Inner }\ntype Right struct { Inner }\ntype Diamond struct { Left; Right }\ntype Block struct { Inner; Count string }\ntype Reader interface { Read(dst []byte) (n int, err error) }\ntype Wide interface { Reader; Close() error }\nfunc Probe(a Outer, b Diamond, c Block, r Wide, imported lib.Base) {\n _ = a.Count\n _ = b.Left\n _ = c.Count\n _ = r.Close\n _ = imported.Export\n _ = a.hidden\n _ = a.Action\n _ = a.Label\n _ = a.Run\n _ = r.Read\n _ = imported.Fn\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

@@ -1,0 +1,565 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "name": "ExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$INTERNAL_TEST_URI"
+        },
+        "name": "InternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 21,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$LIB_URI"
+        },
+        "name": "ProductionMarker"
+      },
+      {
+        "containerName": "example.test/symbols/testonly_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$ONLY_TEST_URI"
+        },
+        "name": "OnlyExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 25,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_TEST_URI"
+        },
+        "name": "SuffixInternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 27,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_URI"
+        },
+        "name": "SuffixProductionMarker"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$INTERNAL_TEST_URI"
+        },
+        "name": "renamed.InternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 21,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$LIB_URI"
+        },
+        "name": "renamed.ProductionMarker"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "name": "renamed_test.ExternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "name": "example.test/symbols/lib_test.ExternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 25,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_TEST_URI"
+        },
+        "name": "suffix_test.SuffixInternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 27,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_URI"
+        },
+        "name": "suffix_test.SuffixProductionMarker"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/testonly_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$ONLY_TEST_URI"
+        },
+        "name": "OnlyExternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/testonly_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$ONLY_TEST_URI"
+        },
+        "name": "example.test/symbols/testonly_test.OnlyExternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "name": "ExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/testonly_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$ONLY_TEST_URI"
+        },
+        "name": "OnlyExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 25,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_TEST_URI"
+        },
+        "name": "suffix_test.SuffixInternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$INTERNAL_TEST_URI"
+        },
+        "name": "example.test/symbols/lib.InternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "containerName": "example.test/symbols/lib_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "name": "ExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/testonly_test",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$ONLY_TEST_URI"
+        },
+        "name": "OnlyExternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/suffix",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 25,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SUFFIX_TEST_URI"
+        },
+        "name": "suffix_test.SuffixInternalMarker"
+      },
+      {
+        "containerName": "example.test/symbols/lib",
+        "kind": 12,
+        "location": {
+          "range": {
+            "end": {
+              "character": 19,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$INTERNAL_TEST_URI"
+        },
+        "name": "example.test/symbols/lib.InternalMarker"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

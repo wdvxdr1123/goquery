@@ -1,0 +1,104 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "initializationOptions": {
+        "goexperiment": false
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "workspace/symbol",
+    "params": {
+      "query": ""
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "initialize",
+    "params": {
+      "initializationOptions": {
+        "goexperiment": "madeup"
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "initialize",
+    "params": {
+      "initializationOptions": {
+        "goos": "linux",
+        "goarch": "386",
+        "goexperiment": "none,jsonv2,simd",
+        "buildTags": [
+          "feature"
+        ]
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "//go:build goexperiment.jsonv2 && goexperiment.simd && !goexperiment.regabiargs && gc && go1.27 && feature\n\npackage p\nfunc Selected() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "//go:build goexperiment.greenteagc\n\npackage p\nfunc Excluded() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

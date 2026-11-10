@@ -1,0 +1,497 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "$SDK_PATH",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(value int) int { return value }\ntype Callback func(value int) int\nfunc Channel() <-chan *hidden { return nil }\nfunc Functions() <-chan Callback { return nil }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport external \"example.test/typedef/lib\"\ntype hidden struct{}\nfunc (*hidden) Read(value string) string { return value }\nfunc Probe() {\n channel := external.Channel()\n received := <-channel\n copied := received\n paired, ok := <-channel\n _ = received.Read(1)\n _ = copied.Read(2)\n _ = paired.Read(3)\n function, functionOK := <-external.Functions()\n result := function(1)\n direct := (<-external.Functions())(2)\n select {\n case selected, selectedOK := <-channel:\n  \n  selectedCopy := selected\n  _ = selectedCopy.Read(4)\n  _, _ = selected, selectedOK\n }\n _, _, _, _ = ok, functionOK, result, direct\n}\nfunc Shadow(channel chan int) {\n select {\n case channel := <-channel /* header */:\n  \n  plus := channel + 1; _ = plus\n }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 36
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 26
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": "$PREPARED_ITEM_23"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport external \"example.test/typedef/lib\"\nfunc Probe() { select { case selected := external.Channel(): copied := selected; _ = copied } }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 61
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport external \"example.test/typedef/lib\"\ntype hidden struct{}\nfunc (*hidden) Read(value string) string { return value }\nfunc Probe() {\n channel := external.Channel()\n received := <-channel\n copied := received\n paired, ok := <-channel\n _ = received.Read(1)\n _ = copied.Read(2)\n _ = paired.Read(3)\n function, functionOK := <-external.Functions()\n result := function(1)\n direct := (<-external.Functions())(2)\n select {\n case selected, selectedOK := <-channel:\n  \n  selectedCopy := selected\n  _ = selectedCopy.Read(4)\n  _, _ = selected, selectedOK\n }\n _, _, _, _ = ok, functionOK, result, direct\n}\nfunc Shadow(channel chan int) {\n select {\n case channel := <-channel /* header */:\n  \n  plus := channel + 1; _ = plus\n }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

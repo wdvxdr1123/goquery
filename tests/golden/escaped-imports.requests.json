@@ -1,0 +1,707 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\nfunc Decoded() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/project/lib\"\nfunc Use() { lib.Decoded() }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/l\\x69b\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/\\154ib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 4
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/\\u006cib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 5
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/\\U0000006cib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 6
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test\\x2fproject\\u002flib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 7
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport `example.test/project/lib`\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 8
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport `example.test/project/li\rb`\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 9
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport LI \"example.test/project/l\\x69b\"\nfunc Use() { LI.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 10
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport . \"example.test/project/\\154ib\"\nfunc Use() { Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 11
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport `example.test/project/l\\x69b`\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 12
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/\\xff\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 13
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/l\\qib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 14
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/lib\\n\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 15
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/other\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 16
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport _ \"example.test/project/\\u006cib\"\nfunc Use() { lib.Decoded() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 5
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

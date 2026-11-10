@@ -1,0 +1,230 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package typeoracle\n\ntype Item struct{ Field int }\nfunc (item *Item) Use(n int) {}\ntype Other struct{ OtherField int }\nfunc (item *Other) Use(n int) {}\nfunc Identity[T any](value T) T { return value }\nfunc First[T any](value ...T) T { return value[0] }\nfunc Navigate(values []*Item) {\n item := Identity[*Item](First(values...))\n item.Use(1)\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 3,
+        "character": 20
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Navigate",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 13
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Navigate",
+          "start": 257
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package typeoracle\n\ntype Item struct{ Field int }\nfunc (item *Item) Use(n int) {}\ntype Other struct{ OtherField int }\nfunc (item *Other) Use(n int) {}\nfunc Identity[T any](value T) *Other { return nil }\nfunc First[T any](value ...T) T { return value[0] }\nfunc Navigate(values []*Item) {\n item := Identity[*Item](First(values...))\n item.Use(1)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Other.Use"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

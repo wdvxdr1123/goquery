@@ -1,0 +1,170 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport api \"example.test/implementation/lib\"\nimport foreign \"example.test/implementation/other\"\n\ntype Good struct{}\nfunc (*Good) Read(p []uint8) (n int, err error) { return 0, nil }\nfunc (Good) Write([]byte) (int, error) { return 0, nil }\ntype Promoted struct { *Good }\ntype Ambiguous struct { Good; foreign.ReaderImpl }\ntype Blocked struct { Good; Read int }\ntype Wrong struct{}\nfunc (Wrong) Read([]rune) (int, error) { return 0, nil }\ntype Wrapped struct { api.Sealed }\ntype PlainEmbed struct { Good }\ntype Empty interface{}\ntype EmptyStruct struct{}\ntype Alias = Good\ntype InterfaceAlias = api.Reader\ntype LiteralAlias = interface { Read([]byte) (int, error) }\ntype Distinct Good\ntype Both interface { api.Private; foreign.Private }\ntype BothImpl struct { api.Reading; foreign.ReaderImpl }\ntype FakeSeal struct{}\nfunc (FakeSeal) Read([]byte) (int, error) { return 0, nil }\nfunc (FakeSeal) seal() {}\ntype Typed struct{}\nfunc (Typed) Use(api.Alias) api.Payload { return 0 }\ntype WrongTyped struct{}\nfunc (WrongTyped) Use(foreign.Payload) foreign.Payload { return 0 }\ntype Variadic struct{}\nfunc (Variadic) Log(string, ...uint8) {}\ntype Slice struct{}\nfunc (Slice) Log(string, []byte) {}\ntype Callback struct{}\nfunc (Callback) Call(func(x api.Payload, y api.Payload) (api.Payload, error)) {}\ntype Array struct{}\nfunc (Array) Array([16]uint8) {}\ntype WrongArray struct{}\nfunc (WrongArray) Array([17]byte) {}\ntype Channel struct{}\nfunc (Channel) Pull(<-chan api.Payload) chan<- api.Payload { return nil }\ntype WrongChannel struct{}\nfunc (WrongChannel) Pull(chan api.Payload) chan api.Payload { return nil }\ntype Mapped struct{}\nfunc (Mapped) Lookup(map[string]*api.Payload) []api.Payload { return nil }\ntype WrongMap struct{}\nfunc (WrongMap) Lookup(map[string]*foreign.Payload) []foreign.Payload { return nil }\ntype NamedFunction struct{}\nfunc (NamedFunction) Invoke(api.NominalFunc) {}\ntype AnonymousFunction struct{}\nfunc (AnonymousFunction) Invoke(func()) {}\ntype DefinedPointer *Good\ntype PointerAlias = *api.Reader\ntype ConcretePointerAlias = *Good\ntype DefinedReader api.Reader\ntype IntGetter interface { Get() int }\ntype IntBox struct { api.Box[int] }\ntype Anonymous struct{}\nfunc (Anonymous) Accept(struct { X int }) {}\n\nvar _ api.ReadWriter = (*Good)(nil)\nvar _ api.Sealed = Wrapped{}\nvar _ Both = BothImpl{}\nfunc main() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 6
+      },
+      "contentChanges": [
+        {
+          "text": "$HIERARCHY_LIMIT_SOURCE"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Reader",
+        "kind": 11,
+        "detail": "example.test/implementation/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 7
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport api \"example.test/implementation/lib\"\nimport foreign \"example.test/implementation/other\"\n\ntype Good struct{}\nfunc (*Good) Read(p []uint8) (n int, err error) { return 0, nil }\nfunc (Good) Write([]byte) (int, error) { return 0, nil }\ntype Promoted struct { *Good }\ntype Ambiguous struct { Good; foreign.ReaderImpl }\ntype Blocked struct { Good; Read int }\ntype Wrong struct{}\nfunc (Wrong) Read([]rune) (int, error) { return 0, nil }\ntype Wrapped struct { api.Sealed }\ntype PlainEmbed struct { Good }\ntype Empty interface{}\ntype EmptyStruct struct{}\ntype Alias = Good\ntype InterfaceAlias = api.Reader\ntype LiteralAlias = interface { Read([]byte) (int, error) }\ntype Distinct Good\ntype Both interface { api.Private; foreign.Private }\ntype BothImpl struct { api.Reading; foreign.ReaderImpl }\ntype FakeSeal struct{}\nfunc (FakeSeal) Read([]byte) (int, error) { return 0, nil }\nfunc (FakeSeal) seal() {}\ntype Typed struct{}\nfunc (Typed) Use(api.Alias) api.Payload { return 0 }\ntype WrongTyped struct{}\nfunc (WrongTyped) Use(foreign.Payload) foreign.Payload { return 0 }\ntype Variadic struct{}\nfunc (Variadic) Log(string, ...uint8) {}\ntype Slice struct{}\nfunc (Slice) Log(string, []byte) {}\ntype Callback struct{}\nfunc (Callback) Call(func(x api.Payload, y api.Payload) (api.Payload, error)) {}\ntype Array struct{}\nfunc (Array) Array([16]uint8) {}\ntype WrongArray struct{}\nfunc (WrongArray) Array([17]byte) {}\ntype Channel struct{}\nfunc (Channel) Pull(<-chan api.Payload) chan<- api.Payload { return nil }\ntype WrongChannel struct{}\nfunc (WrongChannel) Pull(chan api.Payload) chan api.Payload { return nil }\ntype Mapped struct{}\nfunc (Mapped) Lookup(map[string]*api.Payload) []api.Payload { return nil }\ntype WrongMap struct{}\nfunc (WrongMap) Lookup(map[string]*foreign.Payload) []foreign.Payload { return nil }\ntype NamedFunction struct{}\nfunc (NamedFunction) Invoke(api.NominalFunc) {}\ntype AnonymousFunction struct{}\nfunc (AnonymousFunction) Invoke(func()) {}\ntype DefinedPointer *Good\ntype PointerAlias = *api.Reader\ntype ConcretePointerAlias = *Good\ntype DefinedReader api.Reader\ntype IntGetter interface { Get() int }\ntype IntBox struct { api.Box[int] }\ntype Anonymous struct{}\nfunc (Anonymous) Accept(struct { X int }) {}\n\nvar _ api.ReadWriter = (*Good)(nil)\nvar _ api.Sealed = Wrapped{}\nvar _ Both = BothImpl{}\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Reader",
+        "kind": 11,
+        "detail": "example.test/implementation/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

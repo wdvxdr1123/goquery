@@ -1,0 +1,303 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(value int) int { return value }\ntype other struct{}\nfunc (*other) Read(value int) int { return value }\ntype Alias = hidden\ntype Box[T any] struct{ Value T }\nfunc (b Box[T]) Get() T { return b.Value }\nfunc (b *Box[T]) Put(value T) T { return value }\ntype Wrap[T any] struct{ Box[T] }\nfunc New() Box[*hidden] { return Box[*hidden]{Value:&hidden{}} }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport external \"example.test/typedef/lib\"\ntype hidden struct{}\nfunc (*hidden) Read(value string) string { return value }\nfunc Probe() {\n box := external.New()\n getter := box.Get\n item := getter()\n expression := external.Box[*external.Alias].Get\n item2 := expression(box)\n _ = item.Read(1)\n _ = item2.Read(2)\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/typeDefinition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/references",
+    "params": {
+      "context": {
+        "includeDeclaration": true
+      },
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      },
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": "$PREPARED_ITEM_8"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": "$PREPARED_ITEM_10"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "// moved \ud83d\ude00 definition\npackage lib\ntype hidden struct{}\nfunc (*hidden) Read(value int) int { return value }\ntype other struct{}\nfunc (*other) Read(value int) int { return value }\ntype Alias = other\ntype Box[T any] struct{ Value T }\nfunc (b Box[T]) Get() T { return b.Value }\nfunc (b *Box[T]) Put(value T) T { return value }\ntype Wrap[T any] struct{ Box[T] }\nfunc New() Box[*other] { return Box[*other]{Value:&other{}} }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(value int) int { return value }\ntype other struct{}\nfunc (*other) Read(value int) int { return value }\ntype Alias = hidden\ntype Box[T any] struct{ Value T }\nfunc (b Box[T]) Get() T { return b.Value }\nfunc (b *Box[T]) Put(value T) T { return value }\ntype Wrap[T any] struct{ Box[T] }\nfunc New() Box[*hidden] { return Box[*hidden]{Value:&hidden{}} }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

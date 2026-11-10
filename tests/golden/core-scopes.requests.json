@@ -1,0 +1,328 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype SliceA []*hidden\ntype SliceB []*hidden\ntype SliceBound interface{ SliceA | SliceB }\ntype MapBound[K comparable] interface{ ~map[K]*hidden }\ntype ChannelBound interface{ ~chan *hidden | ~<-chan *hidden }\ntype FunctionBound interface{ ~func(func(*hidden) bool) }\ntype CallbackBound interface{ ~func(*hidden) bool }\ntype WithCallback[Y any] interface{ ~func(Y) }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/project/lib\"\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc Slice[S lib.SliceBound](values S) {\n for _, sliced := range values {\n  sliced.Read(\"slice\")\n }\n}\nfunc Mapping[K comparable,S lib.MapBound[K]](values S) {\n for _, mapped := range values {\n  mapped.Read(\"map\")\n }\n}\nfunc Channels[C lib.ChannelBound](values C) {\n for channeled := range values {\n  channeled.Read(\"channel\")\n }\n}\nfunc Functions[F lib.FunctionBound](values F) {\n for iterated := range values {\n  iterated.Read(\"function\")\n }\n}\nfunc Callback[Y lib.CallbackBound,F lib.WithCallback[Y]](values F) {\n for callback := range values {\n  callback.Read(\"callback\")\n }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 14
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 16
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Slice",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Slice",
+          "start": 123
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype SliceA []*hidden\ntype SliceB []*hidden\ntype SliceBound interface{ ~[]*other }\ntype MapBound[K comparable] interface{ ~map[K]*hidden }\ntype ChannelBound interface{ ~chan *hidden | ~<-chan *hidden }\ntype FunctionBound interface{ ~func(func(*hidden) bool) }\ntype CallbackBound interface{ ~func(*hidden) bool }\ntype WithCallback[Y any] interface{ ~func(Y) }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype SliceA []*hidden\ntype SliceB []*hidden\ntype SliceBound interface{ SliceA | SliceB }\ntype MapBound[K comparable] interface{ ~map[K]*hidden }\ntype ChannelBound interface{ ~chan *hidden | ~<-chan *hidden }\ntype FunctionBound interface{ ~func(func(*hidden) bool) }\ntype CallbackBound interface{ ~func(*hidden) bool }\ntype WithCallback[Y any] interface{ ~func(Y) }\ntype other struct{}\nfunc (*other) Read(name string) string { return name }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

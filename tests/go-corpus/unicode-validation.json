@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-11-07T06:20:05.797254+00:00",
+  "go": "go version go1.27.3",
+  "unicode_version": "17.0.0",
+  "commit": "45a2b86f6f7094160d8c61ead18161e329dfc669",
+  "passed": true,
+  "commands": [
+    "cargo test --workspace --offline",
+    "GOQUERY_GO_SCOPE=toolchain cargo test --test stdio go_source_package_corpus --offline -- --ignored --nocapture"
+  ],
+  "scalar_values": 1112064,
+  "checks_per_scalar": [
+    "single-character identifier start",
+    "identifier continuation after ASCII a"
+  ],
+  "letter_ranges": 682,
+  "digit_ranges": 71,
+  "readonly_table_payload_bytes": 6024,
+  "boundary_files": {
+    "total": 22,
+    "accepted": 10,
+    "rejected": 12,
+    "accepted_file_token_streams": 10
+  },
+  "syntax_manifest_sha256": "f951478d44b39b20835aec206c2f8f34f0931d70dc2345ef5074d3cab20a0937",
+  "manifest_hash_method": "SHA256 of sorted relative UTF-8 path, NUL, file SHA256 ASCII hex, newline; source paths relative to src, syntax paths relative to repository",
+  "runner_sha256": "6c094f6841f296a3da362c9399230f3ecf9ba660f87bd4026cfc1b7cb88baeb7",
+  "oracle_sha256": "0a0bed22a0031bf162a643b65bb6640126b022fbca98c58935a4b4dd5de2c5eb",
+  "generator_sha256": "66b21fb0f5789886cf46f79fe3c05e13a5354a7b5f54b9b75aed170caca56424",
+  "generated_table_sha256": "f740236337be29187de9f4297766eefba75c7f074cbd1c5f0de550e4dca15b16",
+  "toolchain": {
+    "scope": "All src directories outside testdata, including cmd, vendor, tests and platform variants; no build-tag filtering",
+    "packages": 800,
+    "files": 6821,
+    "headers": 110203,
+    "types": 394492,
+    "initializers": 179374,
+    "bodies": 104246,
+    "source_manifest_sha256": "1b1d048d151ded1a741d7e0d94efc156881d33023462c9b230d87fbc661d15c5",
+    "full_file_validation": true
+  },
+  "lsp_comparison": "benchmarks/unicode-identifiers.json",
+  "limitations": [
+    "Category checks and selected files do not prove arbitrary malformed-input recovery/messages",
+    "No per-file testdata classification, Go import escape decoding or semantic type-checker parity is established",
+    "Runtime memory and speed require separate process measurements"
+  ]
+}

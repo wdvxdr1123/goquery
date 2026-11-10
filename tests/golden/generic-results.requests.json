@@ -1,0 +1,460 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport api \"example.test/resultlib\"\nimport data \"example.test/resultdata\"\n\nfunc Probe(p api.Plain) {\n\ta := api.Make()\n\t_ = a.Value.Leaf\n\t_ = api.Make().Value.Leaf\n\t_ = api.Nested().Value.Value.Leaf\n\t_ = api.Sliced().Value[0].Leaf\n\t_ = api.Mapped().Value[\"x\"].Leaf\n\t_ = api.Pointer().Next.Value.Leaf\n\t_ = api.FromAlias().Value.Leaf\n\t_ = p.Value.Value.Leaf\n\t_ = p.Get().Value.Leaf\n\t_ = Local().Value.Leaf\n\t_ = a.Get().Leaf\n\t_ = api.Function().Value(data.Item{}).Leaf\n\t_ = a.Value.Name\n}\n\nfunc main() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 31
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 28
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 30
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 31
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 28
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 40
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 25
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 14
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package resultlib\n\nimport foreign \"example.test/resultdata\"\n\ntype Box[T any] struct { Value T; Next *Box[T] }\nfunc (b Box[T]) Get() T { return b.Value }\ntype Plain struct { Value Box[foreign.Item] }\nfunc (Plain) Get() Box[foreign.Item] { return Box[foreign.Item]{} }\nfunc Make() Box[foreign.Other] { return Box[foreign.Other]{} }\nfunc Nested() Box[Box[foreign.Item]] { return Box[Box[foreign.Item]]{} }\nfunc Sliced() Box[[]*foreign.Item] { return Box[[]*foreign.Item]{} }\nfunc Mapped() Box[map[string]foreign.Item] { return Box[map[string]foreign.Item]{} }\nfunc Pointer() *Box[foreign.Item] { return &Box[foreign.Item]{} }\nfunc Function() Box[func(foreign.Item) foreign.Item] { return Box[func(foreign.Item) foreign.Item]{} }\nfunc FromAlias() Box[foreign.Alias] { return Box[foreign.Alias]{} }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport api \"example.test/resultlib\"\nimport view \"example.test/resultdata\"\n\nfunc Probe(p api.Plain) {\n\ta := api.Make()\n\t_ = a.Value.Leaf\n\t_ = api.Make().Value.Leaf\n\t_ = api.Nested().Value.Value.Leaf\n\t_ = api.Sliced().Value[0].Leaf\n\t_ = api.Mapped().Value[\"x\"].Leaf\n\t_ = api.Pointer().Next.Value.Leaf\n\t_ = api.FromAlias().Value.Leaf\n\t_ = p.Value.Value.Leaf\n\t_ = p.Get().Value.Leaf\n\t_ = Local().Value.Leaf\n\t_ = a.Get().Leaf\n\t_ = api.Function().Value(view.Item{}).Leaf\n\t_ = a.Value.Name\n}\n\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 25
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport api \"example.test/resultlib\"\nimport data \"example.test/resultdata\"\n\nfunc Probe(p api.Plain) {\n\ta := api.Make()\n\t_ = a.Value.Leaf\n\t_ = api.Make().Value.Leaf\n\t_ = api.Nested().Value.Value.Leaf\n\t_ = api.Sliced().Value[0].Leaf\n\t_ = api.Mapped().Value[\"x\"].Leaf\n\t_ = api.Pointer().Next.Value.Leaf\n\t_ = api.FromAlias().Value.Leaf\n\t_ = p.Value.Value.Leaf\n\t_ = p.Get().Value.Leaf\n\t_ = Local().Value.Leaf\n\t_ = a.Get().Leaf\n\t_ = api.Function().Value(data.Item{}).Leaf\n\t_ = a.Value.Name\n}\n\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

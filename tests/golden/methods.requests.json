@@ -1,0 +1,532 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    },
+    "id": 0
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 4
+      }
+    },
+    "id": 1
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 8
+      }
+    },
+    "id": 2
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 6
+      }
+    },
+    "id": 3
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 5
+      }
+    },
+    "id": 4
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 3,
+        "character": 13
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    },
+    "id": 5
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 3
+      }
+    },
+    "id": 6
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 4
+      }
+    },
+    "id": 7
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    },
+    "id": 8
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Use",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 8
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 8
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Use",
+          "start": 94
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Run",
+          "start": 41,
+          "uri": "$LIB_URI"
+        },
+        "kind": 12,
+        "name": "Run",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 3
+          },
+          "start": {
+            "character": 12,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 3
+          },
+          "start": {
+            "character": 12,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 44
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Scopes",
+          "start": 239
+        },
+        "uri": "$FILE_URI",
+        "name": "Scopes",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Generic",
+          "start": 649
+        },
+        "uri": "$FILE_URI",
+        "name": "Generic",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 33,
+            "character": 5
+          },
+          "end": {
+            "line": 33,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 33,
+            "character": 5
+          },
+          "end": {
+            "line": 33,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "SameName",
+          "start": 701
+        },
+        "uri": "$FILE_URI",
+        "name": "SameName",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 34,
+            "character": 5
+          },
+          "end": {
+            "line": 34,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 34,
+            "character": 5
+          },
+          "end": {
+            "line": 34,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "NamedResult",
+          "start": 732
+        },
+        "uri": "$FILE_URI",
+        "name": "NamedResult",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 35,
+            "character": 5
+          },
+          "end": {
+            "line": 35,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 35,
+            "character": 5
+          },
+          "end": {
+            "line": 35,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Grouped",
+          "start": 782
+        },
+        "uri": "$FILE_URI",
+        "name": "Grouped",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 37,
+            "character": 5
+          },
+          "end": {
+            "line": 37,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 37,
+            "character": 5
+          },
+          "end": {
+            "line": 37,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Variadic",
+          "start": 887
+        },
+        "uri": "$FILE_URI",
+        "name": "Variadic",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 40,
+            "character": 5
+          },
+          "end": {
+            "line": 40,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 40,
+            "character": 5
+          },
+          "end": {
+            "line": 40,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "GenericReceiver",
+          "start": 986
+        },
+        "uri": "$FILE_URI",
+        "name": "GenericReceiver",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 42,
+            "character": 16
+          },
+          "end": {
+            "line": 42,
+            "character": 31
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 42,
+            "character": 16
+          },
+          "end": {
+            "line": 42,
+            "character": 31
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Receiver",
+          "start": 1030
+        },
+        "uri": "$FILE_URI",
+        "name": "Receiver",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 43,
+            "character": 11
+          },
+          "end": {
+            "line": 43,
+            "character": 19
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 43,
+            "character": 11
+          },
+          "end": {
+            "line": 43,
+            "character": 19
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 12
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "shutdown",
+    "id": 9
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

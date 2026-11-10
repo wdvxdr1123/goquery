@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-11-07T06:51:32.612183+00:00",
+  "go": "go version go1.27.3",
+  "commit": "05c945e24a3309a1c8b926d59c516f3a3d2da133",
+  "passed": true,
+  "complete_lsp_responses": 20,
+  "matching_complete_gopls_responses": 20,
+  "comparison": "benchmarks/package-import-names.json",
+  "commands": [
+    "cargo test --workspace --offline",
+    "cargo clippy --workspace --all-targets --offline -- -D warnings",
+    "GOQUERY_GO_SCOPE=toolchain cargo test --test stdio go_source_package_corpus --offline -- --ignored --nocapture"
+  ],
+  "coverage": [
+    "package clause differs from directory/path suffix",
+    "implicit names follow unsaved package-clause changes",
+    "explicit aliases, including aliases equal to the old path suffix, remain stable",
+    "ordinary production package ending _test remains importable",
+    "external _test.go package does not choose the default import name",
+    "close restores production package metadata from disk",
+    "definition, references, negotiated complete semantic-token streams, prepare/outgoing call hierarchy"
+  ],
+  "syntax_manifest_sha256": "d4be360790f529cecee5fdcb8ae6fb991586b994aff7f5a53a04111795231198",
+  "manifest_hash_method": "SHA256 of sorted relative UTF-8 path, NUL, file SHA256 ASCII hex, newline; source paths relative to src, syntax paths relative to repository",
+  "runner_sha256": "a7d86d7caa7ddb99a61d7a2f5b8431aad6c05f6455de9943d92a42368a5c6283",
+  "oracle_sha256": "0a0bed22a0031bf162a643b65bb6640126b022fbca98c58935a4b4dd5de2c5eb",
+  "request_fixture_sha256": "1ce457e7678d28537ebb2838f3ad614e3b679207c22210092f4b8d475f368c44",
+  "response_fixture_sha256": "a47a820d3ff270f2633c3d9015a9f2c50c32adc5680d4293a2ff17c9c78e3ad1",
+  "package_metadata_sha256": "f6496b869e46b6a5950b2f0f00bdaf002e8e3424011c29dbe256f9f46fb843c9",
+  "toolchain": {
+    "scope": "All src directories outside testdata, including cmd, vendor, tests and platform variants; no build-tag filtering",
+    "packages": 800,
+    "files": 6821,
+    "headers": 110203,
+    "types": 394492,
+    "initializers": 179374,
+    "bodies": 104246,
+    "source_manifest_sha256": "1b1d048d151ded1a741d7e0d94efc156881d33023462c9b230d87fbc661d15c5",
+    "full_file_validation": true
+  },
+  "limitations": [
+    "Declared-name resolution covers indexed packages; unindexed dependencies retain a lexical suffix fallback without declaration resolution",
+    "Conflicting production clauses remain unresolved; arbitrary malformed-package recovery parity is not established",
+    "Metadata counts do not retain sources or ASTs; long-session/edit-workload memory needs separate measurements",
+    "Complete Go semantic import validity, external dependency discovery and other previously recorded feature gaps remain unfinished"
+  ],
+  "workspace_source_sha256": "823784c17185d5251f96f39f20636deb46c2d93570b21360599a1835a367a0a4",
+  "performance_report": "benchmarks/package-names-lsp.json",
+  "failed_performance_reports": [
+    "benchmarks/package-names-lsp-initial.json",
+    "benchmarks/package-names-lsp-lookup.json"
+  ]
+}

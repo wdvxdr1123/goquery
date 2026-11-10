@@ -1,0 +1,736 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 23,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 65,
+            "line": 2
+          },
+          "start": {
+            "character": 47,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 58,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 65,
+            "line": 2
+          },
+          "start": {
+            "character": 47,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 23,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 58,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "DecodeRuneInString",
+          "start": 18,
+          "uri": "$SDK_UTF8_URI"
+        },
+        "detail": "unicode/utf8 • utf8.go",
+        "kind": 12,
+        "name": "DecodeRuneInString",
+        "range": {
+          "end": {
+            "character": 23,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 23,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "Clean",
+            "start": 40,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/sdkapp • main.go",
+          "kind": 12,
+          "name": "Clean",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 65,
+              "line": 2
+            },
+            "start": {
+              "character": 47,
+              "line": 2
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Own",
+            "start": 80,
+            "uri": "$SDK_UTF8_URI"
+          },
+          "detail": "unicode/utf8 • utf8.go",
+          "kind": 12,
+          "name": "Own",
+          "range": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SDK_UTF8_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 58,
+              "line": 2
+            },
+            "start": {
+              "character": 40,
+              "line": 2
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 65,
+            "line": 2
+          },
+          "start": {
+            "character": 47,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 66,
+            "line": 2
+          },
+          "start": {
+            "character": 48,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_DECODE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 58,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "Clean",
+            "start": 40,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/sdkapp • main.go",
+          "kind": 12,
+          "name": "Clean",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 65,
+              "line": 2
+            },
+            "start": {
+              "character": 47,
+              "line": 2
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Decode",
+            "start": 43,
+            "uri": "$SDK_DECODE_URI"
+          },
+          "detail": "strings • decode.go",
+          "kind": 12,
+          "name": "Decode",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SDK_DECODE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 66,
+              "line": 2
+            },
+            "start": {
+              "character": 48,
+              "line": 2
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Own",
+            "start": 80,
+            "uri": "$SDK_UTF8_URI"
+          },
+          "detail": "unicode/utf8 • utf8.go",
+          "kind": 12,
+          "name": "Own",
+          "range": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$SDK_UTF8_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 58,
+              "line": 2
+            },
+            "start": {
+              "character": 40,
+              "line": 2
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 65,
+            "line": 2
+          },
+          "start": {
+            "character": 47,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 58,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_UTF8_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 1
+          },
+          "start": {
+            "character": 18,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 44,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 2
+          },
+          "start": {
+            "character": 35,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 44,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 1
+          },
+          "start": {
+            "character": 18,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 2
+          },
+          "start": {
+            "character": 35,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 44,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 44,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTP_OTHER_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 2
+          },
+          "start": {
+            "character": 35,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 44,
+            "line": 2
+          },
+          "start": {
+            "character": 40,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 2
+          },
+          "start": {
+            "character": 35,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_URL_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 54,
+            "line": 2
+          },
+          "start": {
+            "character": 45,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

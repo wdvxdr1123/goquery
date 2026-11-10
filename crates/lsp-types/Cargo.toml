@@ -1,0 +1,34 @@
+[package]
+name = "lsp-types"
+version = "0.94.1"
+edition = "2018"
+description = "Vendored lsp-types 0.94.1 with raw-string DocumentLink targets (upstream MIT)"
+license = "MIT"
+publish = false
+
+[lib]
+name = "lsp_types"
+path = "src/lib.rs"
+
+[dependencies.bitflags]
+version = "1.0.1"
+
+[dependencies.serde]
+version = "1.0.34"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1.0.50"
+
+[dependencies.serde_repr]
+version = "0.1"
+
+[dependencies.url]
+version = "2.0.0"
+features = ["serde"]
+
+[features]
+default = []
+proposed = []
+
+[workspace]

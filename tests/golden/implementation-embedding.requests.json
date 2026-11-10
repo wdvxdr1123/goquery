@@ -1,0 +1,272 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport api \"example.test/implementation/lib\"\nimport foreign \"example.test/implementation/other\"\n\ntype Good struct{}\nfunc (*Good) Read(p []uint8) (n int, err error) { return 0, nil }\nfunc (Good) Write([]byte) (int, error) { return 0, nil }\ntype Promoted struct { *Good }\ntype Ambiguous struct { Good; foreign.ReaderImpl }\ntype Blocked struct { Good; Read int }\ntype Wrong struct{}\nfunc (Wrong) Read([]rune) (int, error) { return 0, nil }\ntype Wrapped struct { api.Sealed }\ntype PlainEmbed struct { Good }\ntype Empty interface{}\ntype EmptyStruct struct{}\ntype Alias = Good\ntype InterfaceAlias = api.Reader\ntype LiteralAlias = interface { Read([]byte) (int, error) }\ntype Distinct Good\ntype Both interface { api.Private; foreign.Private }\ntype BothImpl struct { api.Reading; foreign.ReaderImpl }\ntype FakeSeal struct{}\nfunc (FakeSeal) Read([]byte) (int, error) { return 0, nil }\nfunc (FakeSeal) seal() {}\ntype Typed struct{}\nfunc (Typed) Use(api.Alias) api.Payload { return 0 }\ntype WrongTyped struct{}\nfunc (WrongTyped) Use(foreign.Payload) foreign.Payload { return 0 }\ntype Variadic struct{}\nfunc (Variadic) Log(string, ...uint8) {}\ntype Slice struct{}\nfunc (Slice) Log(string, []byte) {}\ntype Callback struct{}\nfunc (Callback) Call(func(x api.Payload, y api.Payload) (api.Payload, error)) {}\ntype Array struct{}\nfunc (Array) Array([16]uint8) {}\ntype WrongArray struct{}\nfunc (WrongArray) Array([17]byte) {}\ntype Channel struct{}\nfunc (Channel) Pull(<-chan api.Payload) chan<- api.Payload { return nil }\ntype WrongChannel struct{}\nfunc (WrongChannel) Pull(chan api.Payload) chan api.Payload { return nil }\ntype Mapped struct{}\nfunc (Mapped) Lookup(map[string]*api.Payload) []api.Payload { return nil }\ntype WrongMap struct{}\nfunc (WrongMap) Lookup(map[string]*foreign.Payload) []foreign.Payload { return nil }\ntype NamedFunction struct{}\nfunc (NamedFunction) Invoke(api.NominalFunc) {}\ntype AnonymousFunction struct{}\nfunc (AnonymousFunction) Invoke(func()) {}\ntype DefinedPointer *Good\ntype PointerAlias = *api.Reader\ntype ConcretePointerAlias = *Good\ntype DefinedReader api.Reader\ntype IntGetter interface { Get() int }\ntype IntBox struct { api.Box[int] }\ntype Anonymous struct{}\nfunc (Anonymous) Accept(struct { X int }) {}\n\nvar _ api.ReadWriter = (*Good)(nil)\nvar _ api.Sealed = Wrapped{}\nvar _ Both = BothImpl{}\nfunc main() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "goquery/embedding/supertypes",
+    "params": {
+      "item": {
+        "name": "PlainEmbed",
+        "kind": 5,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "goquery/embedding/subtypes",
+    "params": {
+      "item": {
+        "name": "Good",
+        "kind": 5,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "goquery/embedding/supertypes",
+    "params": {
+      "item": {
+        "name": "Both",
+        "kind": 11,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "goquery/embedding/supertypes",
+    "params": {
+      "item": {
+        "name": "BothImpl",
+        "kind": 5,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "goquery/embedding/supertypes",
+    "params": {
+      "item": {
+        "name": "DefinedPointer",
+        "kind": 5,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 52,
+            "character": 5
+          },
+          "end": {
+            "line": 52,
+            "character": 19
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 52,
+            "character": 5
+          },
+          "end": {
+            "line": 52,
+            "character": 19
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "goquery/embedding/supertypes",
+    "params": {
+      "item": {
+        "name": "Alias",
+        "kind": 5,
+        "detail": "example.test/implementation",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

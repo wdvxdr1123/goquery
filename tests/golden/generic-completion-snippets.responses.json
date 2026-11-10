@@ -1,0 +1,524 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value T) T",
+          "filterText": "Identity",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Identity",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Identity(${1:value T})",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 3
+              },
+              "start": {
+                "character": 9,
+                "line": 3
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() T",
+          "filterText": "Make",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Make",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Make[${1:T any}]()",
+            "range": {
+              "end": {
+                "character": 13,
+                "line": 4
+              },
+              "start": {
+                "character": 9,
+                "line": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(left A) B",
+          "filterText": "Pair",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Pair",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Pair[${1:A any}, ${2:B any}](${3:left A})",
+            "range": {
+              "end": {
+                "character": 13,
+                "line": 5
+              },
+              "start": {
+                "character": 9,
+                "line": 5
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(values S) S",
+          "filterText": "Slice",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Slice",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Slice(${1:values S})",
+            "range": {
+              "end": {
+                "character": 14,
+                "line": 6
+              },
+              "start": {
+                "character": 9,
+                "line": 6
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Erase",
+          "insertTextFormat": 2,
+          "kind": 7,
+          "label": "Erase",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Erase",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 7
+              },
+              "start": {
+                "character": 9,
+                "line": 7
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value api.Erase[T]) int",
+          "filterText": "Erased",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Erased",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Erased[${1:T any}](${2:value api.Erase[T]})",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 7
+              },
+              "start": {
+                "character": 9,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value api.Drop[A, B]) A",
+          "filterText": "Select",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Select",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Select[${1:A any}, ${2:B any}](${3:value api.Drop[A, B]})",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 8
+              },
+              "start": {
+                "character": 9,
+                "line": 8
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 2,
+          "kind": 22,
+          "label": "Box",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 14,
+                "line": 9
+              },
+              "start": {
+                "character": 9,
+                "line": 9
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value api.Box[T]) T",
+          "filterText": "Boxed",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Boxed",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Boxed(${1:value api.Box[T]})",
+            "range": {
+              "end": {
+                "character": 14,
+                "line": 9
+              },
+              "start": {
+                "character": 9,
+                "line": 9
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(cb func(T int) T, value T) T",
+          "filterText": "Nested",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Nested",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Nested(${1:cb func(T int) T}, ${2:value T})",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 10
+              },
+              "start": {
+                "character": 9,
+                "line": 10
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value T, other api.Item) api.Box[T]",
+          "filterText": "Concrete",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Concrete",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Concrete(${1:value T}, ${2:other api.Item})",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 11
+              },
+              "start": {
+                "character": 9,
+                "line": 11
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value T) T",
+          "filterText": "Identity",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Identity",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Identity",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 12
+              },
+              "start": {
+                "character": 9,
+                "line": 12
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value U) U",
+          "filterText": "Identity",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Identity",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Identity(${1:value U})",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 3
+              },
+              "start": {
+                "character": 9,
+                "line": 3
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(value api.KeepGlobal[T]) int",
+          "filterText": "Hidden",
+          "insertTextFormat": 2,
+          "kind": 3,
+          "label": "Hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Hidden[${1:T any}](${2:value api.KeepGlobal[T]})",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 13
+              },
+              "start": {
+                "character": 9,
+                "line": 13
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

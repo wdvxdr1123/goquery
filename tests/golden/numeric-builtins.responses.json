@@ -1,0 +1,918 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 16
+          },
+          "start": {
+            "character": 6,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 17
+          },
+          "start": {
+            "character": 9,
+            "line": 17
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 18
+          },
+          "start": {
+            "character": 12,
+            "line": 18
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 22
+          },
+          "start": {
+            "character": 9,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Pick(value float32) *Item",
+          "parameters": [
+            {
+              "label": "value float32"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Touch",
+          "start": 45,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/typedef • main.go",
+        "kind": 12,
+        "name": "Touch",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "invalid type: string \"$PREPARED_ITEM_8\", expected struct CallHierarchyItem"
+    },
+    "id": 9,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Probe",
+          "start": 298,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/typedef • main.go",
+        "kind": 12,
+        "name": "Probe",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "invalid type: string \"$PREPARED_ITEM_10\", expected struct CallHierarchyItem"
+    },
+    "id": 11,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        4,
+        1,
+        2,
+        0,
+        5,
+        6,
+        7,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        6,
+        1,
+        11,
+        0,
+        0,
+        1,
+        4,
+        1,
+        0,
+        0,
+        6,
+        5,
+        3,
+        2,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        5,
+        1,
+        2,
+        0,
+        6,
+        6,
+        7,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        6,
+        1,
+        11,
+        0,
+        0,
+        1,
+        5,
+        1,
+        0,
+        0,
+        7,
+        5,
+        3,
+        2,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        4,
+        2,
+        2,
+        0,
+        5,
+        5,
+        6,
+        2,
+        0,
+        6,
+        7,
+        1,
+        8,
+        0,
+        9,
+        1,
+        11,
+        0,
+        0,
+        1,
+        4,
+        1,
+        0,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        3,
+        4,
+        12,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        6,
+        2,
+        2,
+        0,
+        7,
+        1,
+        12,
+        2,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        1,
+        7,
+        1,
+        8,
+        0,
+        8,
+        1,
+        11,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        1,
+        7,
+        1,
+        8,
+        0,
+        9,
+        5,
+        6,
+        2,
+        0,
+        6,
+        1,
+        12,
+        0,
+        0,
+        3,
+        1,
+        11,
+        0,
+        0,
+        1,
+        4,
+        1,
+        0,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        3,
+        4,
+        12,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        4,
+        2,
+        2,
+        0,
+        8,
+        7,
+        1,
+        8,
+        0,
+        9,
+        7,
+        1,
+        8,
+        0,
+        11,
+        6,
+        7,
+        0,
+        0,
+        7,
+        1,
+        9,
+        0,
+        0,
+        3,
+        1,
+        9,
+        0,
+        1,
+        0,
+        3,
+        7,
+        0,
+        0,
+        4,
+        4,
+        4,
+        18,
+        0,
+        7,
+        7,
+        2,
+        8,
+        0,
+        8,
+        7,
+        1,
+        8,
+        0,
+        8,
+        1,
+        9,
+        0,
+        0,
+        4,
+        1,
+        9,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        5,
+        2,
+        2,
+        0,
+        6,
+        1,
+        6,
+        2,
+        0,
+        2,
+        9,
+        1,
+        8,
+        1,
+        1,
+        4,
+        4,
+        2,
+        0,
+        5,
+        2,
+        11,
+        0,
+        0,
+        3,
+        7,
+        2,
+        8,
+        0,
+        8,
+        4,
+        2,
+        0,
+        1,
+        1,
+        2,
+        4,
+        2,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        2,
+        8,
+        0,
+        5,
+        4,
+        4,
+        0,
+        1,
+        1,
+        2,
+        4,
+        2,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        2,
+        8,
+        0,
+        5,
+        1,
+        6,
+        0,
+        1,
+        1,
+        4,
+        4,
+        2,
+        0,
+        5,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        2,
+        0,
+        0,
+        5,
+        2,
+        4,
+        0,
+        1,
+        1,
+        7,
+        4,
+        2,
+        0,
+        8,
+        2,
+        11,
+        0,
+        0,
+        3,
+        6,
+        2,
+        0,
+        0,
+        7,
+        2,
+        4,
+        0,
+        1,
+        1,
+        10,
+        4,
+        2,
+        0,
+        11,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        2,
+        0,
+        0,
+        5,
+        4,
+        2,
+        8,
+        0,
+        5,
+        4,
+        4,
+        16,
+        1,
+        1,
+        4,
+        4,
+        0,
+        0,
+        5,
+        5,
+        3,
+        0,
+        1,
+        1,
+        7,
+        4,
+        0,
+        0,
+        8,
+        5,
+        3,
+        0,
+        1,
+        1,
+        10,
+        4,
+        0,
+        0,
+        11,
+        5,
+        3,
+        0,
+        2,
+        2,
+        4,
+        4,
+        2,
+        0,
+        5,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        7,
+        0,
+        0,
+        5,
+        9,
+        1,
+        8,
+        0,
+        11,
+        1,
+        11,
+        0,
+        0,
+        1,
+        4,
+        1,
+        0,
+        0,
+        7,
+        6,
+        7,
+        0,
+        0,
+        7,
+        3,
+        4,
+        12,
+        1,
+        2,
+        6,
+        4,
+        2,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        4,
+        4,
+        0,
+        0,
+        5,
+        1,
+        6,
+        0,
+        1,
+        2,
+        6,
+        4,
+        0,
+        0,
+        7,
+        5,
+        3,
+        0
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 4
+          },
+          "start": {
+            "character": 14,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 2
+          },
+          "start": {
+            "character": 13,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

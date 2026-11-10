@@ -1,0 +1,2935 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 10
+              },
+              "start": {
+                "character": 11,
+                "line": 10
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "interface{...}",
+          "filterText": "Contract",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Contract",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Contract",
+            "range": {
+              "end": {
+                "character": 19,
+                "line": 11
+              },
+              "start": {
+                "character": 11,
+                "line": 11
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "interface{...}",
+          "filterText": "Empty",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Empty",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Empty",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 12
+              },
+              "start": {
+                "character": 11,
+                "line": 12
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Number",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Number",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Number",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 13
+              },
+              "start": {
+                "character": 11,
+                "line": 13
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Alias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Alias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Alias",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 14
+              },
+              "start": {
+                "character": 11,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 14
+              },
+              "start": {
+                "character": 11,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 14
+              },
+              "start": {
+                "character": 11,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 14
+              },
+              "start": {
+                "character": 11,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "byte",
+          "filterText": "Byte",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Byte",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Byte",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 15
+              },
+              "start": {
+                "character": 11,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "rune",
+          "filterText": "Rune",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rune",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Rune",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 16
+              },
+              "start": {
+                "character": 11,
+                "line": 16
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "[]T",
+          "filterText": "Slice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Slice",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Slice",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 17
+              },
+              "start": {
+                "character": 11,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 17
+              },
+              "start": {
+                "character": 11,
+                "line": 17
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 19,
+                "line": 18
+              },
+              "start": {
+                "character": 11,
+                "line": 18
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 21,
+                "line": 19
+              },
+              "start": {
+                "character": 11,
+                "line": 19
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "map[K]V",
+          "filterText": "Map",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Map",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Map",
+            "range": {
+              "end": {
+                "character": 14,
+                "line": 20
+              },
+              "start": {
+                "character": 11,
+                "line": 20
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "*api.Shape",
+          "filterText": "Pointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Pointer",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Pointer",
+            "range": {
+              "end": {
+                "character": 18,
+                "line": 21
+              },
+              "start": {
+                "character": 11,
+                "line": 21
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "<-chan api.Shape",
+          "filterText": "Channel",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Channel",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Channel",
+            "range": {
+              "end": {
+                "character": 18,
+                "line": 22
+              },
+              "start": {
+                "character": 11,
+                "line": 22
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(values []T) (left T, right T)",
+          "filterText": "Callback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Callback",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Callback",
+            "range": {
+              "end": {
+                "character": 19,
+                "line": 23
+              },
+              "start": {
+                "character": 11,
+                "line": 23
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "[1 + 2]T",
+          "filterText": "ConstantArray",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ConstantArray",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ConstantArray",
+            "range": {
+              "end": {
+                "character": 24,
+                "line": 24
+              },
+              "start": {
+                "character": 11,
+                "line": 24
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 19,
+                "line": 25
+              },
+              "start": {
+                "character": 11,
+                "line": 25
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rename",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 26
+              },
+              "start": {
+                "character": 11,
+                "line": 26
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "ScopeChain",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ScopeChain",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ScopeChain",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 27
+              },
+              "start": {
+                "character": 7,
+                "line": 27
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "[]Shape",
+          "filterText": "ScopeSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ScopeSlice",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ScopeSlice",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 28
+              },
+              "start": {
+                "character": 7,
+                "line": 28
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "*Shape",
+          "filterText": "ScopePointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ScopePointer",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ScopePointer",
+            "range": {
+              "end": {
+                "character": 19,
+                "line": 29
+              },
+              "start": {
+                "character": 7,
+                "line": 29
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(left Shape, right Shape) Shape",
+          "filterText": "ScopeCallback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ScopeCallback",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ScopeCallback",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 30
+              },
+              "start": {
+                "character": 7,
+                "line": 30
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "interface{...}",
+          "filterText": "ScopeIface",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "ScopeIface",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ScopeIface",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 31
+              },
+              "start": {
+                "character": 7,
+                "line": 31
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "interface{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "T",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 8,
+                "line": 32
+              },
+              "start": {
+                "character": 7,
+                "line": 32
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeRecord",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "HugeRecord",
+            "range": {
+              "end": {
+                "character": 21,
+                "line": 33
+              },
+              "start": {
+                "character": 11,
+                "line": 33
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 34
+              },
+              "start": {
+                "character": 11,
+                "line": 34
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Rename",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 17,
+                "line": 26
+              },
+              "start": {
+                "character": 11,
+                "line": 26
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Alias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Alias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Alias",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "byte",
+          "filterText": "Byte",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Byte",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Byte",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(values []T) (left T, right T)",
+          "filterText": "Callback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Callback",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "Callback",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "<-chan api.Shape",
+          "filterText": "Channel",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Channel",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "Channel",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[1 + 2]T",
+          "filterText": "ConstantArray",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ConstantArray",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "ConstantArray",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Contract",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Contract",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "Contract",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Empty",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Empty",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "Empty",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeRecord",
+          "sortText": "00010",
+          "textEdit": {
+            "newText": "HugeRecord",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "map[K]V",
+          "filterText": "Map",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Map",
+          "sortText": "00011",
+          "textEdit": {
+            "newText": "Map",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "sortText": "00012",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "uint16",
+          "filterText": "Number",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Number",
+          "sortText": "00013",
+          "textEdit": {
+            "newText": "Number",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "*api.Shape",
+          "filterText": "Pointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Pointer",
+          "sortText": "00014",
+          "textEdit": {
+            "newText": "Pointer",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Rename",
+          "sortText": "00015",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "rune",
+          "filterText": "Rune",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rune",
+          "sortText": "00016",
+          "textEdit": {
+            "newText": "Rune",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "sortText": "00017",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "Slice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Slice",
+          "sortText": "00018",
+          "textEdit": {
+            "newText": "Slice",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "T",
+          "sortText": "00019",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "sortText": "00020",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Alias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Alias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Alias",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "byte",
+          "filterText": "Byte",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Byte",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Byte",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(values []T) (left T, right T)",
+          "filterText": "Callback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Callback",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "Callback",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "<-chan api.Shape",
+          "filterText": "Channel",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Channel",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "Channel",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[1 + 2]T",
+          "filterText": "ConstantArray",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ConstantArray",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "ConstantArray",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Contract",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Contract",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "Contract",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Empty",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Empty",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "Empty",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeRecord",
+          "sortText": "00010",
+          "textEdit": {
+            "newText": "HugeRecord",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "map[K]V",
+          "filterText": "Map",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Map",
+          "sortText": "00011",
+          "textEdit": {
+            "newText": "Map",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "sortText": "00012",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "uint16",
+          "filterText": "Number",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Number",
+          "sortText": "00013",
+          "textEdit": {
+            "newText": "Number",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "*api.Shape",
+          "filterText": "Pointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Pointer",
+          "sortText": "00014",
+          "textEdit": {
+            "newText": "Pointer",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Rename",
+          "sortText": "00015",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "rune",
+          "filterText": "Rune",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rune",
+          "sortText": "00016",
+          "textEdit": {
+            "newText": "Rune",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "sortText": "00017",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "Slice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Slice",
+          "sortText": "00018",
+          "textEdit": {
+            "newText": "Slice",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "T",
+          "sortText": "00019",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "sortText": "00020",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 2
+              },
+              "start": {
+                "character": 22,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Alias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Alias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Alias",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "byte",
+          "filterText": "Byte",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Byte",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Byte",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(values []T) (left T, right T)",
+          "filterText": "Callback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Callback",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "Callback",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "<-chan api.Shape",
+          "filterText": "Channel",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Channel",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "Channel",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[1 + 2]T",
+          "filterText": "ConstantArray",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ConstantArray",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "ConstantArray",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Contract",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Contract",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "Contract",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Empty",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Empty",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "Empty",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeRecord",
+          "sortText": "00010",
+          "textEdit": {
+            "newText": "HugeRecord",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "map[K]V",
+          "filterText": "Map",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Map",
+          "sortText": "00011",
+          "textEdit": {
+            "newText": "Map",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "sortText": "00012",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "uint16",
+          "filterText": "Number",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Number",
+          "sortText": "00013",
+          "textEdit": {
+            "newText": "Number",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "*api.Shape",
+          "filterText": "Pointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Pointer",
+          "sortText": "00014",
+          "textEdit": {
+            "newText": "Pointer",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Rename",
+          "sortText": "00015",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "rune",
+          "filterText": "Rune",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rune",
+          "sortText": "00016",
+          "textEdit": {
+            "newText": "Rune",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "sortText": "00017",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "Slice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Slice",
+          "sortText": "00018",
+          "textEdit": {
+            "newText": "Slice",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "T",
+          "sortText": "00019",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "sortText": "00020",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 2
+              },
+              "start": {
+                "character": 15,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "uint16",
+          "filterText": "Alias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Alias",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Alias",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "AliasBox",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "AliasBox",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "AliasBox",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "byte",
+          "filterText": "Byte",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Byte",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Byte",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(values []T) (left T, right T)",
+          "filterText": "Callback",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Callback",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "Callback",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "<-chan api.Shape",
+          "filterText": "Channel",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Channel",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "Channel",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[1 + 2]T",
+          "filterText": "ConstantArray",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "ConstantArray",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "ConstantArray",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Contract",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Contract",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "Contract",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "Empty",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "Empty",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "Empty",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeAlias",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeAlias",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "HugeAlias",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "HugeRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "HugeRecord",
+          "sortText": "00010",
+          "textEdit": {
+            "newText": "HugeRecord",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "map[K]V",
+          "filterText": "Map",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Map",
+          "sortText": "00011",
+          "textEdit": {
+            "newText": "Map",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]api.Shape",
+          "filterText": "NamedSlice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "NamedSlice",
+          "sortText": "00012",
+          "textEdit": {
+            "newText": "NamedSlice",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "uint16",
+          "filterText": "Number",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Number",
+          "sortText": "00013",
+          "textEdit": {
+            "newText": "Number",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "*api.Shape",
+          "filterText": "Pointer",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Pointer",
+          "sortText": "00014",
+          "textEdit": {
+            "newText": "Pointer",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Rename",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Rename",
+          "sortText": "00015",
+          "textEdit": {
+            "newText": "Rename",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "rune",
+          "filterText": "Rune",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Rune",
+          "sortText": "00016",
+          "textEdit": {
+            "newText": "Rune",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "sortText": "00017",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "Slice",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "Slice",
+          "sortText": "00018",
+          "textEdit": {
+            "newText": "Slice",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "T",
+          "sortText": "00019",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "VecAlias",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "VecAlias",
+          "sortText": "00020",
+          "textEdit": {
+            "newText": "VecAlias",
+            "range": {
+              "end": {
+                "character": 27,
+                "line": 2
+              },
+              "start": {
+                "character": 27,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Shape",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Shape",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Shape",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 2
+              },
+              "start": {
+                "character": 21,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "ShapeCount",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "ShapeCount",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "ShapeCount",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 2
+              },
+              "start": {
+                "character": 21,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "ShapeLimit",
+          "insertTextFormat": 1,
+          "kind": 21,
+          "label": "ShapeLimit",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "ShapeLimit",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 2
+              },
+              "start": {
+                "character": 21,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func() api.Shape",
+          "filterText": "ShapeValue",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "ShapeValue",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "ShapeValue",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 2
+              },
+              "start": {
+                "character": 21,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "SharedZType",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "SharedZType",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "SharedZType",
+            "range": {
+              "end": {
+                "character": 31,
+                "line": 2
+              },
+              "start": {
+                "character": 20,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

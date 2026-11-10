@@ -1,0 +1,422 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "initialized",
+    "params": {}
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Foreign struct { Remote int }\ntype Cell[T any] struct { Value T; Fn func() T }\nfunc (c Cell[R]) Get() R { return c.Value }\nfunc (c Cell[R]) Pair() (R,R) { return c.Value,c.Value }\ntype Factory[T any] func() T\ntype Alias[T any] = Factory[T]\ntype Defined[T any] Factory[T]\ntype ForeignFactory func() Foreign\nfunc Make() Foreign { return Foreign{} }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/project/lib\"\ntype Payload struct { Leaf int }\ntype T struct { Wrong int }\nfunc Probe(c lib.Cell[Payload], fn func() Payload, named lib.Factory[Payload], alias lib.Alias[Payload], defined lib.Defined[Payload], foreign lib.ForeignFactory, pointer *lib.Factory[Payload]) {\n get := c.Get\n a := get()\n _ = a.Leaf // method-result\n copied := get\n _ = copied().Leaf // copied-result\n pair := c.Pair\n left,right := pair()\n _ = left.Leaf // left-result\n _ = right.Leaf // right-result\n field := c.Fn\n _ = field().Leaf // field-result\n _ = fn().Leaf // parameter-result\n _ = named().Leaf // named-result\n _ = alias().Leaf // alias-result\n _ = defined().Leaf // defined-result\n _ = foreign().Remote // foreign-result\n makeValue := lib.Make\n _ = makeValue().Remote // imported-function\n literal := func() Payload { return Payload{} }\n _ = literal().Leaf // literal-result\n _ = (func() Payload { return Payload{} })().Leaf // direct-literal\n var declared (func() Payload) = get\n _ = declared().Leaf // declared-result\n type LocalFactory func() Payload\n var local LocalFactory = get\n _ = local().Leaf // local-type-result\n _ = copied().Le // completion\n { get := 1; _ = get().Leaf } // shadowed-noncallable\n _ = pointer().Leaf // pointer-noncallable\n}\nfunc Guard[T any](f lib.Factory[T]) { _ = f().Wrong } // parameter-shadow\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 46
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 24
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 35,
+        "character": 47
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 23
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 33,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/project/lib\"\ntype Payload struct { Leaf int }\ntype Other struct { Leaf int }\nfunc Probe(c lib.Cell[Other], fn func() Payload, named lib.Factory[Payload], alias lib.Alias[Payload], defined lib.Defined[Payload], foreign lib.ForeignFactory, pointer *lib.Factory[Payload]) {\n get := c.Get\n a := get()\n _ = a.Leaf // method-result\n copied := get\n _ = copied().Leaf // copied-result\n pair := c.Pair\n left,right := pair()\n _ = left.Leaf // left-result\n _ = right.Leaf // right-result\n field := c.Fn\n _ = field().Leaf // field-result\n _ = fn().Leaf // parameter-result\n _ = named().Leaf // named-result\n _ = alias().Leaf // alias-result\n _ = defined().Leaf // defined-result\n _ = foreign().Remote // foreign-result\n makeValue := lib.Make\n _ = makeValue().Remote // imported-function\n literal := func() Payload { return Payload{} }\n _ = literal().Leaf // literal-result\n _ = (func() Payload { return Payload{} })().Leaf // direct-literal\n var declared (func() Payload) = get\n _ = declared().Leaf // declared-result\n type LocalFactory func() Payload\n var local LocalFactory = get\n _ = local().Leaf // local-type-result\n _ = copied().Le // completion\n { get := 1; _ = get().Leaf } // shadowed-noncallable\n _ = pointer().Leaf // pointer-noncallable\n}\nfunc Guard[T any](f lib.Factory[T]) { _ = f().Wrong } // parameter-shadow\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

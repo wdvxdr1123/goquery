@@ -1,0 +1,205 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "static",
+              "deprecated",
+              "abstract",
+              "async",
+              "modification",
+              "documentation",
+              "defaultLibrary"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP_HEADER_URI"
+      },
+      "position": {
+        "line": 197,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP_HEADER_URI"
+      },
+      "position": {
+        "line": 197,
+        "character": 15
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP_HEADER_URI"
+      },
+      "position": {
+        "line": 197,
+        "character": 15
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP2_URI"
+      },
+      "position": {
+        "line": 311,
+        "character": 28
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP2_URI"
+      },
+      "position": {
+        "line": 311,
+        "character": 28
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTP2_URI"
+      },
+      "position": {
+        "line": 311,
+        "character": 28
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTPGUTS_URI"
+      },
+      "position": {
+        "line": 336,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTPGUTS_URI"
+      },
+      "position": {
+        "line": 336,
+        "character": 18
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$SDK_HTTPGUTS_URI"
+      },
+      "position": {
+        "line": 336,
+        "character": 18
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

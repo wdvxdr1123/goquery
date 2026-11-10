@@ -1,0 +1,312 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 6
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Child",
+        "kind": 5,
+        "detail": "example.test/types",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Child",
+          "start": 56
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Base",
+        "kind": 5,
+        "detail": "example.test/types/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 5
+          },
+          "end": {
+            "line": 2,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 2,
+            "character": 5
+          },
+          "end": {
+            "line": 2,
+            "character": 9
+          }
+        },
+        "data": {
+          "uri": "$LIB_URI",
+          "name": "Base",
+          "start": 18
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Child",
+        "kind": 5,
+        "detail": "example.test/types",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Child",
+          "start": 56
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Reader",
+        "kind": 11,
+        "detail": "example.test/types",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 11
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Reader",
+          "start": 162
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Other",
+        "kind": 5,
+        "detail": "example.test/types/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 5
+          },
+          "end": {
+            "line": 3,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 3,
+            "character": 5
+          },
+          "end": {
+            "line": 3,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$LIB_URI",
+          "name": "Other",
+          "start": 37
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Alias",
+        "kind": 5,
+        "detail": "example.test/types",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Alias",
+          "start": 208
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\ntype Changed struct{}"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Child",
+        "kind": 5,
+        "detail": "example.test/types",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Child",
+          "start": 56
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

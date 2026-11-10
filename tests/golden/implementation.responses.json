@@ -1,0 +1,4966 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "Both",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "BothImpl",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Typed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Typed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 26
+          },
+          "start": {
+            "character": 5,
+            "line": 26
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 26
+          },
+          "start": {
+            "character": 5,
+            "line": 26
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Variadic",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Variadic",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 30
+          },
+          "start": {
+            "character": 5,
+            "line": 30
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 30
+          },
+          "start": {
+            "character": 5,
+            "line": 30
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Callback",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Callback",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 34
+          },
+          "start": {
+            "character": 5,
+            "line": 34
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 34
+          },
+          "start": {
+            "character": 5,
+            "line": 34
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Array",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Array",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 36
+          },
+          "start": {
+            "character": 5,
+            "line": 36
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 36
+          },
+          "start": {
+            "character": 5,
+            "line": 36
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Channel",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Channel",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 40
+          },
+          "start": {
+            "character": 5,
+            "line": 40
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 40
+          },
+          "start": {
+            "character": 5,
+            "line": 40
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Mapped",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Mapped",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 44
+          },
+          "start": {
+            "character": 5,
+            "line": 44
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 44
+          },
+          "start": {
+            "character": 5,
+            "line": 44
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "NamedFunction",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "NamedFunction",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 48
+          },
+          "start": {
+            "character": 5,
+            "line": 48
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 48
+          },
+          "start": {
+            "character": 5,
+            "line": 48
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 36,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 37,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 39,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 40,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Ambiguous",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 42,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 43,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Blocked",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 46,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "Empty",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 48,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 49,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "EmptyStruct",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 51,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 52,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Alias",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 53,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 54,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 55,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "InterfaceAlias",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 56,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 57,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 58,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "LiteralAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 59,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 60,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 61,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Distinct",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 62,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 63,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 64,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "Both",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 65,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 66,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 67,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "BothImpl",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "Both",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 69,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 70,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "DefinedPointer",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 52
+          },
+          "start": {
+            "character": 5,
+            "line": 52
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 52
+          },
+          "start": {
+            "character": 5,
+            "line": 52
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 71,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 72,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 73,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PointerAlias",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 53
+          },
+          "start": {
+            "character": 5,
+            "line": 53
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 53
+          },
+          "start": {
+            "character": 5,
+            "line": 53
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 74,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 75,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 76,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "ConcretePointerAlias",
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 54
+          },
+          "start": {
+            "character": 5,
+            "line": 54
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 25,
+            "line": 54
+          },
+          "start": {
+            "character": 5,
+            "line": 54
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Writer",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 79,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 80,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 81,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Reader",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 82,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "IntBox",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 57
+          },
+          "start": {
+            "character": 5,
+            "line": 57
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 57
+          },
+          "start": {
+            "character": 5,
+            "line": 57
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 83,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "IntGetter",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 56
+          },
+          "start": {
+            "character": 5,
+            "line": 56
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 56
+          },
+          "start": {
+            "character": 5,
+            "line": 56
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 84,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 85,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 86,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Equivalent",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "ReadWriter",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Sealed",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 11,
+        "name": "DefinedReader",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 55
+          },
+          "start": {
+            "character": 5,
+            "line": 55
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation/lib_test",
+        "kind": 5,
+        "name": "ExternalReader",
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 87,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "FakeSeal",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 88,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Wrapped",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 89,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

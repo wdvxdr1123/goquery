@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-11-07T06:06:18.653465+00:00",
+  "go": "go version go1.27.3",
+  "commit": "17d31ad0861819b12ecb7f995ff14573a6f3e42a",
+
+  "commands": [
+    "cargo test --workspace --offline",
+    "GOQUERY_GO_SCOPE=toolchain cargo test --test stdio go_source_package_corpus --offline -- --ignored --nocapture"
+  ],
+  "passed": true,
+  "expressions": {
+    "total": 118,
+    "accepted": 52,
+    "rejected": 66
+  },
+  "file_contexts": [
+    "package-level initializer",
+    "array length",
+    "nested function body"
+  ],
+  "files": {
+    "total": 354,
+    "accepted": 156,
+    "rejected": 198
+  },
+  "valid_expression_token_streams": 52,
+  "samples_sha256": "904468830ee8ac172d1cac11c7014d710a95026bc8a2b89b24b3459c0eb58d21",
+  "sample_hash_method": "Sorted unique expression strings serialized as compact UTF-8 JSON",
+  "syntax_manifest_sha256": "a08224fb3f2d7fee5a938714b38b602eeb5bfc2be01f10179605954cea320571",
+  "syntax_hash_method": "SHA256 of sorted relative UTF-8 path, NUL, file SHA256 ASCII hex, newline; source paths relative to src, syntax paths relative to repository",
+  "runner_sha256": "0a8bbaeca4cdc8ea30841f4f56cb530d23b300bd6c53613da4e2d462c7481559",
+  "oracle_sha256": "d15fa63bee8c4c5c9d4c6f26d6e66e2b8a647ab9bb5ffe9719dee192f694b52b",
+  "toolchain": {
+    "scope": "All src directories outside testdata, including cmd, vendor, tests and platform variants; no build-tag filtering",
+    "packages": 800,
+    "files": 6821,
+    "headers": 110203,
+    "types": 394492,
+    "initializers": 179374,
+    "bodies": 104246,
+    "source_manifest_sha256": "1b1d048d151ded1a741d7e0d94efc156881d33023462c9b230d87fbc661d15c5",
+    "full_file_validation": true
+  },
+  "limitations": [
+    "Focused lexical boundaries and underscore mutations, not exhaustive invalid-input coverage",
+    "Malformed numeric tokens are Illegal; exact Go erroneous-token recovery/messages are not compared",
+    "Numeric value legality and typing remain semantic work; parser acceptance follows go/parser",
+    "Exact Unicode identifier categories and per-file testdata classification remain incomplete"
+  ]
+}

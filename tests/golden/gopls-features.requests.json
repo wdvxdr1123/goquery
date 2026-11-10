@@ -1,0 +1,282 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "documentSymbol": {
+            "hierarchicalDocumentSymbolSupport": false
+          },
+          "hover": {
+            "contentFormat": [
+              "markdown",
+              "plaintext"
+            ]
+          },
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "rename": {
+            "prepareSupport": true
+          },
+          "documentHighlight": {},
+          "documentLink": {},
+          "selectionRange": {},
+          "foldingRange": {
+            "lineFoldingOnly": false
+          },
+          "inlayHint": {},
+          "codeLens": {},
+          "formatting": {},
+          "codeAction": {
+            "codeActionLiteralSupport": {
+              "codeActionKind": {
+                "valueSet": [
+                  "quickfix",
+                  "refactor",
+                  "source",
+                  "source.organizeImports"
+                ]
+              }
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        },
+        "workspace": {
+          "workspaceEdit": {
+            "documentChanges": true
+          },
+          "configuration": true
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true,
+        "goroot": ""
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "$SOURCE_FROM_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/hover",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/prepareRename",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/rename",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 5
+      },
+      "newName": "Salute"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/documentHighlight",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/selectionRange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "positions": [
+        {
+          "line": 33,
+          "character": 27
+        },
+        {
+          "line": 26,
+          "character": 5
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/foldingRange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/inlayHint",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 37,
+          "character": 0
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/codeLens",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/documentLink",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/codeAction",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "range": {
+        "start": {
+          "line": 26,
+          "character": 5
+        },
+        "end": {
+          "line": 26,
+          "character": 10
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/implementation",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 15
+      }
+    }
+  }
+]

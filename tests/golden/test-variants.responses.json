@@ -1,0 +1,928 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "ExportedForTest",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "ExportedForTest",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ExportedForTest",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 5
+              },
+              "start": {
+                "character": 5,
+                "line": 5
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "ExportedTestType",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "ExportedTestType",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "ExportedTestType",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 5
+              },
+              "start": {
+                "character": 5,
+                "line": 5
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "label": "ExportedForTest()",
+          "parameters": []
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 42,
+            "line": 6
+          },
+          "start": {
+            "character": 27,
+            "line": 6
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 5
+          },
+          "start": {
+            "character": 12,
+            "line": 5
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "TestMethod",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "TestMethod",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "TestMethod",
+            "range": {
+              "end": {
+                "character": 22,
+                "line": 7
+              },
+              "start": {
+                "character": 12,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "ExportedForTest",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "ExportedForTest",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ExportedForTest",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "ExportedTestType",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "ExportedTestType",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "ExportedTestType",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "UseExternally",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "UseExternally",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "UseExternally",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 42,
+            "line": 6
+          },
+          "start": {
+            "character": 27,
+            "line": 6
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 38,
+            "line": 2
+          },
+          "start": {
+            "character": 23,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "ExportedTestType",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "ExportedTestType",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ExportedTestType",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "UseExternally",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "UseExternally",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "UseExternally",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "ExportedForTest",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "ExportedForTest",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "ExportedForTest",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "ExportedTestType",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "ExportedTestType",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "ExportedTestType",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "UseExternally",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "UseExternally",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "UseExternally",
+            "range": {
+              "end": {
+                "character": 38,
+                "line": 2
+              },
+              "start": {
+                "character": 23,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "TestPublic",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "TestPublic",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "TestPublic",
+            "range": {
+              "end": {
+                "character": 37,
+                "line": 3
+              },
+              "start": {
+                "character": 27,
+                "line": 3
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 37,
+            "line": 3
+          },
+          "start": {
+            "character": 27,
+            "line": 3
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 5
+          },
+          "start": {
+            "character": 12,
+            "line": 5
+          }
+        },
+        "uri": "$INTERNAL_TEST_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 83,
+            "line": 2
+          },
+          "start": {
+            "character": 73,
+            "line": 2
+          }
+        },
+        "uri": "$EXTERNAL_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 35,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 23,
+              "line": 2
+            },
+            "start": {
+              "character": 17,
+              "line": 2
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Public",
+            "start": 38,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/variants/lib • lib.go",
+          "kind": 12,
+          "name": "Public",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 36,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "UseInternally",
+            "start": 117,
+            "uri": "$INTERNAL_TEST_URI"
+          },
+          "detail": "example.test/variants/lib • internal_test.go",
+          "kind": 12,
+          "name": "UseInternally",
+          "range": {
+            "end": {
+              "character": 18,
+              "line": 6
+            },
+            "start": {
+              "character": 5,
+              "line": 6
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 18,
+              "line": 6
+            },
+            "start": {
+              "character": 5,
+              "line": 6
+            }
+          },
+          "uri": "$INTERNAL_TEST_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 42,
+              "line": 6
+            },
+            "start": {
+              "character": 27,
+              "line": 6
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "UseExternally",
+            "start": 59,
+            "uri": "$EXTERNAL_TEST_URI"
+          },
+          "detail": "example.test/variants/lib • lib_test.go",
+          "kind": 12,
+          "name": "UseExternally",
+          "range": {
+            "end": {
+              "character": 18,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 18,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$EXTERNAL_TEST_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 38,
+              "line": 2
+            },
+            "start": {
+              "character": 23,
+              "line": 2
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

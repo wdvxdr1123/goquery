@@ -1,0 +1,547 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/methods/lib\"\ntype Local struct{}\nfunc (v Local) Own() {}\nfunc Work(param *lib.T) (result lib.T) {\n var parent lib.T\n _ = func(child lib.T) {\n  child.Run() // child\n  parent.Run() // capture\n  param.Run() // parameter\n  result.Run() // result\n  _ = func(grand lib.T) {\n   grand.Run() // grandchild\n   var parent Local\n   parent.Own() // shadow\n  }\n  parent.Run() // restored\n }\n _ = child // no-leak\n { type Local struct{}; _ = func(hidden Local) { hidden.Run() } } // local-type\n _ = \"🙂\"; parent.Run() // unicode\n}\nvar Top = func(top *lib.T) {\n top.Run() // top\n var captured lib.T\n _ = func(child *lib.T) { top.Run(); captured.Run(); child.Run() } // top-capture\n}\nfunc Cases(ch chan *lib.T, value any) {\n switch value.(type) {\n case *lib.T:\n  var caseLocal lib.T\n  _ = caseLocal\n    // case-space\n default:\n  _ = value\n }\n select {\n case item := <-ch:\n  _ = item\n    // select-space\n default:\n  _ = value\n }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 56
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 46
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 4
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 39,
+        "character": 4
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 15
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { var pending lib.T; pen"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 47
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 16
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { { var hidden lib.T } hi"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 48
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 17
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { { var hidden lib.T }"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 45
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 18
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { switch { default: var caseLocal lib.T;\n    "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 3,
+        "character": 4
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 19
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { select { case item := <-ch: _ = item;\n    "
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 3,
+        "character": 4
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 20
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(param lib.T) { _ = \"🙂\"; 🙂param.Ru"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 45
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 21
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(parent lib.T) { _ = func(child lib.T) { child.Ru"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 58
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 22
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(parent lib.T) { _ = func(child lib.T) { parent.Ru"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 59
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 23
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nvar Top = func(top lib.T) { top.Ru"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 34
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 24
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/methods/lib\"\nfunc Open(values ...lib.T) { values.Ru"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 38
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 25
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nfunc Deep() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {_ = func() {pending"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 1,
+        "character": 1568
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 99,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

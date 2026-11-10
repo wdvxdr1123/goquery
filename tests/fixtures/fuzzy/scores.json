@@ -1,0 +1,1525 @@
+{
+  "upstream": "gopls v0.24.0",
+  "source_sha256": {
+    "matcher.go": "b3734d9d978e76da5ad556ccf8409b7fcf6bcd1a6fef57a739450dee0e053a83",
+    "input.go": "f443cbaeb6fae400ef6f533104a29fae877a712e69ef81d646d71df66db9957d"
+  },
+  "go": "go version go1.27.3",
+  "groups": [
+    {
+      "pattern": "",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 1
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 1
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 1
+        },
+        {
+          "text": "indexByte",
+          "score": 1
+        },
+        {
+          "text": "index",
+          "score": 1
+        },
+        {
+          "text": "HTTPServer",
+          "score": 1
+        },
+        {
+          "text": "FooBar",
+          "score": 1
+        },
+        {
+          "text": "fooBar",
+          "score": 1
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 1
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 1
+        },
+        {
+          "text": "aab",
+          "score": 1
+        },
+        {
+          "text": "AAAB",
+          "score": 1
+        },
+        {
+          "text": "_aa",
+          "score": 1
+        },
+        {
+          "text": "a b",
+          "score": 1
+        },
+        {
+          "text": "cc",
+          "score": 1
+        },
+        {
+          "text": "camelCase",
+          "score": 1
+        },
+        {
+          "text": "cacbc",
+          "score": 1
+        },
+        {
+          "text": "abcd",
+          "score": 1
+        },
+        {
+          "text": "world",
+          "score": 1
+        },
+        {
+          "text": "世界",
+          "score": 1
+        },
+        {
+          "text": "世界索引",
+          "score": 1
+        },
+        {
+          "text": "Δx",
+          "score": 1
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 1
+        },
+        {
+          "text": "",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "pattern": "Index",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 1
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0.85
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 1
+        },
+        {
+          "text": "indexByte",
+          "score": 0.95
+        },
+        {
+          "text": "index",
+          "score": 1
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "index",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 1
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0.85
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 1
+        },
+        {
+          "text": "indexByte",
+          "score": 1
+        },
+        {
+          "text": "index",
+          "score": 1
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "Idx",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "ix",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0.375
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0.375
+        },
+        {
+          "text": "indexByte",
+          "score": 0.375
+        },
+        {
+          "text": "index",
+          "score": 0.375
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "cc",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 1
+        },
+        {
+          "text": "camelCase",
+          "score": 0.75
+        },
+        {
+          "text": "cacbc",
+          "score": 0.375
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "aB",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0.25
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0.625
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "AA",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0.75
+        },
+        {
+          "text": "AAAB",
+          "score": 1
+        },
+        {
+          "text": "_aa",
+          "score": 0.375
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 1
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "hs",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0.75
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "foo",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 1
+        },
+        {
+          "text": "fooBar",
+          "score": 1
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0.75
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0.75
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "fb",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0.75
+        },
+        {
+          "text": "fooBar",
+          "score": 0.75
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0.5
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0.875
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "d",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "世界",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 1
+        },
+        {
+          "text": "世界索引",
+          "score": 1
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "Δ",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 1
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 0
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    },
+    {
+      "pattern": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "candidates": [
+        {
+          "text": "Index",
+          "score": 0
+        },
+        {
+          "text": "LastIndexByte",
+          "score": 0
+        },
+        {
+          "text": "IndexRabinKarp",
+          "score": 0
+        },
+        {
+          "text": "indexByte",
+          "score": 0
+        },
+        {
+          "text": "index",
+          "score": 0
+        },
+        {
+          "text": "HTTPServer",
+          "score": 0
+        },
+        {
+          "text": "FooBar",
+          "score": 0
+        },
+        {
+          "text": "fooBar",
+          "score": 0
+        },
+        {
+          "text": "foo/bar.go",
+          "score": 0
+        },
+        {
+          "text": "foo.Bar.Baz",
+          "score": 0
+        },
+        {
+          "text": "aab",
+          "score": 0
+        },
+        {
+          "text": "AAAB",
+          "score": 0
+        },
+        {
+          "text": "_aa",
+          "score": 0
+        },
+        {
+          "text": "a b",
+          "score": 0
+        },
+        {
+          "text": "cc",
+          "score": 0
+        },
+        {
+          "text": "camelCase",
+          "score": 0
+        },
+        {
+          "text": "cacbc",
+          "score": 0
+        },
+        {
+          "text": "abcd",
+          "score": 0
+        },
+        {
+          "text": "world",
+          "score": 0
+        },
+        {
+          "text": "世界",
+          "score": 0
+        },
+        {
+          "text": "世界索引",
+          "score": 0
+        },
+        {
+          "text": "Δx",
+          "score": 0
+        },
+        {
+          "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "score": 1
+        },
+        {
+          "text": "",
+          "score": 0
+        }
+      ]
+    }
+  ]
+}

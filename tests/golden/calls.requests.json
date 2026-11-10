@@ -1,0 +1,407 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    },
+    "id": 0
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 6
+      }
+    },
+    "id": 1
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 6
+      }
+    },
+    "id": 2
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Public",
+          "start": 18,
+          "uri": "$LIB_URI"
+        },
+        "kind": 12,
+        "name": "Public",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    },
+    "id": 3
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Caller",
+          "start": 56,
+          "uri": "$FILE_URI"
+        },
+        "kind": 12,
+        "name": "Caller",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    },
+    "id": 4
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Caller",
+          "start": 56,
+          "uri": "$FILE_URI"
+        },
+        "kind": 12,
+        "name": "Caller",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    },
+    "id": 5
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Local",
+          "start": 128,
+          "uri": "$FILE_URI"
+        },
+        "kind": 12,
+        "name": "Local",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    },
+    "id": 6
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 1
+      }
+    },
+    "id": 7
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Nested",
+          "start": 192
+        },
+        "uri": "$FILE_URI",
+        "name": "Nested",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Bindings",
+          "start": 389
+        },
+        "uri": "$FILE_URI",
+        "name": "Bindings",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Initializer",
+          "start": 802
+        },
+        "uri": "$FILE_URI",
+        "name": "Initializer",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 35,
+            "character": 5
+          },
+          "end": {
+            "line": 35,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 35,
+            "character": 5
+          },
+          "end": {
+            "line": 35,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "RangeInitializer",
+          "start": 896
+        },
+        "uri": "$FILE_URI",
+        "name": "RangeInitializer",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 37,
+            "character": 5
+          },
+          "end": {
+            "line": 37,
+            "character": 21
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 37,
+            "character": 5
+          },
+          "end": {
+            "line": 37,
+            "character": 21
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nfunc Changed() {}"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "data": {
+          "name": "Caller",
+          "start": 56,
+          "uri": "$FILE_URI"
+        },
+        "kind": 12,
+        "name": "Caller",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    },
+    "id": 8
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "shutdown",
+    "id": 9
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

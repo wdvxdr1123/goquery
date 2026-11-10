@@ -1,0 +1,320 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/calls/lib\"\ntype Device struct{}\nfunc (d Device) Ping() {}\nfunc Local() {}\nfunc Invoke() func() { return Local }\nvar callback = Local\nvar initialized = Invoke()\nfunc Outer(d Device) {\n _ = \"\ud83d\ude42\"\n Local()\n ((Local))()\n lib.Public()\n _ = Local\n saved := Local\n _ = saved\n f := func(Local func(), lib struct { Public func() }) {\n  Local(); lib.Public()\n }\n _ = f\n func(d Device) {\n  d.Ping()\n  func() { Local(); lib.Public() }()\n }(d)\n func(lib int) { Local(); _ = lib }(1)\n}\nfunc Other() { Local() }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "Outer",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Outer",
+          "start": 203
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "Local",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Local",
+          "start": 101
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "uri": "$LIB_URI",
+        "name": "Public",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 5
+          },
+          "end": {
+            "line": 2,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 2,
+            "character": 5
+          },
+          "end": {
+            "line": 2,
+            "character": 11
+          }
+        },
+        "data": {
+          "uri": "$LIB_URI",
+          "name": "Public",
+          "start": 18
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "Ping",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 16
+          },
+          "end": {
+            "line": 3,
+            "character": 20
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 3,
+            "character": 16
+          },
+          "end": {
+            "line": 3,
+            "character": 20
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Ping",
+          "start": 86
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "init",
+        "kind": 13,
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 4
+          },
+          "end": {
+            "line": 7,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 7,
+            "character": 4
+          },
+          "end": {
+            "line": 7,
+            "character": 15
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "initialized",
+          "start": 175
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/calls/lib\"\ntype Device struct{}\nfunc (d Device) Ping() {}\nfunc Local() {}\nfunc Invoke() func() { return Local }\nvar callback = Local\nvar initialized = Invoke()\nfunc Outer(d Device) {\n _ = \"\ud83d\ude42\"\n Local()\n ((Local))()\n lib.Public()\n _ = Local\n saved := Local\n _ = saved\n f := func(Local func(), lib struct { Public func() }) {\n  Local(); lib.Public()\n }\n _ = f\n func(d Device) {\n  d.Ping()\n  func() { Local(); Local() }()\n }(d)\n func(lib int) { Local(); _ = lib }(1)\n}\nfunc Other() { Local() }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "Outer",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Outer",
+          "start": 203
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "callHierarchy/incomingCalls",
+    "params": {
+      "item": {
+        "uri": "$FILE_URI",
+        "name": "Local",
+        "kind": 12,
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 10
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Local",
+          "start": 101
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

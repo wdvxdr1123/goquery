@@ -1,0 +1,474 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 66,
+            "line": 4
+          },
+          "start": {
+            "character": 63,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(n int)",
+          "filterText": "Use",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Use",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Use",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 7
+              },
+              "start": {
+                "character": 9,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Use(n int)",
+          "parameters": [
+            {
+              "label": "n int"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 24,
+            "line": 5
+          },
+          "start": {
+            "character": 21,
+            "line": 5
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Navigate",
+          "start": 300,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/project • main.go",
+        "kind": 12,
+        "name": "Navigate",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 12,
+              "line": 7
+            },
+            "start": {
+              "character": 9,
+              "line": 7
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Use",
+            "start": 193,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/project/lib • lib.go",
+          "kind": 12,
+          "name": "Use",
+          "range": {
+            "end": {
+              "character": 66,
+              "line": 4
+            },
+            "start": {
+              "character": 63,
+              "line": 4
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 66,
+              "line": 4
+            },
+            "start": {
+              "character": 63,
+              "line": 4
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 21,
+              "line": 6
+            },
+            "start": {
+              "character": 15,
+              "line": 6
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Accept",
+            "start": 309,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/project/lib • lib.go",
+          "kind": 12,
+          "name": "Accept",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 8
+            },
+            "start": {
+              "character": 5,
+              "line": 8
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 8
+            },
+            "start": {
+              "character": 5,
+              "line": 8
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 67,
+              "line": 6
+            },
+            "start": {
+              "character": 59,
+              "line": 6
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Identity",
+            "start": 56,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/project • main.go",
+          "kind": 12,
+          "name": "Identity",
+          "range": {
+            "end": {
+              "character": 13,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 13,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 29,
+            "line": 7
+          },
+          "start": {
+            "character": 26,
+            "line": 7
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(n int)",
+          "filterText": "Use",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Use",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Use",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 7
+              },
+              "start": {
+                "character": 9,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Use(n int)",
+          "parameters": [
+            {
+              "label": "n int"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

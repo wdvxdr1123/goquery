@@ -1,0 +1,344 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport lib \"example.test/project/lib\"\n\ntype Probe struct {\n Alpha, Beta int\n Shadow ProbeShadow\n ProbeShadow int\n Tagged string `json:\"probe\"`\n Fn func(ProbeParam int) (ProbeResult int)\n Nested struct { Deep int }\n *lib.Thing\n 世界, More int\n}\ntype ProbeFace interface {\n Step(arg int) (out int)\n Other()\n}\ntype ProbeShadow int\ntype ProbeGeneric[T any] struct { GenericField T }\ntype ProbeAlias = struct { AliasField int }\n\ntype Gen[T any] struct { Value T }\ntype Combo[T any] struct {\n Gen[T]\n First, Second struct { Leaf int; Face interface { Run() } }\n A [3]int\n Named [2]struct { Hidden int }\n}\ntype Pointer struct { *Gen[int] `json:\"gen\"` }\ntype Qualified struct { lib.Thing `json:\"thing\"` }\ntype Constraint interface { ~int | ~string; comparable }\ntype Face interface { ProbeFace }\ntype Alias[T any] = struct { Item T }\ntype BoxAlias = (struct { Inner int })\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alpha$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Beta$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.ProbeShadow$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Tagged$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Fn$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeFace.Step$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeFace.Other$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeParam"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ProbeResult"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.世界$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.More$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Nested.Deep$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "GenericField"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "AliasField"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Thing$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^main.Probe."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.Gen[T]$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.First.Leaf$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.Second.Leaf$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.First.Face.Run$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.Second.Face.Run$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo.A$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Pointer.*Gen[int]$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Qualified.Thing$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "'Constraint.~int"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Constraint.comparable$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Face.ProbeFace$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Alias.Item$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Hidden$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "BoxAlias.Inner$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 44,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Gen$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Combo$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 46,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Alias$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport lib \"example.test/project/lib\"\n\ntype Probe struct {\n Alter, Beta int\n Shadow ProbeShadow\n ProbeShadow int\n Tagged string `json:\"probe\"`\n Fn func(ProbeParam int) (ProbeResult int)\n Nested struct { Deep int }\n *lib.Thing\n 世界, More int\n}\ntype ProbeFace interface {\n Step(arg int) (out int)\n Other()\n}\ntype ProbeShadow int\ntype ProbeGeneric[T any] struct { GenericField T }\ntype ProbeAlias = struct { AliasField int }\n\ntype Gen[T any] struct { Value T }\ntype Combo[T any] struct {\n Gen[T]\n First, Second struct { Leaf int; Face interface { Run() } }\n A [3]int\n Named [2]struct { Hidden int }\n}\ntype Pointer struct { *Gen[int] `json:\"gen\"` }\ntype Qualified struct { lib.Thing `json:\"thing\"` }\ntype Constraint interface { ~int | ~string; comparable }\ntype Face interface { ProbeFace }\ntype Alias[T any] = struct { Item T }\ntype BoxAlias = (struct { Inner int })\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alpha$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alter$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Probe.Alter$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

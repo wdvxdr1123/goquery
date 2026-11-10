@@ -1,0 +1,2545 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport api \"example.test/generichierarchy/lib\"\n\ntype IntMapper interface { Convert(int) int }\ntype StringMapper interface { Convert(string) string }\ntype SliceMapper interface { Convert([]int) []int }\ntype BadMapper interface { Convert(int) string }\ntype Concrete struct{}\nfunc (Concrete) Convert(int) int { return 0 }\ntype IntPair interface { Pair(int, int) int }\ntype BadPair interface { Pair(int, string) int }\ntype GenericPair[T any] interface { Pair(T, T) T }\ntype IndependentPair[A, B any] interface { Pair(A, B) A }\ntype RecursivePair[T any] interface { Pair(T, *T) T }\ntype Left[T any] interface { Mix(T) int }\ntype Right[T any] interface { Mix(string) T }\ntype Grow[T any] interface { Cycle(T) []T }\ntype Shrink[T any] interface { Cycle([]T) T }\ntype Named interface { Named(api.Token[int]) api.Token[int] }\ntype WrongNamed interface { Named(api.OtherToken[int]) api.OtherToken[int] }\ntype Visitor interface { Visit(func(int) int) int }\ntype BadVisitor interface { Visit(func(int) string) int }\ntype Array interface { Array([16]int) [0x10]int }\ntype WrongArray interface { Array([17]int) [16]int }\ntype Order interface { Order(int, string) string }\ntype Sequence interface { Each(...int) int }\ntype Slice interface { Each([]int) int }\ntype Fixed struct { api.Echo[int] }\n\nvar _ IntMapper = api.Echo[int]{}\nvar _ IntMapper = api.Defined[int]{}\nvar _ SliceMapper = api.Layer[int]{}\nvar _ IntPair = api.Repeated[int]{}\nvar _ Visitor = api.Visitor[int]{}\nvar _ Array = api.Array[int]{}\nvar _ Order = api.Reorder[int, string]{}\nfunc main() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "IntMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IntMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "SliceMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "SliceMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 7,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "BadMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BadMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 7,
+            "character": 5
+          },
+          "end": {
+            "line": 7,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "IntPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IntPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "BadPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BadPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "GenericPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "GenericPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "IndependentPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 20
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 20
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IndependentPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 20
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 20
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "RecursivePair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 18
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 18
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "RecursivePair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 18
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 18
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Left",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Left",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Right",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 16,
+            "character": 5
+          },
+          "end": {
+            "line": 16,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 16,
+            "character": 5
+          },
+          "end": {
+            "line": 16,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Right",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 16,
+            "character": 5
+          },
+          "end": {
+            "line": 16,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 16,
+            "character": 5
+          },
+          "end": {
+            "line": 16,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Grow",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Grow",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Shrink",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Shrink",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Named",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Named",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "WrongNamed",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "WrongNamed",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 44,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Visitor",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Visitor",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 46,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "BadVisitor",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 48,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BadVisitor",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 49,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 50,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Array",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 51,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Array",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 52,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 53,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "WrongArray",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 54,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "WrongArray",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 55,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 56,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Order",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 57,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Order",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 58,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 59,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Sequence",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 26,
+            "character": 5
+          },
+          "end": {
+            "line": 26,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 26,
+            "character": 5
+          },
+          "end": {
+            "line": 26,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 60,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Sequence",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 26,
+            "character": 5
+          },
+          "end": {
+            "line": 26,
+            "character": 13
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 26,
+            "character": 5
+          },
+          "end": {
+            "line": 26,
+            "character": 13
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 61,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 62,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Slice",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 63,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Slice",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 64,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 65,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Echo",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 66,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Echo",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 67,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 68,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Mapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 69,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Mapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 70,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 71,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "DefinedMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 18
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 18
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 72,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "DefinedMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 18
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 10,
+            "character": 5
+          },
+          "end": {
+            "line": 10,
+            "character": 18
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 73,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 74,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "MapperAlias",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 75,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "MapperAlias",
+        "kind": 11,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 9,
+            "character": 5
+          },
+          "end": {
+            "line": 9,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 76,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 77,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Defined",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 78,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Defined",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 79,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 80,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Alias",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 81,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Alias",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 82,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 83,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Layer",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 84,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Layer",
+        "kind": 5,
+        "detail": "example.test/generichierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\n\ntype T struct{ Wrong int }\ntype Identity[X any] = Token[X]\ntype Token[T any] struct{}\ntype OtherToken[T any] struct{}\ntype Echo[T any] struct{}\nfunc (Echo[Renamed]) Convert(Renamed) Renamed { return *new(Renamed) }\ntype Mapper[V any] interface { Convert(V) V }\ntype MapperAlias[V any] = Mapper[V]\ntype DefinedMapper[V any] Mapper[V]\ntype Embed[T any] struct { Echo[T] }\ntype Defined[T any] Embed[T]\ntype Alias[T any] = Embed[T]\ntype Layer[T any] struct { Embed[[]T] }\ntype Repeated[T any] struct{}\nfunc (Repeated[R]) Pair(R, R) R { return *new(R) }\ntype Independent[A, B any] struct{}\nfunc (Independent[X, Y]) Pair(X, Y) X { return *new(X) }\ntype Recursive[A any] struct{}\nfunc (Recursive[V]) Pair(V, *V) V { return *new(V) }\ntype Left[T any] struct{}\nfunc (Left[V]) Mix(V) int { return 0 }\ntype Right[T any] struct{}\nfunc (Right[V]) Mix(string) V { return *new(V) }\ntype Grow[T any] struct{}\nfunc (Grow[V]) Cycle(V) []V { return nil }\ntype Shrink[T any] struct{}\nfunc (Shrink[V]) Cycle([]V) V { return *new(V) }\ntype Named[T any] struct{}\nfunc (Named[V]) Named(Identity[V]) Identity[V] { return Token[V]{} }\ntype Visitor[T any] struct{}\nfunc (Visitor[V]) Visit(func(V) V) V { return *new(V) }\ntype Array[T any] struct{}\nfunc (Array[V]) Array([0x10]V) [16]V { return [16]V{} }\ntype Reorder[A, B any] struct{}\nfunc (Reorder[Y, X]) Order(Y, X) X { return *new(X) }\ntype Sequence[T any] struct{}\nfunc (Sequence[V]) Each(...V) V { return *new(V) }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 85,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IntMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\n\ntype T struct{ Wrong int }\ntype Identity[X any] = Token[X]\ntype Token[T any] struct{}\ntype OtherToken[T any] struct{}\ntype Echo[T any] struct{}\nfunc (Echo[Renamed]) Convert(Renamed) string { return \"\" }\ntype Mapper[V any] interface { Convert(V) V }\ntype MapperAlias[V any] = Mapper[V]\ntype DefinedMapper[V any] Mapper[V]\ntype Embed[T any] struct { Echo[T] }\ntype Defined[T any] Embed[T]\ntype Alias[T any] = Embed[T]\ntype Layer[T any] struct { Embed[[]T] }\ntype Repeated[T any] struct{}\nfunc (Repeated[R]) Pair(R, R) R { return *new(R) }\ntype Independent[A, B any] struct{}\nfunc (Independent[X, Y]) Pair(X, Y) X { return *new(X) }\ntype Recursive[A any] struct{}\nfunc (Recursive[V]) Pair(V, *V) V { return *new(V) }\ntype Left[T any] struct{}\nfunc (Left[V]) Mix(V) int { return 0 }\ntype Right[T any] struct{}\nfunc (Right[V]) Mix(string) V { return *new(V) }\ntype Grow[T any] struct{}\nfunc (Grow[V]) Cycle(V) []V { return nil }\ntype Shrink[T any] struct{}\nfunc (Shrink[V]) Cycle([]V) V { return *new(V) }\ntype Named[T any] struct{}\nfunc (Named[V]) Named(Identity[V]) Identity[V] { return Token[V]{} }\ntype Visitor[T any] struct{}\nfunc (Visitor[V]) Visit(func(V) V) V { return *new(V) }\ntype Array[T any] struct{}\nfunc (Array[V]) Array([0x10]V) [16]V { return [16]V{} }\ntype Reorder[A, B any] struct{}\nfunc (Reorder[Y, X]) Order(Y, X) X { return *new(X) }\ntype Sequence[T any] struct{}\nfunc (Sequence[V]) Each(...V) V { return *new(V) }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 86,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IntMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 87,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "IntMapper",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport api \"example.test/generichierarchy/lib\"\n\ntype IntMapper interface { Convert(int) int }\ntype StringMapper interface { Convert(string) string }\ntype SliceMapper interface { Convert([]int) []int }\ntype BadMapper interface { Convert(int) string }\ntype Concrete struct{}\nfunc (Concrete) Convert(int) int { return 0 }\ntype IntPair interface { Pair(int, int) int }\ntype BadPair interface { Pair(int, int) int }\ntype GenericPair[T any] interface { Pair(T, T) T }\ntype IndependentPair[A, B any] interface { Pair(A, B) A }\ntype RecursivePair[T any] interface { Pair(T, *T) T }\ntype Left[T any] interface { Mix(T) int }\ntype Right[T any] interface { Mix(string) T }\ntype Grow[T any] interface { Cycle(T) []T }\ntype Shrink[T any] interface { Cycle([]T) T }\ntype Named interface { Named(api.Token[int]) api.Token[int] }\ntype WrongNamed interface { Named(api.OtherToken[int]) api.OtherToken[int] }\ntype Visitor interface { Visit(func(int) int) int }\ntype BadVisitor interface { Visit(func(int) string) int }\ntype Array interface { Array([16]int) [0x10]int }\ntype WrongArray interface { Array([17]int) [16]int }\ntype Order interface { Order(int, string) string }\ntype Sequence interface { Each(...int) int }\ntype Slice interface { Each([]int) int }\ntype Fixed struct { api.Echo[int] }\n\nvar _ IntMapper = api.Echo[int]{}\nvar _ IntMapper = api.Defined[int]{}\nvar _ SliceMapper = api.Layer[int]{}\nvar _ IntPair = api.Repeated[int]{}\nvar _ Visitor = api.Visitor[int]{}\nvar _ Array = api.Array[int]{}\nvar _ Order = api.Reorder[int, string]{}\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 88,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BadPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport api \"example.test/generichierarchy/lib\"\n\ntype IntMapper interface { Convert(int) int }\ntype StringMapper interface { Convert(string) string }\ntype SliceMapper interface { Convert([]int) []int }\ntype BadMapper interface { Convert(int) string }\ntype Concrete struct{}\nfunc (Concrete) Convert(int) int { return 0 }\ntype IntPair interface { Pair(int, int) int }\ntype BadPair interface { Pair(int, string) int }\ntype GenericPair[T any] interface { Pair(T, T) T }\ntype IndependentPair[A, B any] interface { Pair(A, B) A }\ntype RecursivePair[T any] interface { Pair(T, *T) T }\ntype Left[T any] interface { Mix(T) int }\ntype Right[T any] interface { Mix(string) T }\ntype Grow[T any] interface { Cycle(T) []T }\ntype Shrink[T any] interface { Cycle([]T) T }\ntype Named interface { Named(api.Token[int]) api.Token[int] }\ntype WrongNamed interface { Named(api.OtherToken[int]) api.OtherToken[int] }\ntype Visitor interface { Visit(func(int) int) int }\ntype BadVisitor interface { Visit(func(int) string) int }\ntype Array interface { Array([16]int) [0x10]int }\ntype WrongArray interface { Array([17]int) [16]int }\ntype Order interface { Order(int, string) string }\ntype Sequence interface { Each(...int) int }\ntype Slice interface { Each([]int) int }\ntype Fixed struct { api.Echo[int] }\n\nvar _ IntMapper = api.Echo[int]{}\nvar _ IntMapper = api.Defined[int]{}\nvar _ SliceMapper = api.Layer[int]{}\nvar _ IntPair = api.Repeated[int]{}\nvar _ Visitor = api.Visitor[int]{}\nvar _ Array = api.Array[int]{}\nvar _ Order = api.Reorder[int, string]{}\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 89,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BadPair",
+        "kind": 11,
+        "detail": "example.test/generichierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 11,
+            "character": 5
+          },
+          "end": {
+            "line": 11,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 90,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

@@ -1,0 +1,390 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Field",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Field",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Field",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Field",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Field",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Field",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "string",
+          "filterText": "Label",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Label",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Label",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 5
+              },
+              "start": {
+                "character": 7,
+                "line": 5
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Ångström",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Ångström",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Ångström",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 6
+              },
+              "start": {
+                "character": 17,
+                "line": 6
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(data []byte) int",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 7,
+                "line": 7
+              },
+              "start": {
+                "character": 3,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Field",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Field",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Field",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "Label",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Label",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Label",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(data []byte) int",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Ångström",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Ångström",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Ångström",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Field",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Field",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Field",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 4
+              },
+              "start": {
+                "character": 7,
+                "line": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

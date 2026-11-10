@@ -1,0 +1,3 @@
+package renamed
+
+func InternalMarker() {}

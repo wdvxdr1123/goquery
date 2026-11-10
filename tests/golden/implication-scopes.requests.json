@@ -1,0 +1,314 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype hidden struct{}\nfunc (*hidden) Read(name string) string { return name }\ntype Number interface{ ~int | ~int64 }\ntype Rich interface{ Read(string) string; secret() }\ntype NeedsNumber[N Number] interface{ ~[]*hidden }\ntype NeedsRead[N interface{ Read(string) string }] interface{ ~[]*hidden }\ntype NeedsSecret[N interface{ secret() }] interface{ ~[]*hidden }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/project/lib\"\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc Numeric[N ~int,S lib.NeedsNumber[N]](values S) {\n for _, numeric := range values {\n  numeric.Read(\"number\")\n }\n}\nfunc Union[N lib.Number,S lib.NeedsNumber[N]](values S) {\n for _, union := range values {\n  union.Read(\"union\")\n }\n}\nfunc Methods[N lib.Rich,S lib.NeedsRead[N]](values S) {\n for _, methods := range values {\n  methods.Read(\"methods\")\n }\n}\nfunc Private[N lib.Rich,S lib.NeedsSecret[N]](values S) {\n for _, private := range values {\n  private.Read(\"private\")\n }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 15
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 16
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/prepareCallHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "callHierarchy/outgoingCalls",
+    "params": {
+      "item": {
+        "name": "Numeric",
+        "kind": 12,
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 4,
+            "character": 5
+          },
+          "end": {
+            "line": 4,
+            "character": 12
+          }
+        },
+        "data": {
+          "uri": "$FILE_URI",
+          "name": "Numeric",
+          "start": 123
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/lib\"\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc Numeric[N ~int,S lib.NeedsNumber[N]](values S) {\n for _, numeric := range values {\n  numeric.Read(\"number\")\n }\n}\nfunc Union[N lib.Number,S lib.NeedsNumber[N]](values S) {\n for _, union := range values {\n  union.Read(\"union\")\n }\n}\nfunc Methods[N lib.Rich,S lib.NeedsRead[N]](values S) {\n for _, methods := range values {\n  methods.Read(\"methods\")\n }\n}\nfunc Private[N lib.Rich,S lib.NeedsSecret[N]](values S) {\n for _, private := range values {\n  private.Read(\"private\")\n }\n}\nfunc Bad[N interface{ secret() },S lib.NeedsSecret[N]](values S) {\n for _, bad := range values {\n  bad.Read(\"invalid\")\n }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/lib\"\ntype hidden struct{}\nfunc (hidden) Read(name int) string { return \"\" }\nfunc Numeric[N ~int,S lib.NeedsNumber[N]](values S) {\n for _, numeric := range values {\n  numeric.Read(\"number\")\n }\n}\nfunc Union[N lib.Number,S lib.NeedsNumber[N]](values S) {\n for _, union := range values {\n  union.Read(\"union\")\n }\n}\nfunc Methods[N lib.Rich,S lib.NeedsRead[N]](values S) {\n for _, methods := range values {\n  methods.Read(\"methods\")\n }\n}\nfunc Private[N lib.Rich,S lib.NeedsSecret[N]](values S) {\n for _, private := range values {\n  private.Read(\"private\")\n }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

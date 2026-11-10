@@ -1,0 +1,370 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/interfacemethods/other\"\ntype A interface { Read(p []byte) (n int, err error) }\ntype B interface { Read([]uint8) (int, error) }\ntype Combined interface { A; B }\ntype Reverse interface { B; A }\ntype Diamond interface { Combined; A }\ntype Branch struct { B }\ntype Shallow struct { Combined; Branch }\ntype Ambiguous struct { Combined; B }\ntype Slot[T any] interface { Put(T) T }\ntype Left[T any] interface { Slot[T] }\ntype Right[T any] interface { Slot[T] }\ntype Dual[T any] interface { Left[T]; Right[T] }\ntype StructDual struct { Dual[int] }\ntype IntBranch struct { Slot[int] }\ntype StringBranch interface { Slot[string] }\ntype Mixed struct { IntBranch; StringBranch }\ntype Remote interface { other.Exported; Combined }\nfunc Probe(c Combined, r Reverse, d Diamond, s Shallow, a Ambiguous, g Dual[int], h StructDual, m Mixed, q Remote) {\n c.Read(nil)\n r.Read(nil)\n d.Read(nil)\n s.Read(nil)\n _ = a.Combined\n g.Put(1)\n h.Put(2)\n m.Put(\"x\")\n q.Read(nil)\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 7
+      },
+      "context": {
+        "triggerKind": 1,
+        "isRetrigger": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 7
+      },
+      "context": {
+        "triggerKind": 3,
+        "isRetrigger": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/interfacemethods/other\"\ntype A interface { Read(p []byte) (n int, err error) }\ntype B interface { Read([]uint8) (int, error) }\ntype Combined interface { A; B }\ntype Reverse interface { B; A }\ntype Diamond interface { Combined; A }\ntype Branch struct { B }\ntype Shallow struct { Combined; Branch }\ntype Ambiguous struct { Combined; B }\ntype Slot[T any] interface { Put(T) T }\ntype Left[T any] interface { Slot[T] }\ntype Right[T any] interface { Slot[T] }\ntype Dual[T any] interface { Left[T]; Right[T] }\ntype StructDual struct { Dual[int] }\ntype IntBranch struct { Slot[int] }\ntype StringBranch interface { Slot[string] }\ntype Mixed struct { IntBranch; StringBranch }\ntype Remote interface { other.Exported; Combined }\nfunc Probe(c Combined, r Reverse, d Diamond, s Shallow, a Ambiguous, g Dual[int], h StructDual, m Mixed, q Remote) {\n c.Read(nil)\n r.Read(nil)\n d.Read(nil)\n s.Read(nil)\n _ = a.Re\n _ = q.se\n g.Put(1)\n h.Put(2)\n m.Put(\"x\")\n q.Read(nil)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/interfacemethods/other\"\ntype A interface { Read(p []byte) (n int, err error) }\ntype B interface { Read([]uint8) (int, error) }\ntype Combined interface { A; B }\ntype Reverse interface { B; A }\ntype Diamond interface { Combined; A }\ntype Branch struct { B }\ntype Shallow struct { Combined; Branch }\ntype Ambiguous struct { Combined; B }\ntype Slot[T any] interface { Put(T) T }\ntype Left[T any] interface { Slot[T] }\ntype Right[T any] interface { Slot[T] }\ntype Dual[T any] interface { Left[T]; Right[T] }\ntype StructDual struct { Dual[int] }\ntype IntBranch struct { Slot[int] }\ntype StringBranch interface { Slot[string] }\ntype Mixed struct { IntBranch; StringBranch }\ntype Remote interface { other.Exported; Combined }\nfunc Probe(c Combined, r Reverse, d Diamond, s Shallow, a Ambiguous, g Dual[int], h StructDual, m Mixed, q Remote) {\n c.Read(nil)\n r.Read(nil)\n d.Read(nil)\n s.Read(nil)\n _ = a.Combined\n g.Put(1)\n h.Put(2)\n m.Put(\"x\")\n q.Read(nil)\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

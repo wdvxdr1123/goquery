@@ -1,0 +1,365 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Good",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Promoted",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Ambiguous",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "Blocked",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/implementation",
+        "kind": 5,
+        "name": "PlainEmbed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 11,
+        "name": "Private",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/implementation/lib",
+        "kind": 5,
+        "name": "Reading",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/implementation/other",
+        "kind": 5,
+        "name": "ReaderImpl",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

@@ -1,0 +1,121 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Marker"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^renamed."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^renamed_test."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "'example.test/symbols/lib_test."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^suffix_test."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "'example.test/symbols/suffix_test."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "OnlyExternalMarker"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "'example.test/symbols/testonly_test."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$EXTERNAL_TEST_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package renamed\n\nfunc ExternalMarker() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ExternalMarker"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$EXTERNAL_TEST_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "ExternalMarker"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

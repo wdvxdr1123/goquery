@@ -1,0 +1,1328 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "error": {
+      "code": 0,
+      "message": "cannot find type name(s) from type T"
+    },
+    "id": 1,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": 0,
+      "message": "cannot find type name(s) from type T"
+    },
+    "id": 2,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": 0,
+      "message": "cannot find type name(s) from type T"
+    },
+    "id": 3,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": 0,
+      "message": "cannot find type name(s) from type T"
+    },
+    "id": 4,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Concrete",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Concrete",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Concrete",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value T, values []T, box Box[T])",
+          "filterText": "Generic",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Generic",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Generic",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "interface{...}",
+          "filterText": "T",
+          "insertTextFormat": 1,
+          "kind": 8,
+          "label": "T",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "T",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "Box[T]",
+          "filterText": "box",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "box",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "box",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "T",
+          "filterText": "copied",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "copied",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "copied",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "T",
+          "filterText": "explicit",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "explicit",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "explicit",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "T",
+          "filterText": "field",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "field",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "field",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "T",
+          "filterText": "value",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "value",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "value",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        },
+        {
+          "detail": "[]T",
+          "filterText": "values",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "values",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "values",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 8
+              },
+              "start": {
+                "character": 1,
+                "line": 8
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Concrete",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Concrete",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Concrete",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value T, values []T, box Box[T])",
+          "filterText": "Generic",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Generic",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Generic",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "*external.Alias",
+          "filterText": "copied",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "copied",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "copied",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "*external.Alias",
+          "filterText": "explicit",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "explicit",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "explicit",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        7,
+        8,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        3,
+        1,
+        1026,
+        0,
+        4,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        1,
+        520,
+        0,
+        5,
+        6,
+        7,
+        0,
+        0,
+        8,
+        5,
+        5,
+        2,
+        0,
+        6,
+        1,
+        12,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        2,
+        34,
+        0,
+        8,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        1,
+        520,
+        0,
+        5,
+        5,
+        6,
+        2,
+        0,
+        6,
+        1,
+        12,
+        0,
+        0,
+        3,
+        6,
+        6,
+        8194,
+        0,
+        9,
+        1,
+        12,
+        0,
+        0,
+        3,
+        3,
+        6,
+        1026,
+        0,
+        4,
+        3,
+        1,
+        1024,
+        0,
+        4,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        8,
+        4,
+        2,
+        0,
+        9,
+        1,
+        12,
+        0,
+        0,
+        4,
+        5,
+        6,
+        0,
+        1,
+        1,
+        6,
+        4,
+        2,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        0,
+        1,
+        1,
+        5,
+        4,
+        2,
+        0,
+        6,
+        2,
+        11,
+        0,
+        0,
+        3,
+        3,
+        6,
+        1024,
+        0,
+        4,
+        5,
+        5,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        66,
+        0,
+        3,
+        7,
+        4,
+        2,
+        0,
+        11,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        8192,
+        0,
+        9,
+        9,
+        4,
+        2,
+        0,
+        10,
+        2,
+        11,
+        0,
+        0,
+        3,
+        7,
+        4,
+        0,
+        0,
+        9,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        9,
+        4,
+        0,
+        2,
+        1,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        0,
+        0,
+        8,
+        5,
+        4,
+        0,
+        0,
+        7,
+        8,
+        4,
+        0,
+        2,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        8,
+        2,
+        34,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        8,
+        4,
+        2050,
+        0,
+        9,
+        1,
+        11,
+        0,
+        0,
+        1,
+        8,
+        0,
+        0,
+        0,
+        9,
+        5,
+        1,
+        1024,
+        0,
+        8,
+        8,
+        0,
+        0,
+        0,
+        9,
+        3,
+        2,
+        32,
+        1,
+        1,
+        6,
+        4,
+        2050,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        2048,
+        1,
+        1,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        2048
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "struct{...}",
+          "filterText": "Box",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "Box",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Box",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Concrete",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Concrete",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Concrete",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value T, values []T, box Box[T])",
+          "filterText": "Generic",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Generic",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Generic",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "filterText": "copied",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "copied",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "copied",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "filterText": "explicit",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "explicit",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "explicit",
+            "range": {
+              "end": {
+                "character": 1,
+                "line": 15
+              },
+              "start": {
+                "character": 1,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        7,
+        8,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        3,
+        1,
+        1026,
+        0,
+        4,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        1,
+        520,
+        0,
+        5,
+        6,
+        7,
+        0,
+        0,
+        8,
+        5,
+        5,
+        2,
+        0,
+        6,
+        1,
+        12,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        2,
+        34,
+        0,
+        8,
+        1,
+        12,
+        2,
+        0,
+        2,
+        3,
+        1,
+        520,
+        0,
+        5,
+        5,
+        6,
+        2,
+        0,
+        6,
+        1,
+        12,
+        0,
+        0,
+        3,
+        6,
+        6,
+        8194,
+        0,
+        9,
+        1,
+        12,
+        0,
+        0,
+        3,
+        3,
+        6,
+        1026,
+        0,
+        4,
+        3,
+        1,
+        1024,
+        0,
+        4,
+        1,
+        12,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        8,
+        4,
+        2,
+        0,
+        9,
+        1,
+        12,
+        0,
+        0,
+        4,
+        5,
+        6,
+        0,
+        1,
+        1,
+        6,
+        4,
+        2,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        0,
+        1,
+        1,
+        5,
+        4,
+        2,
+        0,
+        6,
+        2,
+        11,
+        0,
+        0,
+        3,
+        3,
+        6,
+        1024,
+        0,
+        4,
+        5,
+        5,
+        0,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        1,
+        4,
+        66,
+        0,
+        3,
+        7,
+        4,
+        2,
+        0,
+        11,
+        5,
+        7,
+        0,
+        0,
+        6,
+        6,
+        6,
+        8192,
+        0,
+        9,
+        9,
+        4,
+        2,
+        0,
+        10,
+        2,
+        11,
+        0,
+        0,
+        3,
+        7,
+        4,
+        0,
+        0,
+        9,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        9,
+        4,
+        0,
+        2,
+        1,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        0,
+        0,
+        8,
+        5,
+        4,
+        0,
+        0,
+        7,
+        8,
+        4,
+        0,
+        2,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        8,
+        2,
+        34,
+        1,
+        1,
+        3,
+        7,
+        0,
+        0,
+        4,
+        8,
+        4,
+        2050,
+        0,
+        9,
+        1,
+        11,
+        0,
+        0,
+        1,
+        8,
+        0,
+        0,
+        0,
+        9,
+        5,
+        1,
+        1024,
+        0,
+        8,
+        8,
+        0,
+        0,
+        0,
+        9,
+        3,
+        2,
+        32,
+        1,
+        1,
+        6,
+        4,
+        2050,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        2048,
+        1,
+        1,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        2048
+      ]
+    }
+  },
+  {
+    "id": 99,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

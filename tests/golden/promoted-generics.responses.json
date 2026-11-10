@@ -1,0 +1,1179 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 24,
+            "line": 3
+          },
+          "start": {
+            "character": 20,
+            "line": 3
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 29,
+            "line": 1
+          },
+          "start": {
+            "character": 22,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 33,
+            "line": 2
+          },
+          "start": {
+            "character": 32,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 42,
+            "line": 3
+          },
+          "start": {
+            "character": 33,
+            "line": 3
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 18
+          },
+          "start": {
+            "character": 13,
+            "line": 18
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 19
+          },
+          "start": {
+            "character": 13,
+            "line": 19
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 20
+          },
+          "start": {
+            "character": 17,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 13,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 22
+          },
+          "start": {
+            "character": 16,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 23
+          },
+          "start": {
+            "character": 14,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 25
+          },
+          "start": {
+            "character": 17,
+            "line": 25
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 26
+          },
+          "start": {
+            "character": 16,
+            "line": 26
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 24,
+            "line": 28
+          },
+          "start": {
+            "character": 20,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 29
+          },
+          "start": {
+            "character": 23,
+            "line": 29
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 30
+          },
+          "start": {
+            "character": 18,
+            "line": 30
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 31
+          },
+          "start": {
+            "character": 23,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 35,
+            "line": 34
+          },
+          "start": {
+            "character": 31,
+            "line": 34
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 57,
+            "line": 183
+          },
+          "start": {
+            "character": 53,
+            "line": 183
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 18
+          },
+          "start": {
+            "character": 13,
+            "line": 18
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 19
+          },
+          "start": {
+            "character": 13,
+            "line": 19
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 20
+          },
+          "start": {
+            "character": 17,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 21
+          },
+          "start": {
+            "character": 13,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 22
+          },
+          "start": {
+            "character": 16,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 23
+          },
+          "start": {
+            "character": 14,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 25
+          },
+          "start": {
+            "character": 17,
+            "line": 25
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 26
+          },
+          "start": {
+            "character": 16,
+            "line": 26
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 24,
+            "line": 28
+          },
+          "start": {
+            "character": 20,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 29
+          },
+          "start": {
+            "character": 23,
+            "line": 29
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 30
+          },
+          "start": {
+            "character": 18,
+            "line": 30
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 31
+          },
+          "start": {
+            "character": 23,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 35,
+            "line": 34
+          },
+          "start": {
+            "character": 31,
+            "line": 34
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 57,
+            "line": 183
+          },
+          "start": {
+            "character": 53,
+            "line": 183
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 24
+          },
+          "start": {
+            "character": 18,
+            "line": 24
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 24,
+            "line": 3
+          },
+          "start": {
+            "character": 20,
+            "line": 3
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 24
+          },
+          "start": {
+            "character": 18,
+            "line": 24
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 30
+          },
+          "start": {
+            "character": 7,
+            "line": 30
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 31
+          },
+          "start": {
+            "character": 7,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 31
+          },
+          "start": {
+            "character": 12,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 37
+          },
+          "start": {
+            "character": 7,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 2
+          },
+          "start": {
+            "character": 35,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 30
+          },
+          "start": {
+            "character": 7,
+            "line": 30
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 31
+          },
+          "start": {
+            "character": 7,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 31
+          },
+          "start": {
+            "character": 12,
+            "line": 31
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 37
+          },
+          "start": {
+            "character": 7,
+            "line": 37
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "Payload",
+          "filterText": "Value",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Value",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Value",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 36
+              },
+              "start": {
+                "character": 7,
+                "line": 36
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "*lib.Cell[Payload]",
+          "filterText": "Next",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Next",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Next",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 37
+              },
+              "start": {
+                "character": 7,
+                "line": 37
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(v Payload) Payload",
+          "filterText": "Fn",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Fn",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Fn",
+            "range": {
+              "end": {
+                "character": 9,
+                "line": 38
+              },
+              "start": {
+                "character": 7,
+                "line": 38
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(v Payload) Payload",
+          "filterText": "Read",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read(${1:})",
+            "range": {
+              "end": {
+                "character": 9,
+                "line": 39
+              },
+              "start": {
+                "character": 7,
+                "line": 39
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 26,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 42,
+            "line": 3
+          },
+          "start": {
+            "character": 33,
+            "line": 3
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

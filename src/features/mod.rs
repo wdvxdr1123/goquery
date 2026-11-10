@@ -1,0 +1,26 @@
+//! LSP feature computations share the analysis layer; protocol dispatch lives in server.
+mod call_hierarchy;
+mod code_actions;
+mod code_lens;
+mod completion;
+mod diagnostics;
+mod document_highlight;
+mod document_link;
+mod document_symbol;
+mod documentation;
+mod folding_range;
+mod formatting;
+mod highlighting;
+mod hover;
+mod implementation;
+mod navigation;
+mod query;
+mod references;
+mod rename;
+mod signature_help;
+mod symbol_search;
+mod type_definition;
+mod type_hierarchy;
+pub(crate) use completion::CompletionConfig;
+pub(crate) use highlighting::SemanticConfig;
+pub(crate) use query::{CallDirection, DocumentQuery, Query, TypeDirection, execute};

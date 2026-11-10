@@ -1,0 +1,975 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Caller",
+          "start": 56,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/calls • main.go",
+        "kind": 12,
+        "name": "Caller",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Public",
+          "start": 18,
+          "uri": "$LIB_URI"
+        },
+        "detail": "example.test/calls/lib • lib.go",
+        "kind": 12,
+        "name": "Public",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "Caller",
+            "start": 56,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Caller",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 11,
+              "line": 5
+            },
+            "start": {
+              "character": 5,
+              "line": 5
+            }
+          },
+          {
+            "end": {
+              "character": 11,
+              "line": 6
+            },
+            "start": {
+              "character": 5,
+              "line": 6
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Nested",
+            "start": 192,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Nested",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 14
+            },
+            "start": {
+              "character": 5,
+              "line": 14
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 14
+            },
+            "start": {
+              "character": 5,
+              "line": 14
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 17,
+              "line": 17
+            },
+            "start": {
+              "character": 11,
+              "line": 17
+            }
+          },
+          {
+            "end": {
+              "character": 14,
+              "line": 18
+            },
+            "start": {
+              "character": 8,
+              "line": 18
+            }
+          },
+          {
+            "end": {
+              "character": 20,
+              "line": 19
+            },
+            "start": {
+              "character": 14,
+              "line": 19
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Unicode",
+            "start": 310,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Unicode",
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 21
+            },
+            "start": {
+              "character": 5,
+              "line": 21
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 12,
+              "line": 21
+            },
+            "start": {
+              "character": 5,
+              "line": 21
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 37,
+              "line": 21
+            },
+            "start": {
+              "character": 31,
+              "line": 21
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "SameLine",
+            "start": 355,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "SameLine",
+          "range": {
+            "end": {
+              "character": 56,
+              "line": 21
+            },
+            "start": {
+              "character": 48,
+              "line": 21
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 56,
+              "line": 21
+            },
+            "start": {
+              "character": 48,
+              "line": 21
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 71,
+              "line": 21
+            },
+            "start": {
+              "character": 65,
+              "line": 21
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 11,
+              "line": 5
+            },
+            "start": {
+              "character": 5,
+              "line": 5
+            }
+          },
+          {
+            "end": {
+              "character": 11,
+              "line": 6
+            },
+            "start": {
+              "character": 5,
+              "line": 6
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Public",
+            "start": 18,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/calls/lib • lib.go",
+          "kind": 12,
+          "name": "Public",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 6,
+              "line": 7
+            },
+            "start": {
+              "character": 1,
+              "line": 7
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Local",
+            "start": 128,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Local",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "Local",
+            "start": 128,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Local",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 21,
+              "line": 11
+            },
+            "start": {
+              "character": 15,
+              "line": 11
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 21,
+              "line": 11
+            },
+            "start": {
+              "character": 15,
+              "line": 11
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Caller",
+            "start": 56,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Caller",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 4
+            },
+            "start": {
+              "character": 5,
+              "line": 4
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 17,
+              "line": 17
+            },
+            "start": {
+              "character": 11,
+              "line": 17
+            }
+          },
+          {
+            "end": {
+              "character": 14,
+              "line": 18
+            },
+            "start": {
+              "character": 8,
+              "line": 18
+            }
+          },
+          {
+            "end": {
+              "character": 20,
+              "line": 19
+            },
+            "start": {
+              "character": 14,
+              "line": 19
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Public",
+            "start": 18,
+            "uri": "$LIB_URI"
+          },
+          "detail": "example.test/calls/lib • lib.go",
+          "kind": 12,
+          "name": "Public",
+          "range": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 11,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$LIB_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 7,
+              "line": 16
+            },
+            "start": {
+              "character": 2,
+              "line": 16
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Local",
+            "start": 128,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Local",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 12,
+              "line": 15
+            },
+            "start": {
+              "character": 5,
+              "line": 15
+            }
+          },
+          {
+            "end": {
+              "character": 20,
+              "line": 15
+            },
+            "start": {
+              "character": 13,
+              "line": 15
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Consume",
+            "start": 155,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Consume",
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 13
+            },
+            "start": {
+              "character": 5,
+              "line": 13
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 12,
+              "line": 13
+            },
+            "start": {
+              "character": 5,
+              "line": 13
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 6,
+              "line": 24
+            },
+            "start": {
+              "character": 1,
+              "line": 24
+            }
+          },
+          {
+            "end": {
+              "character": 6,
+              "line": 26
+            },
+            "start": {
+              "character": 1,
+              "line": 26
+            }
+          },
+          {
+            "end": {
+              "character": 53,
+              "line": 29
+            },
+            "start": {
+              "character": 48,
+              "line": 29
+            }
+          },
+          {
+            "end": {
+              "character": 6,
+              "line": 31
+            },
+            "start": {
+              "character": 1,
+              "line": 31
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Local",
+            "start": 128,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Local",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 11
+            },
+            "start": {
+              "character": 5,
+              "line": 11
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 39,
+              "line": 35
+            },
+            "start": {
+              "character": 32,
+              "line": 35
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Factory",
+            "start": 759,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Factory",
+          "range": {
+            "end": {
+              "character": 12,
+              "line": 34
+            },
+            "start": {
+              "character": 5,
+              "line": 34
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 12,
+              "line": 34
+            },
+            "start": {
+              "character": 5,
+              "line": 34
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 48,
+              "line": 37
+            },
+            "start": {
+              "character": 44,
+              "line": 37
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Iter",
+            "start": 857,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/calls • main.go",
+          "kind": 12,
+          "name": "Iter",
+          "range": {
+            "end": {
+              "character": 9,
+              "line": 36
+            },
+            "start": {
+              "character": 5,
+              "line": 36
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 9,
+              "line": 36
+            },
+            "start": {
+              "character": 5,
+              "line": 36
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "error": {
+      "code": -32801,
+      "message": "call hierarchy item is stale"
+    },
+    "id": 8,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

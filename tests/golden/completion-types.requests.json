@@ -1,0 +1,626 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype T struct { Wrong bool }\ntype Shape struct{}\ntype Contract interface { Read([]byte) (int, error) }\ntype Empty interface{}\ntype Number uint16\ntype Alias = Number\ntype Byte = byte\ntype Rune = rune\ntype Slice[T any] []T\ntype VecAlias[T any] = Slice[T]\ntype NamedSlice Slice[Shape]\ntype Map[K comparable, V any] map[K]V\ntype Pointer *Shape\ntype Channel <-chan Shape\ntype Callback[T any] func(values []T) (left, right T)\ntype ConstantArray[T any] [1 + 2]T\ntype Box[T any] struct { Value T }\ntype AliasBox = Box[Shape]\ntype Rename int\nfunc ShapeValue() Shape { return Shape{} }\nvar ShapeCount int\nconst ShapeLimit = 1\ntype HugeRecord struct {\n Field0000 int\n Field0001 int\n Field0002 int\n Field0003 int\n Field0004 int\n Field0005 int\n Field0006 int\n Field0007 int\n Field0008 int\n Field0009 int\n Field0010 int\n Field0011 int\n Field0012 int\n Field0013 int\n Field0014 int\n Field0015 int\n Field0016 int\n Field0017 int\n Field0018 int\n Field0019 int\n Field0020 int\n Field0021 int\n Field0022 int\n Field0023 int\n Field0024 int\n Field0025 int\n Field0026 int\n Field0027 int\n Field0028 int\n Field0029 int\n Field0030 int\n Field0031 int\n Field0032 int\n Field0033 int\n Field0034 int\n Field0035 int\n Field0036 int\n Field0037 int\n Field0038 int\n Field0039 int\n Field0040 int\n Field0041 int\n Field0042 int\n Field0043 int\n Field0044 int\n Field0045 int\n Field0046 int\n Field0047 int\n Field0048 int\n Field0049 int\n Field0050 int\n Field0051 int\n Field0052 int\n Field0053 int\n Field0054 int\n Field0055 int\n Field0056 int\n Field0057 int\n Field0058 int\n Field0059 int\n Field0060 int\n Field0061 int\n Field0062 int\n Field0063 int\n Field0064 int\n Field0065 int\n Field0066 int\n Field0067 int\n Field0068 int\n Field0069 int\n Field0070 int\n Field0071 int\n Field0072 int\n Field0073 int\n Field0074 int\n Field0075 int\n Field0076 int\n Field0077 int\n Field0078 int\n Field0079 int\n Field0080 int\n Field0081 int\n Field0082 int\n Field0083 int\n Field0084 int\n Field0085 int\n Field0086 int\n Field0087 int\n Field0088 int\n Field0089 int\n Field0090 int\n Field0091 int\n Field0092 int\n Field0093 int\n Field0094 int\n Field0095 int\n Field0096 int\n Field0097 int\n Field0098 int\n Field0099 int\n Field0100 int\n Field0101 int\n Field0102 int\n Field0103 int\n Field0104 int\n Field0105 int\n Field0106 int\n Field0107 int\n Field0108 int\n Field0109 int\n Field0110 int\n Field0111 int\n Field0112 int\n Field0113 int\n Field0114 int\n Field0115 int\n Field0116 int\n Field0117 int\n Field0118 int\n Field0119 int\n Field0120 int\n Field0121 int\n Field0122 int\n Field0123 int\n Field0124 int\n Field0125 int\n Field0126 int\n Field0127 int\n Field0128 int\n Field0129 int\n Field0130 int\n Field0131 int\n Field0132 int\n Field0133 int\n Field0134 int\n Field0135 int\n Field0136 int\n Field0137 int\n Field0138 int\n Field0139 int\n Field0140 int\n Field0141 int\n Field0142 int\n Field0143 int\n Field0144 int\n Field0145 int\n Field0146 int\n Field0147 int\n Field0148 int\n Field0149 int\n Field0150 int\n Field0151 int\n Field0152 int\n Field0153 int\n Field0154 int\n Field0155 int\n Field0156 int\n Field0157 int\n Field0158 int\n Field0159 int\n Field0160 int\n Field0161 int\n Field0162 int\n Field0163 int\n Field0164 int\n Field0165 int\n Field0166 int\n Field0167 int\n Field0168 int\n Field0169 int\n Field0170 int\n Field0171 int\n Field0172 int\n Field0173 int\n Field0174 int\n Field0175 int\n Field0176 int\n Field0177 int\n Field0178 int\n Field0179 int\n Field0180 int\n Field0181 int\n Field0182 int\n Field0183 int\n Field0184 int\n Field0185 int\n Field0186 int\n Field0187 int\n Field0188 int\n Field0189 int\n Field0190 int\n Field0191 int\n Field0192 int\n Field0193 int\n Field0194 int\n Field0195 int\n Field0196 int\n Field0197 int\n Field0198 int\n Field0199 int\n Field0200 int\n Field0201 int\n Field0202 int\n Field0203 int\n Field0204 int\n Field0205 int\n Field0206 int\n Field0207 int\n Field0208 int\n Field0209 int\n Field0210 int\n Field0211 int\n Field0212 int\n Field0213 int\n Field0214 int\n Field0215 int\n Field0216 int\n Field0217 int\n Field0218 int\n Field0219 int\n Field0220 int\n Field0221 int\n Field0222 int\n Field0223 int\n Field0224 int\n Field0225 int\n Field0226 int\n Field0227 int\n Field0228 int\n Field0229 int\n Field0230 int\n Field0231 int\n Field0232 int\n Field0233 int\n Field0234 int\n Field0235 int\n Field0236 int\n Field0237 int\n Field0238 int\n Field0239 int\n Field0240 int\n Field0241 int\n Field0242 int\n Field0243 int\n Field0244 int\n Field0245 int\n Field0246 int\n Field0247 int\n Field0248 int\n Field0249 int\n Field0250 int\n Field0251 int\n Field0252 int\n Field0253 int\n Field0254 int\n Field0255 int\n Field0256 int\n Field0257 int\n Field0258 int\n Field0259 int\n Field0260 int\n Field0261 int\n Field0262 int\n Field0263 int\n Field0264 int\n Field0265 int\n Field0266 int\n Field0267 int\n Field0268 int\n Field0269 int\n Field0270 int\n Field0271 int\n Field0272 int\n Field0273 int\n Field0274 int\n Field0275 int\n Field0276 int\n Field0277 int\n Field0278 int\n Field0279 int\n Field0280 int\n Field0281 int\n Field0282 int\n Field0283 int\n Field0284 int\n Field0285 int\n Field0286 int\n Field0287 int\n Field0288 int\n Field0289 int\n Field0290 int\n Field0291 int\n Field0292 int\n Field0293 int\n Field0294 int\n Field0295 int\n Field0296 int\n Field0297 int\n Field0298 int\n Field0299 int\n Field0300 int\n Field0301 int\n Field0302 int\n Field0303 int\n Field0304 int\n Field0305 int\n Field0306 int\n Field0307 int\n Field0308 int\n Field0309 int\n Field0310 int\n Field0311 int\n Field0312 int\n Field0313 int\n Field0314 int\n Field0315 int\n Field0316 int\n Field0317 int\n Field0318 int\n Field0319 int\n Field0320 int\n Field0321 int\n Field0322 int\n Field0323 int\n Field0324 int\n Field0325 int\n Field0326 int\n Field0327 int\n Field0328 int\n Field0329 int\n Field0330 int\n Field0331 int\n Field0332 int\n Field0333 int\n Field0334 int\n Field0335 int\n Field0336 int\n Field0337 int\n Field0338 int\n Field0339 int\n Field0340 int\n Field0341 int\n Field0342 int\n Field0343 int\n Field0344 int\n Field0345 int\n Field0346 int\n Field0347 int\n Field0348 int\n Field0349 int\n Field0350 int\n Field0351 int\n Field0352 int\n Field0353 int\n Field0354 int\n Field0355 int\n Field0356 int\n Field0357 int\n Field0358 int\n Field0359 int\n Field0360 int\n Field0361 int\n Field0362 int\n Field0363 int\n Field0364 int\n Field0365 int\n Field0366 int\n Field0367 int\n Field0368 int\n Field0369 int\n Field0370 int\n Field0371 int\n Field0372 int\n Field0373 int\n Field0374 int\n Field0375 int\n Field0376 int\n Field0377 int\n Field0378 int\n Field0379 int\n Field0380 int\n Field0381 int\n Field0382 int\n Field0383 int\n Field0384 int\n Field0385 int\n Field0386 int\n Field0387 int\n Field0388 int\n Field0389 int\n Field0390 int\n Field0391 int\n Field0392 int\n Field0393 int\n Field0394 int\n Field0395 int\n Field0396 int\n Field0397 int\n Field0398 int\n Field0399 int\n Field0400 int\n Field0401 int\n Field0402 int\n Field0403 int\n Field0404 int\n Field0405 int\n Field0406 int\n Field0407 int\n Field0408 int\n Field0409 int\n Field0410 int\n Field0411 int\n Field0412 int\n Field0413 int\n Field0414 int\n Field0415 int\n Field0416 int\n Field0417 int\n Field0418 int\n Field0419 int\n Field0420 int\n Field0421 int\n Field0422 int\n Field0423 int\n Field0424 int\n Field0425 int\n Field0426 int\n Field0427 int\n Field0428 int\n Field0429 int\n Field0430 int\n Field0431 int\n Field0432 int\n Field0433 int\n Field0434 int\n Field0435 int\n Field0436 int\n Field0437 int\n Field0438 int\n Field0439 int\n Field0440 int\n Field0441 int\n Field0442 int\n Field0443 int\n Field0444 int\n Field0445 int\n Field0446 int\n Field0447 int\n Field0448 int\n Field0449 int\n Field0450 int\n Field0451 int\n Field0452 int\n Field0453 int\n Field0454 int\n Field0455 int\n Field0456 int\n Field0457 int\n Field0458 int\n Field0459 int\n Field0460 int\n Field0461 int\n Field0462 int\n Field0463 int\n Field0464 int\n Field0465 int\n Field0466 int\n Field0467 int\n Field0468 int\n Field0469 int\n Field0470 int\n Field0471 int\n Field0472 int\n Field0473 int\n Field0474 int\n Field0475 int\n Field0476 int\n Field0477 int\n Field0478 int\n Field0479 int\n Field0480 int\n Field0481 int\n Field0482 int\n Field0483 int\n Field0484 int\n Field0485 int\n Field0486 int\n Field0487 int\n Field0488 int\n Field0489 int\n Field0490 int\n Field0491 int\n Field0492 int\n Field0493 int\n Field0494 int\n Field0495 int\n Field0496 int\n Field0497 int\n Field0498 int\n Field0499 int\n Field0500 int\n Field0501 int\n Field0502 int\n Field0503 int\n Field0504 int\n Field0505 int\n Field0506 int\n Field0507 int\n Field0508 int\n Field0509 int\n Field0510 int\n Field0511 int\n Field0512 int\n Field0513 int\n Field0514 int\n Field0515 int\n Field0516 int\n Field0517 int\n Field0518 int\n Field0519 int\n Field0520 int\n Field0521 int\n Field0522 int\n Field0523 int\n Field0524 int\n Field0525 int\n Field0526 int\n Field0527 int\n Field0528 int\n Field0529 int\n Field0530 int\n Field0531 int\n Field0532 int\n Field0533 int\n Field0534 int\n Field0535 int\n Field0536 int\n Field0537 int\n Field0538 int\n Field0539 int\n Field0540 int\n Field0541 int\n Field0542 int\n Field0543 int\n Field0544 int\n Field0545 int\n Field0546 int\n Field0547 int\n Field0548 int\n Field0549 int\n Field0550 int\n Field0551 int\n Field0552 int\n Field0553 int\n Field0554 int\n Field0555 int\n Field0556 int\n Field0557 int\n Field0558 int\n Field0559 int\n Field0560 int\n Field0561 int\n Field0562 int\n Field0563 int\n Field0564 int\n Field0565 int\n Field0566 int\n Field0567 int\n Field0568 int\n Field0569 int\n Field0570 int\n Field0571 int\n Field0572 int\n Field0573 int\n Field0574 int\n Field0575 int\n Field0576 int\n Field0577 int\n Field0578 int\n Field0579 int\n Field0580 int\n Field0581 int\n Field0582 int\n Field0583 int\n Field0584 int\n Field0585 int\n Field0586 int\n Field0587 int\n Field0588 int\n Field0589 int\n Field0590 int\n Field0591 int\n Field0592 int\n Field0593 int\n Field0594 int\n Field0595 int\n Field0596 int\n Field0597 int\n Field0598 int\n Field0599 int\n Field0600 int\n Field0601 int\n Field0602 int\n Field0603 int\n Field0604 int\n Field0605 int\n Field0606 int\n Field0607 int\n Field0608 int\n Field0609 int\n Field0610 int\n Field0611 int\n Field0612 int\n Field0613 int\n Field0614 int\n Field0615 int\n Field0616 int\n Field0617 int\n Field0618 int\n Field0619 int\n Field0620 int\n Field0621 int\n Field0622 int\n Field0623 int\n Field0624 int\n Field0625 int\n Field0626 int\n Field0627 int\n Field0628 int\n Field0629 int\n Field0630 int\n Field0631 int\n Field0632 int\n Field0633 int\n Field0634 int\n Field0635 int\n Field0636 int\n Field0637 int\n Field0638 int\n Field0639 int\n Field0640 int\n Field0641 int\n Field0642 int\n Field0643 int\n Field0644 int\n Field0645 int\n Field0646 int\n Field0647 int\n Field0648 int\n Field0649 int\n Field0650 int\n Field0651 int\n Field0652 int\n Field0653 int\n Field0654 int\n Field0655 int\n Field0656 int\n Field0657 int\n Field0658 int\n Field0659 int\n Field0660 int\n Field0661 int\n Field0662 int\n Field0663 int\n Field0664 int\n Field0665 int\n Field0666 int\n Field0667 int\n Field0668 int\n Field0669 int\n Field0670 int\n Field0671 int\n Field0672 int\n Field0673 int\n Field0674 int\n Field0675 int\n Field0676 int\n Field0677 int\n Field0678 int\n Field0679 int\n Field0680 int\n Field0681 int\n Field0682 int\n Field0683 int\n Field0684 int\n Field0685 int\n Field0686 int\n Field0687 int\n Field0688 int\n Field0689 int\n Field0690 int\n Field0691 int\n Field0692 int\n Field0693 int\n Field0694 int\n Field0695 int\n Field0696 int\n Field0697 int\n Field0698 int\n Field0699 int\n Field0700 int\n Field0701 int\n Field0702 int\n Field0703 int\n Field0704 int\n Field0705 int\n Field0706 int\n Field0707 int\n Field0708 int\n Field0709 int\n Field0710 int\n Field0711 int\n Field0712 int\n Field0713 int\n Field0714 int\n Field0715 int\n Field0716 int\n Field0717 int\n Field0718 int\n Field0719 int\n Field0720 int\n Field0721 int\n Field0722 int\n Field0723 int\n Field0724 int\n Field0725 int\n Field0726 int\n Field0727 int\n Field0728 int\n Field0729 int\n Field0730 int\n Field0731 int\n Field0732 int\n Field0733 int\n Field0734 int\n Field0735 int\n Field0736 int\n Field0737 int\n Field0738 int\n Field0739 int\n Field0740 int\n Field0741 int\n Field0742 int\n Field0743 int\n Field0744 int\n Field0745 int\n Field0746 int\n Field0747 int\n Field0748 int\n Field0749 int\n Field0750 int\n Field0751 int\n Field0752 int\n Field0753 int\n Field0754 int\n Field0755 int\n Field0756 int\n Field0757 int\n Field0758 int\n Field0759 int\n Field0760 int\n Field0761 int\n Field0762 int\n Field0763 int\n Field0764 int\n Field0765 int\n Field0766 int\n Field0767 int\n Field0768 int\n Field0769 int\n Field0770 int\n Field0771 int\n Field0772 int\n Field0773 int\n Field0774 int\n Field0775 int\n Field0776 int\n Field0777 int\n Field0778 int\n Field0779 int\n Field0780 int\n Field0781 int\n Field0782 int\n Field0783 int\n Field0784 int\n Field0785 int\n Field0786 int\n Field0787 int\n Field0788 int\n Field0789 int\n Field0790 int\n Field0791 int\n Field0792 int\n Field0793 int\n Field0794 int\n Field0795 int\n Field0796 int\n Field0797 int\n Field0798 int\n Field0799 int\n Field0800 int\n Field0801 int\n Field0802 int\n Field0803 int\n Field0804 int\n Field0805 int\n Field0806 int\n Field0807 int\n Field0808 int\n Field0809 int\n Field0810 int\n Field0811 int\n Field0812 int\n Field0813 int\n Field0814 int\n Field0815 int\n Field0816 int\n Field0817 int\n Field0818 int\n Field0819 int\n Field0820 int\n Field0821 int\n Field0822 int\n Field0823 int\n Field0824 int\n Field0825 int\n Field0826 int\n Field0827 int\n Field0828 int\n Field0829 int\n Field0830 int\n Field0831 int\n Field0832 int\n Field0833 int\n Field0834 int\n Field0835 int\n Field0836 int\n Field0837 int\n Field0838 int\n Field0839 int\n Field0840 int\n Field0841 int\n Field0842 int\n Field0843 int\n Field0844 int\n Field0845 int\n Field0846 int\n Field0847 int\n Field0848 int\n Field0849 int\n Field0850 int\n Field0851 int\n Field0852 int\n Field0853 int\n Field0854 int\n Field0855 int\n Field0856 int\n Field0857 int\n Field0858 int\n Field0859 int\n Field0860 int\n Field0861 int\n Field0862 int\n Field0863 int\n Field0864 int\n Field0865 int\n Field0866 int\n Field0867 int\n Field0868 int\n Field0869 int\n Field0870 int\n Field0871 int\n Field0872 int\n Field0873 int\n Field0874 int\n Field0875 int\n Field0876 int\n Field0877 int\n Field0878 int\n Field0879 int\n Field0880 int\n Field0881 int\n Field0882 int\n Field0883 int\n Field0884 int\n Field0885 int\n Field0886 int\n Field0887 int\n Field0888 int\n Field0889 int\n Field0890 int\n Field0891 int\n Field0892 int\n Field0893 int\n Field0894 int\n Field0895 int\n Field0896 int\n Field0897 int\n Field0898 int\n Field0899 int\n Field0900 int\n Field0901 int\n Field0902 int\n Field0903 int\n Field0904 int\n Field0905 int\n Field0906 int\n Field0907 int\n Field0908 int\n Field0909 int\n Field0910 int\n Field0911 int\n Field0912 int\n Field0913 int\n Field0914 int\n Field0915 int\n Field0916 int\n Field0917 int\n Field0918 int\n Field0919 int\n Field0920 int\n Field0921 int\n Field0922 int\n Field0923 int\n Field0924 int\n Field0925 int\n Field0926 int\n Field0927 int\n Field0928 int\n Field0929 int\n Field0930 int\n Field0931 int\n Field0932 int\n Field0933 int\n Field0934 int\n Field0935 int\n Field0936 int\n Field0937 int\n Field0938 int\n Field0939 int\n Field0940 int\n Field0941 int\n Field0942 int\n Field0943 int\n Field0944 int\n Field0945 int\n Field0946 int\n Field0947 int\n Field0948 int\n Field0949 int\n Field0950 int\n Field0951 int\n Field0952 int\n Field0953 int\n Field0954 int\n Field0955 int\n Field0956 int\n Field0957 int\n Field0958 int\n Field0959 int\n Field0960 int\n Field0961 int\n Field0962 int\n Field0963 int\n Field0964 int\n Field0965 int\n Field0966 int\n Field0967 int\n Field0968 int\n Field0969 int\n Field0970 int\n Field0971 int\n Field0972 int\n Field0973 int\n Field0974 int\n Field0975 int\n Field0976 int\n Field0977 int\n Field0978 int\n Field0979 int\n Field0980 int\n Field0981 int\n Field0982 int\n Field0983 int\n Field0984 int\n Field0985 int\n Field0986 int\n Field0987 int\n Field0988 int\n Field0989 int\n Field0990 int\n Field0991 int\n Field0992 int\n Field0993 int\n Field0994 int\n Field0995 int\n Field0996 int\n Field0997 int\n Field0998 int\n Field0999 int\n Field1000 int\n Field1001 int\n Field1002 int\n Field1003 int\n Field1004 int\n Field1005 int\n Field1006 int\n Field1007 int\n Field1008 int\n Field1009 int\n Field1010 int\n Field1011 int\n Field1012 int\n Field1013 int\n Field1014 int\n Field1015 int\n Field1016 int\n Field1017 int\n Field1018 int\n Field1019 int\n Field1020 int\n Field1021 int\n Field1022 int\n Field1023 int\n Field1024 int\n Field1025 int\n Field1026 int\n Field1027 int\n Field1028 int\n Field1029 int\n Field1030 int\n Field1031 int\n Field1032 int\n Field1033 int\n Field1034 int\n Field1035 int\n Field1036 int\n Field1037 int\n Field1038 int\n Field1039 int\n Field1040 int\n Field1041 int\n Field1042 int\n Field1043 int\n Field1044 int\n Field1045 int\n Field1046 int\n Field1047 int\n Field1048 int\n Field1049 int\n Field1050 int\n Field1051 int\n Field1052 int\n Field1053 int\n Field1054 int\n Field1055 int\n Field1056 int\n Field1057 int\n Field1058 int\n Field1059 int\n Field1060 int\n Field1061 int\n Field1062 int\n Field1063 int\n Field1064 int\n Field1065 int\n Field1066 int\n Field1067 int\n Field1068 int\n Field1069 int\n Field1070 int\n Field1071 int\n Field1072 int\n Field1073 int\n Field1074 int\n Field1075 int\n Field1076 int\n Field1077 int\n Field1078 int\n Field1079 int\n Field1080 int\n Field1081 int\n Field1082 int\n Field1083 int\n Field1084 int\n Field1085 int\n Field1086 int\n Field1087 int\n Field1088 int\n Field1089 int\n Field1090 int\n Field1091 int\n Field1092 int\n Field1093 int\n Field1094 int\n Field1095 int\n Field1096 int\n Field1097 int\n Field1098 int\n Field1099 int\n Field1100 int\n Field1101 int\n Field1102 int\n Field1103 int\n Field1104 int\n Field1105 int\n Field1106 int\n Field1107 int\n Field1108 int\n Field1109 int\n Field1110 int\n Field1111 int\n Field1112 int\n Field1113 int\n Field1114 int\n Field1115 int\n Field1116 int\n Field1117 int\n Field1118 int\n Field1119 int\n Field1120 int\n Field1121 int\n Field1122 int\n Field1123 int\n Field1124 int\n Field1125 int\n Field1126 int\n Field1127 int\n Field1128 int\n Field1129 int\n Field1130 int\n Field1131 int\n Field1132 int\n Field1133 int\n Field1134 int\n Field1135 int\n Field1136 int\n Field1137 int\n Field1138 int\n Field1139 int\n Field1140 int\n Field1141 int\n Field1142 int\n Field1143 int\n Field1144 int\n Field1145 int\n Field1146 int\n Field1147 int\n Field1148 int\n Field1149 int\n Field1150 int\n Field1151 int\n Field1152 int\n Field1153 int\n Field1154 int\n Field1155 int\n Field1156 int\n Field1157 int\n Field1158 int\n Field1159 int\n Field1160 int\n Field1161 int\n Field1162 int\n Field1163 int\n Field1164 int\n Field1165 int\n Field1166 int\n Field1167 int\n Field1168 int\n Field1169 int\n Field1170 int\n Field1171 int\n Field1172 int\n Field1173 int\n Field1174 int\n Field1175 int\n Field1176 int\n Field1177 int\n Field1178 int\n Field1179 int\n Field1180 int\n Field1181 int\n Field1182 int\n Field1183 int\n Field1184 int\n Field1185 int\n Field1186 int\n Field1187 int\n Field1188 int\n Field1189 int\n Field1190 int\n Field1191 int\n Field1192 int\n Field1193 int\n Field1194 int\n Field1195 int\n Field1196 int\n Field1197 int\n Field1198 int\n Field1199 int\n Field1200 int\n Field1201 int\n Field1202 int\n Field1203 int\n Field1204 int\n Field1205 int\n Field1206 int\n Field1207 int\n Field1208 int\n Field1209 int\n Field1210 int\n Field1211 int\n Field1212 int\n Field1213 int\n Field1214 int\n Field1215 int\n Field1216 int\n Field1217 int\n Field1218 int\n Field1219 int\n Field1220 int\n Field1221 int\n Field1222 int\n Field1223 int\n Field1224 int\n Field1225 int\n Field1226 int\n Field1227 int\n Field1228 int\n Field1229 int\n Field1230 int\n Field1231 int\n Field1232 int\n Field1233 int\n Field1234 int\n Field1235 int\n Field1236 int\n Field1237 int\n Field1238 int\n Field1239 int\n Field1240 int\n Field1241 int\n Field1242 int\n Field1243 int\n Field1244 int\n Field1245 int\n Field1246 int\n Field1247 int\n Field1248 int\n Field1249 int\n Field1250 int\n Field1251 int\n Field1252 int\n Field1253 int\n Field1254 int\n Field1255 int\n Field1256 int\n Field1257 int\n Field1258 int\n Field1259 int\n Field1260 int\n Field1261 int\n Field1262 int\n Field1263 int\n Field1264 int\n Field1265 int\n Field1266 int\n Field1267 int\n Field1268 int\n Field1269 int\n Field1270 int\n Field1271 int\n Field1272 int\n Field1273 int\n Field1274 int\n Field1275 int\n Field1276 int\n Field1277 int\n Field1278 int\n Field1279 int\n Field1280 int\n Field1281 int\n Field1282 int\n Field1283 int\n Field1284 int\n Field1285 int\n Field1286 int\n Field1287 int\n Field1288 int\n Field1289 int\n Field1290 int\n Field1291 int\n Field1292 int\n Field1293 int\n Field1294 int\n Field1295 int\n Field1296 int\n Field1297 int\n Field1298 int\n Field1299 int\n Field1300 int\n Field1301 int\n Field1302 int\n Field1303 int\n Field1304 int\n Field1305 int\n Field1306 int\n Field1307 int\n Field1308 int\n Field1309 int\n Field1310 int\n Field1311 int\n Field1312 int\n Field1313 int\n Field1314 int\n Field1315 int\n Field1316 int\n Field1317 int\n Field1318 int\n Field1319 int\n Field1320 int\n Field1321 int\n Field1322 int\n Field1323 int\n Field1324 int\n Field1325 int\n Field1326 int\n Field1327 int\n Field1328 int\n Field1329 int\n Field1330 int\n Field1331 int\n Field1332 int\n Field1333 int\n Field1334 int\n Field1335 int\n Field1336 int\n Field1337 int\n Field1338 int\n Field1339 int\n Field1340 int\n Field1341 int\n Field1342 int\n Field1343 int\n Field1344 int\n Field1345 int\n Field1346 int\n Field1347 int\n Field1348 int\n Field1349 int\n Field1350 int\n Field1351 int\n Field1352 int\n Field1353 int\n Field1354 int\n Field1355 int\n Field1356 int\n Field1357 int\n Field1358 int\n Field1359 int\n Field1360 int\n Field1361 int\n Field1362 int\n Field1363 int\n Field1364 int\n Field1365 int\n Field1366 int\n Field1367 int\n Field1368 int\n Field1369 int\n Field1370 int\n Field1371 int\n Field1372 int\n Field1373 int\n Field1374 int\n Field1375 int\n Field1376 int\n Field1377 int\n Field1378 int\n Field1379 int\n Field1380 int\n Field1381 int\n Field1382 int\n Field1383 int\n Field1384 int\n Field1385 int\n Field1386 int\n Field1387 int\n Field1388 int\n Field1389 int\n Field1390 int\n Field1391 int\n Field1392 int\n Field1393 int\n Field1394 int\n Field1395 int\n Field1396 int\n Field1397 int\n Field1398 int\n Field1399 int\n}\ntype HugeAlias = HugeRecord\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport api \"example.test/project/lib\"\ntype T struct { Global bool }\nfunc Probe[T any](unused T) {\n type Shape int\n type ScopeChain Shape\n type ScopeSlice []Shape\n type ScopePointer *Shape\n type ScopeCallback func(left, right Shape) Shape\n type ScopeIface interface { Write(Shape) }\n var _ api.Shape\n var _ api.Contract\n var _ api.Empty\n var _ api.Number\n var _ api.Alias\n var _ api.Byte\n var _ api.Rune\n var _ api.Slice[api.Shape]\n var _ api.VecAlias[api.Shape]\n var _ api.NamedSlice\n var _ api.Map[string, api.Shape]\n var _ api.Pointer\n var _ api.Channel\n var _ api.Callback[api.Shape]\n var _ api.ConstantArray[api.Shape]\n var _ api.AliasBox\n var _ api.Rename\n var _ ScopeChain\n var _ ScopeSlice\n var _ ScopePointer\n var _ ScopeCallback\n var _ ScopeIface\n var _ T\n var _ api.HugeRecord\n var _ api.HugeAlias\n _ = unused\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 10,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 11,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 16,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 17
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 23
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 18
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 33,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\ntype T struct { Wrong bool }\ntype Shape struct{}\ntype Contract interface { Read([]byte) (int, error) }\ntype Empty interface{}\ntype Number uint16\ntype Alias = Number\ntype Byte = byte\ntype Rune = rune\ntype Slice[T any] []T\ntype VecAlias[T any] = Slice[T]\ntype NamedSlice Slice[Shape]\ntype Map[K comparable, V any] map[K]V\ntype Pointer *Shape\ntype Channel <-chan Shape\ntype Callback[T any] func(values []T) (left, right T)\ntype ConstantArray[T any] [1 + 2]T\ntype Box[T any] struct { Value T }\ntype AliasBox = Box[Shape]\ntype Rename struct { Active bool }\nfunc ShapeValue() Shape { return Shape{} }\nvar ShapeCount int\nconst ShapeLimit = 1\ntype HugeRecord struct {\n Field0000 int\n Field0001 int\n Field0002 int\n Field0003 int\n Field0004 int\n Field0005 int\n Field0006 int\n Field0007 int\n Field0008 int\n Field0009 int\n Field0010 int\n Field0011 int\n Field0012 int\n Field0013 int\n Field0014 int\n Field0015 int\n Field0016 int\n Field0017 int\n Field0018 int\n Field0019 int\n Field0020 int\n Field0021 int\n Field0022 int\n Field0023 int\n Field0024 int\n Field0025 int\n Field0026 int\n Field0027 int\n Field0028 int\n Field0029 int\n Field0030 int\n Field0031 int\n Field0032 int\n Field0033 int\n Field0034 int\n Field0035 int\n Field0036 int\n Field0037 int\n Field0038 int\n Field0039 int\n Field0040 int\n Field0041 int\n Field0042 int\n Field0043 int\n Field0044 int\n Field0045 int\n Field0046 int\n Field0047 int\n Field0048 int\n Field0049 int\n Field0050 int\n Field0051 int\n Field0052 int\n Field0053 int\n Field0054 int\n Field0055 int\n Field0056 int\n Field0057 int\n Field0058 int\n Field0059 int\n Field0060 int\n Field0061 int\n Field0062 int\n Field0063 int\n Field0064 int\n Field0065 int\n Field0066 int\n Field0067 int\n Field0068 int\n Field0069 int\n Field0070 int\n Field0071 int\n Field0072 int\n Field0073 int\n Field0074 int\n Field0075 int\n Field0076 int\n Field0077 int\n Field0078 int\n Field0079 int\n Field0080 int\n Field0081 int\n Field0082 int\n Field0083 int\n Field0084 int\n Field0085 int\n Field0086 int\n Field0087 int\n Field0088 int\n Field0089 int\n Field0090 int\n Field0091 int\n Field0092 int\n Field0093 int\n Field0094 int\n Field0095 int\n Field0096 int\n Field0097 int\n Field0098 int\n Field0099 int\n Field0100 int\n Field0101 int\n Field0102 int\n Field0103 int\n Field0104 int\n Field0105 int\n Field0106 int\n Field0107 int\n Field0108 int\n Field0109 int\n Field0110 int\n Field0111 int\n Field0112 int\n Field0113 int\n Field0114 int\n Field0115 int\n Field0116 int\n Field0117 int\n Field0118 int\n Field0119 int\n Field0120 int\n Field0121 int\n Field0122 int\n Field0123 int\n Field0124 int\n Field0125 int\n Field0126 int\n Field0127 int\n Field0128 int\n Field0129 int\n Field0130 int\n Field0131 int\n Field0132 int\n Field0133 int\n Field0134 int\n Field0135 int\n Field0136 int\n Field0137 int\n Field0138 int\n Field0139 int\n Field0140 int\n Field0141 int\n Field0142 int\n Field0143 int\n Field0144 int\n Field0145 int\n Field0146 int\n Field0147 int\n Field0148 int\n Field0149 int\n Field0150 int\n Field0151 int\n Field0152 int\n Field0153 int\n Field0154 int\n Field0155 int\n Field0156 int\n Field0157 int\n Field0158 int\n Field0159 int\n Field0160 int\n Field0161 int\n Field0162 int\n Field0163 int\n Field0164 int\n Field0165 int\n Field0166 int\n Field0167 int\n Field0168 int\n Field0169 int\n Field0170 int\n Field0171 int\n Field0172 int\n Field0173 int\n Field0174 int\n Field0175 int\n Field0176 int\n Field0177 int\n Field0178 int\n Field0179 int\n Field0180 int\n Field0181 int\n Field0182 int\n Field0183 int\n Field0184 int\n Field0185 int\n Field0186 int\n Field0187 int\n Field0188 int\n Field0189 int\n Field0190 int\n Field0191 int\n Field0192 int\n Field0193 int\n Field0194 int\n Field0195 int\n Field0196 int\n Field0197 int\n Field0198 int\n Field0199 int\n Field0200 int\n Field0201 int\n Field0202 int\n Field0203 int\n Field0204 int\n Field0205 int\n Field0206 int\n Field0207 int\n Field0208 int\n Field0209 int\n Field0210 int\n Field0211 int\n Field0212 int\n Field0213 int\n Field0214 int\n Field0215 int\n Field0216 int\n Field0217 int\n Field0218 int\n Field0219 int\n Field0220 int\n Field0221 int\n Field0222 int\n Field0223 int\n Field0224 int\n Field0225 int\n Field0226 int\n Field0227 int\n Field0228 int\n Field0229 int\n Field0230 int\n Field0231 int\n Field0232 int\n Field0233 int\n Field0234 int\n Field0235 int\n Field0236 int\n Field0237 int\n Field0238 int\n Field0239 int\n Field0240 int\n Field0241 int\n Field0242 int\n Field0243 int\n Field0244 int\n Field0245 int\n Field0246 int\n Field0247 int\n Field0248 int\n Field0249 int\n Field0250 int\n Field0251 int\n Field0252 int\n Field0253 int\n Field0254 int\n Field0255 int\n Field0256 int\n Field0257 int\n Field0258 int\n Field0259 int\n Field0260 int\n Field0261 int\n Field0262 int\n Field0263 int\n Field0264 int\n Field0265 int\n Field0266 int\n Field0267 int\n Field0268 int\n Field0269 int\n Field0270 int\n Field0271 int\n Field0272 int\n Field0273 int\n Field0274 int\n Field0275 int\n Field0276 int\n Field0277 int\n Field0278 int\n Field0279 int\n Field0280 int\n Field0281 int\n Field0282 int\n Field0283 int\n Field0284 int\n Field0285 int\n Field0286 int\n Field0287 int\n Field0288 int\n Field0289 int\n Field0290 int\n Field0291 int\n Field0292 int\n Field0293 int\n Field0294 int\n Field0295 int\n Field0296 int\n Field0297 int\n Field0298 int\n Field0299 int\n Field0300 int\n Field0301 int\n Field0302 int\n Field0303 int\n Field0304 int\n Field0305 int\n Field0306 int\n Field0307 int\n Field0308 int\n Field0309 int\n Field0310 int\n Field0311 int\n Field0312 int\n Field0313 int\n Field0314 int\n Field0315 int\n Field0316 int\n Field0317 int\n Field0318 int\n Field0319 int\n Field0320 int\n Field0321 int\n Field0322 int\n Field0323 int\n Field0324 int\n Field0325 int\n Field0326 int\n Field0327 int\n Field0328 int\n Field0329 int\n Field0330 int\n Field0331 int\n Field0332 int\n Field0333 int\n Field0334 int\n Field0335 int\n Field0336 int\n Field0337 int\n Field0338 int\n Field0339 int\n Field0340 int\n Field0341 int\n Field0342 int\n Field0343 int\n Field0344 int\n Field0345 int\n Field0346 int\n Field0347 int\n Field0348 int\n Field0349 int\n Field0350 int\n Field0351 int\n Field0352 int\n Field0353 int\n Field0354 int\n Field0355 int\n Field0356 int\n Field0357 int\n Field0358 int\n Field0359 int\n Field0360 int\n Field0361 int\n Field0362 int\n Field0363 int\n Field0364 int\n Field0365 int\n Field0366 int\n Field0367 int\n Field0368 int\n Field0369 int\n Field0370 int\n Field0371 int\n Field0372 int\n Field0373 int\n Field0374 int\n Field0375 int\n Field0376 int\n Field0377 int\n Field0378 int\n Field0379 int\n Field0380 int\n Field0381 int\n Field0382 int\n Field0383 int\n Field0384 int\n Field0385 int\n Field0386 int\n Field0387 int\n Field0388 int\n Field0389 int\n Field0390 int\n Field0391 int\n Field0392 int\n Field0393 int\n Field0394 int\n Field0395 int\n Field0396 int\n Field0397 int\n Field0398 int\n Field0399 int\n Field0400 int\n Field0401 int\n Field0402 int\n Field0403 int\n Field0404 int\n Field0405 int\n Field0406 int\n Field0407 int\n Field0408 int\n Field0409 int\n Field0410 int\n Field0411 int\n Field0412 int\n Field0413 int\n Field0414 int\n Field0415 int\n Field0416 int\n Field0417 int\n Field0418 int\n Field0419 int\n Field0420 int\n Field0421 int\n Field0422 int\n Field0423 int\n Field0424 int\n Field0425 int\n Field0426 int\n Field0427 int\n Field0428 int\n Field0429 int\n Field0430 int\n Field0431 int\n Field0432 int\n Field0433 int\n Field0434 int\n Field0435 int\n Field0436 int\n Field0437 int\n Field0438 int\n Field0439 int\n Field0440 int\n Field0441 int\n Field0442 int\n Field0443 int\n Field0444 int\n Field0445 int\n Field0446 int\n Field0447 int\n Field0448 int\n Field0449 int\n Field0450 int\n Field0451 int\n Field0452 int\n Field0453 int\n Field0454 int\n Field0455 int\n Field0456 int\n Field0457 int\n Field0458 int\n Field0459 int\n Field0460 int\n Field0461 int\n Field0462 int\n Field0463 int\n Field0464 int\n Field0465 int\n Field0466 int\n Field0467 int\n Field0468 int\n Field0469 int\n Field0470 int\n Field0471 int\n Field0472 int\n Field0473 int\n Field0474 int\n Field0475 int\n Field0476 int\n Field0477 int\n Field0478 int\n Field0479 int\n Field0480 int\n Field0481 int\n Field0482 int\n Field0483 int\n Field0484 int\n Field0485 int\n Field0486 int\n Field0487 int\n Field0488 int\n Field0489 int\n Field0490 int\n Field0491 int\n Field0492 int\n Field0493 int\n Field0494 int\n Field0495 int\n Field0496 int\n Field0497 int\n Field0498 int\n Field0499 int\n Field0500 int\n Field0501 int\n Field0502 int\n Field0503 int\n Field0504 int\n Field0505 int\n Field0506 int\n Field0507 int\n Field0508 int\n Field0509 int\n Field0510 int\n Field0511 int\n Field0512 int\n Field0513 int\n Field0514 int\n Field0515 int\n Field0516 int\n Field0517 int\n Field0518 int\n Field0519 int\n Field0520 int\n Field0521 int\n Field0522 int\n Field0523 int\n Field0524 int\n Field0525 int\n Field0526 int\n Field0527 int\n Field0528 int\n Field0529 int\n Field0530 int\n Field0531 int\n Field0532 int\n Field0533 int\n Field0534 int\n Field0535 int\n Field0536 int\n Field0537 int\n Field0538 int\n Field0539 int\n Field0540 int\n Field0541 int\n Field0542 int\n Field0543 int\n Field0544 int\n Field0545 int\n Field0546 int\n Field0547 int\n Field0548 int\n Field0549 int\n Field0550 int\n Field0551 int\n Field0552 int\n Field0553 int\n Field0554 int\n Field0555 int\n Field0556 int\n Field0557 int\n Field0558 int\n Field0559 int\n Field0560 int\n Field0561 int\n Field0562 int\n Field0563 int\n Field0564 int\n Field0565 int\n Field0566 int\n Field0567 int\n Field0568 int\n Field0569 int\n Field0570 int\n Field0571 int\n Field0572 int\n Field0573 int\n Field0574 int\n Field0575 int\n Field0576 int\n Field0577 int\n Field0578 int\n Field0579 int\n Field0580 int\n Field0581 int\n Field0582 int\n Field0583 int\n Field0584 int\n Field0585 int\n Field0586 int\n Field0587 int\n Field0588 int\n Field0589 int\n Field0590 int\n Field0591 int\n Field0592 int\n Field0593 int\n Field0594 int\n Field0595 int\n Field0596 int\n Field0597 int\n Field0598 int\n Field0599 int\n Field0600 int\n Field0601 int\n Field0602 int\n Field0603 int\n Field0604 int\n Field0605 int\n Field0606 int\n Field0607 int\n Field0608 int\n Field0609 int\n Field0610 int\n Field0611 int\n Field0612 int\n Field0613 int\n Field0614 int\n Field0615 int\n Field0616 int\n Field0617 int\n Field0618 int\n Field0619 int\n Field0620 int\n Field0621 int\n Field0622 int\n Field0623 int\n Field0624 int\n Field0625 int\n Field0626 int\n Field0627 int\n Field0628 int\n Field0629 int\n Field0630 int\n Field0631 int\n Field0632 int\n Field0633 int\n Field0634 int\n Field0635 int\n Field0636 int\n Field0637 int\n Field0638 int\n Field0639 int\n Field0640 int\n Field0641 int\n Field0642 int\n Field0643 int\n Field0644 int\n Field0645 int\n Field0646 int\n Field0647 int\n Field0648 int\n Field0649 int\n Field0650 int\n Field0651 int\n Field0652 int\n Field0653 int\n Field0654 int\n Field0655 int\n Field0656 int\n Field0657 int\n Field0658 int\n Field0659 int\n Field0660 int\n Field0661 int\n Field0662 int\n Field0663 int\n Field0664 int\n Field0665 int\n Field0666 int\n Field0667 int\n Field0668 int\n Field0669 int\n Field0670 int\n Field0671 int\n Field0672 int\n Field0673 int\n Field0674 int\n Field0675 int\n Field0676 int\n Field0677 int\n Field0678 int\n Field0679 int\n Field0680 int\n Field0681 int\n Field0682 int\n Field0683 int\n Field0684 int\n Field0685 int\n Field0686 int\n Field0687 int\n Field0688 int\n Field0689 int\n Field0690 int\n Field0691 int\n Field0692 int\n Field0693 int\n Field0694 int\n Field0695 int\n Field0696 int\n Field0697 int\n Field0698 int\n Field0699 int\n Field0700 int\n Field0701 int\n Field0702 int\n Field0703 int\n Field0704 int\n Field0705 int\n Field0706 int\n Field0707 int\n Field0708 int\n Field0709 int\n Field0710 int\n Field0711 int\n Field0712 int\n Field0713 int\n Field0714 int\n Field0715 int\n Field0716 int\n Field0717 int\n Field0718 int\n Field0719 int\n Field0720 int\n Field0721 int\n Field0722 int\n Field0723 int\n Field0724 int\n Field0725 int\n Field0726 int\n Field0727 int\n Field0728 int\n Field0729 int\n Field0730 int\n Field0731 int\n Field0732 int\n Field0733 int\n Field0734 int\n Field0735 int\n Field0736 int\n Field0737 int\n Field0738 int\n Field0739 int\n Field0740 int\n Field0741 int\n Field0742 int\n Field0743 int\n Field0744 int\n Field0745 int\n Field0746 int\n Field0747 int\n Field0748 int\n Field0749 int\n Field0750 int\n Field0751 int\n Field0752 int\n Field0753 int\n Field0754 int\n Field0755 int\n Field0756 int\n Field0757 int\n Field0758 int\n Field0759 int\n Field0760 int\n Field0761 int\n Field0762 int\n Field0763 int\n Field0764 int\n Field0765 int\n Field0766 int\n Field0767 int\n Field0768 int\n Field0769 int\n Field0770 int\n Field0771 int\n Field0772 int\n Field0773 int\n Field0774 int\n Field0775 int\n Field0776 int\n Field0777 int\n Field0778 int\n Field0779 int\n Field0780 int\n Field0781 int\n Field0782 int\n Field0783 int\n Field0784 int\n Field0785 int\n Field0786 int\n Field0787 int\n Field0788 int\n Field0789 int\n Field0790 int\n Field0791 int\n Field0792 int\n Field0793 int\n Field0794 int\n Field0795 int\n Field0796 int\n Field0797 int\n Field0798 int\n Field0799 int\n Field0800 int\n Field0801 int\n Field0802 int\n Field0803 int\n Field0804 int\n Field0805 int\n Field0806 int\n Field0807 int\n Field0808 int\n Field0809 int\n Field0810 int\n Field0811 int\n Field0812 int\n Field0813 int\n Field0814 int\n Field0815 int\n Field0816 int\n Field0817 int\n Field0818 int\n Field0819 int\n Field0820 int\n Field0821 int\n Field0822 int\n Field0823 int\n Field0824 int\n Field0825 int\n Field0826 int\n Field0827 int\n Field0828 int\n Field0829 int\n Field0830 int\n Field0831 int\n Field0832 int\n Field0833 int\n Field0834 int\n Field0835 int\n Field0836 int\n Field0837 int\n Field0838 int\n Field0839 int\n Field0840 int\n Field0841 int\n Field0842 int\n Field0843 int\n Field0844 int\n Field0845 int\n Field0846 int\n Field0847 int\n Field0848 int\n Field0849 int\n Field0850 int\n Field0851 int\n Field0852 int\n Field0853 int\n Field0854 int\n Field0855 int\n Field0856 int\n Field0857 int\n Field0858 int\n Field0859 int\n Field0860 int\n Field0861 int\n Field0862 int\n Field0863 int\n Field0864 int\n Field0865 int\n Field0866 int\n Field0867 int\n Field0868 int\n Field0869 int\n Field0870 int\n Field0871 int\n Field0872 int\n Field0873 int\n Field0874 int\n Field0875 int\n Field0876 int\n Field0877 int\n Field0878 int\n Field0879 int\n Field0880 int\n Field0881 int\n Field0882 int\n Field0883 int\n Field0884 int\n Field0885 int\n Field0886 int\n Field0887 int\n Field0888 int\n Field0889 int\n Field0890 int\n Field0891 int\n Field0892 int\n Field0893 int\n Field0894 int\n Field0895 int\n Field0896 int\n Field0897 int\n Field0898 int\n Field0899 int\n Field0900 int\n Field0901 int\n Field0902 int\n Field0903 int\n Field0904 int\n Field0905 int\n Field0906 int\n Field0907 int\n Field0908 int\n Field0909 int\n Field0910 int\n Field0911 int\n Field0912 int\n Field0913 int\n Field0914 int\n Field0915 int\n Field0916 int\n Field0917 int\n Field0918 int\n Field0919 int\n Field0920 int\n Field0921 int\n Field0922 int\n Field0923 int\n Field0924 int\n Field0925 int\n Field0926 int\n Field0927 int\n Field0928 int\n Field0929 int\n Field0930 int\n Field0931 int\n Field0932 int\n Field0933 int\n Field0934 int\n Field0935 int\n Field0936 int\n Field0937 int\n Field0938 int\n Field0939 int\n Field0940 int\n Field0941 int\n Field0942 int\n Field0943 int\n Field0944 int\n Field0945 int\n Field0946 int\n Field0947 int\n Field0948 int\n Field0949 int\n Field0950 int\n Field0951 int\n Field0952 int\n Field0953 int\n Field0954 int\n Field0955 int\n Field0956 int\n Field0957 int\n Field0958 int\n Field0959 int\n Field0960 int\n Field0961 int\n Field0962 int\n Field0963 int\n Field0964 int\n Field0965 int\n Field0966 int\n Field0967 int\n Field0968 int\n Field0969 int\n Field0970 int\n Field0971 int\n Field0972 int\n Field0973 int\n Field0974 int\n Field0975 int\n Field0976 int\n Field0977 int\n Field0978 int\n Field0979 int\n Field0980 int\n Field0981 int\n Field0982 int\n Field0983 int\n Field0984 int\n Field0985 int\n Field0986 int\n Field0987 int\n Field0988 int\n Field0989 int\n Field0990 int\n Field0991 int\n Field0992 int\n Field0993 int\n Field0994 int\n Field0995 int\n Field0996 int\n Field0997 int\n Field0998 int\n Field0999 int\n Field1000 int\n Field1001 int\n Field1002 int\n Field1003 int\n Field1004 int\n Field1005 int\n Field1006 int\n Field1007 int\n Field1008 int\n Field1009 int\n Field1010 int\n Field1011 int\n Field1012 int\n Field1013 int\n Field1014 int\n Field1015 int\n Field1016 int\n Field1017 int\n Field1018 int\n Field1019 int\n Field1020 int\n Field1021 int\n Field1022 int\n Field1023 int\n Field1024 int\n Field1025 int\n Field1026 int\n Field1027 int\n Field1028 int\n Field1029 int\n Field1030 int\n Field1031 int\n Field1032 int\n Field1033 int\n Field1034 int\n Field1035 int\n Field1036 int\n Field1037 int\n Field1038 int\n Field1039 int\n Field1040 int\n Field1041 int\n Field1042 int\n Field1043 int\n Field1044 int\n Field1045 int\n Field1046 int\n Field1047 int\n Field1048 int\n Field1049 int\n Field1050 int\n Field1051 int\n Field1052 int\n Field1053 int\n Field1054 int\n Field1055 int\n Field1056 int\n Field1057 int\n Field1058 int\n Field1059 int\n Field1060 int\n Field1061 int\n Field1062 int\n Field1063 int\n Field1064 int\n Field1065 int\n Field1066 int\n Field1067 int\n Field1068 int\n Field1069 int\n Field1070 int\n Field1071 int\n Field1072 int\n Field1073 int\n Field1074 int\n Field1075 int\n Field1076 int\n Field1077 int\n Field1078 int\n Field1079 int\n Field1080 int\n Field1081 int\n Field1082 int\n Field1083 int\n Field1084 int\n Field1085 int\n Field1086 int\n Field1087 int\n Field1088 int\n Field1089 int\n Field1090 int\n Field1091 int\n Field1092 int\n Field1093 int\n Field1094 int\n Field1095 int\n Field1096 int\n Field1097 int\n Field1098 int\n Field1099 int\n Field1100 int\n Field1101 int\n Field1102 int\n Field1103 int\n Field1104 int\n Field1105 int\n Field1106 int\n Field1107 int\n Field1108 int\n Field1109 int\n Field1110 int\n Field1111 int\n Field1112 int\n Field1113 int\n Field1114 int\n Field1115 int\n Field1116 int\n Field1117 int\n Field1118 int\n Field1119 int\n Field1120 int\n Field1121 int\n Field1122 int\n Field1123 int\n Field1124 int\n Field1125 int\n Field1126 int\n Field1127 int\n Field1128 int\n Field1129 int\n Field1130 int\n Field1131 int\n Field1132 int\n Field1133 int\n Field1134 int\n Field1135 int\n Field1136 int\n Field1137 int\n Field1138 int\n Field1139 int\n Field1140 int\n Field1141 int\n Field1142 int\n Field1143 int\n Field1144 int\n Field1145 int\n Field1146 int\n Field1147 int\n Field1148 int\n Field1149 int\n Field1150 int\n Field1151 int\n Field1152 int\n Field1153 int\n Field1154 int\n Field1155 int\n Field1156 int\n Field1157 int\n Field1158 int\n Field1159 int\n Field1160 int\n Field1161 int\n Field1162 int\n Field1163 int\n Field1164 int\n Field1165 int\n Field1166 int\n Field1167 int\n Field1168 int\n Field1169 int\n Field1170 int\n Field1171 int\n Field1172 int\n Field1173 int\n Field1174 int\n Field1175 int\n Field1176 int\n Field1177 int\n Field1178 int\n Field1179 int\n Field1180 int\n Field1181 int\n Field1182 int\n Field1183 int\n Field1184 int\n Field1185 int\n Field1186 int\n Field1187 int\n Field1188 int\n Field1189 int\n Field1190 int\n Field1191 int\n Field1192 int\n Field1193 int\n Field1194 int\n Field1195 int\n Field1196 int\n Field1197 int\n Field1198 int\n Field1199 int\n Field1200 int\n Field1201 int\n Field1202 int\n Field1203 int\n Field1204 int\n Field1205 int\n Field1206 int\n Field1207 int\n Field1208 int\n Field1209 int\n Field1210 int\n Field1211 int\n Field1212 int\n Field1213 int\n Field1214 int\n Field1215 int\n Field1216 int\n Field1217 int\n Field1218 int\n Field1219 int\n Field1220 int\n Field1221 int\n Field1222 int\n Field1223 int\n Field1224 int\n Field1225 int\n Field1226 int\n Field1227 int\n Field1228 int\n Field1229 int\n Field1230 int\n Field1231 int\n Field1232 int\n Field1233 int\n Field1234 int\n Field1235 int\n Field1236 int\n Field1237 int\n Field1238 int\n Field1239 int\n Field1240 int\n Field1241 int\n Field1242 int\n Field1243 int\n Field1244 int\n Field1245 int\n Field1246 int\n Field1247 int\n Field1248 int\n Field1249 int\n Field1250 int\n Field1251 int\n Field1252 int\n Field1253 int\n Field1254 int\n Field1255 int\n Field1256 int\n Field1257 int\n Field1258 int\n Field1259 int\n Field1260 int\n Field1261 int\n Field1262 int\n Field1263 int\n Field1264 int\n Field1265 int\n Field1266 int\n Field1267 int\n Field1268 int\n Field1269 int\n Field1270 int\n Field1271 int\n Field1272 int\n Field1273 int\n Field1274 int\n Field1275 int\n Field1276 int\n Field1277 int\n Field1278 int\n Field1279 int\n Field1280 int\n Field1281 int\n Field1282 int\n Field1283 int\n Field1284 int\n Field1285 int\n Field1286 int\n Field1287 int\n Field1288 int\n Field1289 int\n Field1290 int\n Field1291 int\n Field1292 int\n Field1293 int\n Field1294 int\n Field1295 int\n Field1296 int\n Field1297 int\n Field1298 int\n Field1299 int\n Field1300 int\n Field1301 int\n Field1302 int\n Field1303 int\n Field1304 int\n Field1305 int\n Field1306 int\n Field1307 int\n Field1308 int\n Field1309 int\n Field1310 int\n Field1311 int\n Field1312 int\n Field1313 int\n Field1314 int\n Field1315 int\n Field1316 int\n Field1317 int\n Field1318 int\n Field1319 int\n Field1320 int\n Field1321 int\n Field1322 int\n Field1323 int\n Field1324 int\n Field1325 int\n Field1326 int\n Field1327 int\n Field1328 int\n Field1329 int\n Field1330 int\n Field1331 int\n Field1332 int\n Field1333 int\n Field1334 int\n Field1335 int\n Field1336 int\n Field1337 int\n Field1338 int\n Field1339 int\n Field1340 int\n Field1341 int\n Field1342 int\n Field1343 int\n Field1344 int\n Field1345 int\n Field1346 int\n Field1347 int\n Field1348 int\n Field1349 int\n Field1350 int\n Field1351 int\n Field1352 int\n Field1353 int\n Field1354 int\n Field1355 int\n Field1356 int\n Field1357 int\n Field1358 int\n Field1359 int\n Field1360 int\n Field1361 int\n Field1362 int\n Field1363 int\n Field1364 int\n Field1365 int\n Field1366 int\n Field1367 int\n Field1368 int\n Field1369 int\n Field1370 int\n Field1371 int\n Field1372 int\n Field1373 int\n Field1374 int\n Field1375 int\n Field1376 int\n Field1377 int\n Field1378 int\n Field1379 int\n Field1380 int\n Field1381 int\n Field1382 int\n Field1383 int\n Field1384 int\n Field1385 int\n Field1386 int\n Field1387 int\n Field1388 int\n Field1389 int\n Field1390 int\n Field1391 int\n Field1392 int\n Field1393 int\n Field1394 int\n Field1395 int\n Field1396 int\n Field1397 int\n Field1398 int\n Field1399 int\n}\ntype HugeAlias = HugeRecord\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 26
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport api \"example.test/project/lib\"\nfunc Header(arg api.) {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 20
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 27
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport api \"example.test/project/lib\"\ntype LocalAlias = api.\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 22
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 28
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport api \"example.test/project/lib\"\nvar Global api.\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 15
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 29
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport api \"example.test/project/lib\"\nfunc Body(){ var local api.; _ = local }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 27
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 30
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport api \"example.test/project/lib\"\nfunc Body(){ _ = api.Shap }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 25
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 33
+      },
+      "contentChanges": [
+        {
+          "text": "package main\ntype SharedZType int\nfunc Probe(){ var _ SharedZType }\nfunc SharedA000() {}\nfunc SharedA001() {}\nfunc SharedA002() {}\nfunc SharedA003() {}\nfunc SharedA004() {}\nfunc SharedA005() {}\nfunc SharedA006() {}\nfunc SharedA007() {}\nfunc SharedA008() {}\nfunc SharedA009() {}\nfunc SharedA010() {}\nfunc SharedA011() {}\nfunc SharedA012() {}\nfunc SharedA013() {}\nfunc SharedA014() {}\nfunc SharedA015() {}\nfunc SharedA016() {}\nfunc SharedA017() {}\nfunc SharedA018() {}\nfunc SharedA019() {}\nfunc SharedA020() {}\nfunc SharedA021() {}\nfunc SharedA022() {}\nfunc SharedA023() {}\nfunc SharedA024() {}\nfunc SharedA025() {}\nfunc SharedA026() {}\nfunc SharedA027() {}\nfunc SharedA028() {}\nfunc SharedA029() {}\nfunc SharedA030() {}\nfunc SharedA031() {}\nfunc SharedA032() {}\nfunc SharedA033() {}\nfunc SharedA034() {}\nfunc SharedA035() {}\nfunc SharedA036() {}\nfunc SharedA037() {}\nfunc SharedA038() {}\nfunc SharedA039() {}\nfunc SharedA040() {}\nfunc SharedA041() {}\nfunc SharedA042() {}\nfunc SharedA043() {}\nfunc SharedA044() {}\nfunc SharedA045() {}\nfunc SharedA046() {}\nfunc SharedA047() {}\nfunc SharedA048() {}\nfunc SharedA049() {}\nfunc SharedA050() {}\nfunc SharedA051() {}\nfunc SharedA052() {}\nfunc SharedA053() {}\nfunc SharedA054() {}\nfunc SharedA055() {}\nfunc SharedA056() {}\nfunc SharedA057() {}\nfunc SharedA058() {}\nfunc SharedA059() {}\nfunc SharedA060() {}\nfunc SharedA061() {}\nfunc SharedA062() {}\nfunc SharedA063() {}\nfunc SharedA064() {}\nfunc SharedA065() {}\nfunc SharedA066() {}\nfunc SharedA067() {}\nfunc SharedA068() {}\nfunc SharedA069() {}\nfunc SharedA070() {}\nfunc SharedA071() {}\nfunc SharedA072() {}\nfunc SharedA073() {}\nfunc SharedA074() {}\nfunc SharedA075() {}\nfunc SharedA076() {}\nfunc SharedA077() {}\nfunc SharedA078() {}\nfunc SharedA079() {}\nfunc SharedA080() {}\nfunc SharedA081() {}\nfunc SharedA082() {}\nfunc SharedA083() {}\nfunc SharedA084() {}\nfunc SharedA085() {}\nfunc SharedA086() {}\nfunc SharedA087() {}\nfunc SharedA088() {}\nfunc SharedA089() {}\nfunc SharedA090() {}\nfunc SharedA091() {}\nfunc SharedA092() {}\nfunc SharedA093() {}\nfunc SharedA094() {}\nfunc SharedA095() {}\nfunc SharedA096() {}\nfunc SharedA097() {}\nfunc SharedA098() {}\nfunc SharedA099() {}\nfunc SharedA100() {}\nfunc SharedA101() {}\nfunc SharedA102() {}\nfunc SharedA103() {}\nfunc SharedA104() {}\nfunc SharedA105() {}\nfunc SharedA106() {}\nfunc SharedA107() {}\nfunc SharedA108() {}\nfunc SharedA109() {}\nfunc SharedA110() {}\nfunc SharedA111() {}\nfunc SharedA112() {}\nfunc SharedA113() {}\nfunc SharedA114() {}\nfunc SharedA115() {}\nfunc SharedA116() {}\nfunc SharedA117() {}\nfunc SharedA118() {}\nfunc SharedA119() {}\nfunc SharedA120() {}\nfunc SharedA121() {}\nfunc SharedA122() {}\nfunc SharedA123() {}\nfunc SharedA124() {}\nfunc SharedA125() {}\nfunc SharedA126() {}\nfunc SharedA127() {}\nfunc SharedA128() {}\nfunc SharedA129() {}\nfunc SharedA130() {}\nfunc SharedA131() {}\nfunc SharedA132() {}\nfunc SharedA133() {}\nfunc SharedA134() {}\nfunc SharedA135() {}\nfunc SharedA136() {}\nfunc SharedA137() {}\nfunc SharedA138() {}\nfunc SharedA139() {}\nfunc SharedA140() {}\nfunc SharedA141() {}\nfunc SharedA142() {}\nfunc SharedA143() {}\nfunc SharedA144() {}\nfunc SharedA145() {}\nfunc SharedA146() {}\nfunc SharedA147() {}\nfunc SharedA148() {}\nfunc SharedA149() {}\nfunc SharedA150() {}\nfunc SharedA151() {}\nfunc SharedA152() {}\nfunc SharedA153() {}\nfunc SharedA154() {}\nfunc SharedA155() {}\nfunc SharedA156() {}\nfunc SharedA157() {}\nfunc SharedA158() {}\nfunc SharedA159() {}\nfunc SharedA160() {}\nfunc SharedA161() {}\nfunc SharedA162() {}\nfunc SharedA163() {}\nfunc SharedA164() {}\nfunc SharedA165() {}\nfunc SharedA166() {}\nfunc SharedA167() {}\nfunc SharedA168() {}\nfunc SharedA169() {}\nfunc SharedA170() {}\nfunc SharedA171() {}\nfunc SharedA172() {}\nfunc SharedA173() {}\nfunc SharedA174() {}\nfunc SharedA175() {}\nfunc SharedA176() {}\nfunc SharedA177() {}\nfunc SharedA178() {}\nfunc SharedA179() {}\nfunc SharedA180() {}\nfunc SharedA181() {}\nfunc SharedA182() {}\nfunc SharedA183() {}\nfunc SharedA184() {}\nfunc SharedA185() {}\nfunc SharedA186() {}\nfunc SharedA187() {}\nfunc SharedA188() {}\nfunc SharedA189() {}\nfunc SharedA190() {}\nfunc SharedA191() {}\nfunc SharedA192() {}\nfunc SharedA193() {}\nfunc SharedA194() {}\nfunc SharedA195() {}\nfunc SharedA196() {}\nfunc SharedA197() {}\nfunc SharedA198() {}\nfunc SharedA199() {}\nfunc SharedA200() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 26
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 34
+      },
+      "contentChanges": [
+        {
+          "text": "package main\ntype ShadowedTypeUnique int\nfunc Probe(){\n ShadowedTypeUnique := 1; _ = ShadowedTypeUnique\n var _ ShadowedTypeUniqu\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 4,
+        "character": 24
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

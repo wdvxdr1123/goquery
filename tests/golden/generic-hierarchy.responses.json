@@ -1,0 +1,5186 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Layer",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "BadMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 7
+          },
+          "start": {
+            "character": 5,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Repeated",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "BadPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Repeated",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "BadPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "RecursivePair",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "BadPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "RecursivePair",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Recursive",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Repeated",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "RecursivePair",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Recursive",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Left",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Right",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Right",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Left",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Right",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Right",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 16
+          },
+          "start": {
+            "character": 5,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Left",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Left",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Left",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Right",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Grow",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 33,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Grow",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Shrink",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 18
+          },
+          "start": {
+            "character": 5,
+            "line": 18
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 36,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Shrink",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Named",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 19
+          },
+          "start": {
+            "character": 5,
+            "line": 19
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 39,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Named",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 29
+          },
+          "start": {
+            "character": 5,
+            "line": 29
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 29
+          },
+          "start": {
+            "character": 5,
+            "line": 29
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 40,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "WrongNamed",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 20
+          },
+          "start": {
+            "character": 5,
+            "line": 20
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 42,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 43,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Visitor",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 21
+          },
+          "start": {
+            "character": 5,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 45,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Visitor",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 31
+          },
+          "start": {
+            "character": 5,
+            "line": 31
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 31
+          },
+          "start": {
+            "character": 5,
+            "line": 31
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "BadVisitor",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 22
+          },
+          "start": {
+            "character": 5,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 47,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 48,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 49,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Array",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 23
+          },
+          "start": {
+            "character": 5,
+            "line": 23
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 51,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Array",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 33
+          },
+          "start": {
+            "character": 5,
+            "line": 33
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 33
+          },
+          "start": {
+            "character": 5,
+            "line": 33
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 52,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "WrongArray",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 24
+          },
+          "start": {
+            "character": 5,
+            "line": 24
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 24
+          },
+          "start": {
+            "character": 5,
+            "line": 24
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 53,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 54,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 55,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Order",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 25
+          },
+          "start": {
+            "character": 5,
+            "line": 25
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 56,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 57,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Reorder",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 35
+          },
+          "start": {
+            "character": 5,
+            "line": 35
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 35
+          },
+          "start": {
+            "character": 5,
+            "line": 35
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 58,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Sequence",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 26
+          },
+          "start": {
+            "character": 5,
+            "line": 26
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 26
+          },
+          "start": {
+            "character": 5,
+            "line": 26
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 59,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 60,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Sequence",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 37
+          },
+          "start": {
+            "character": 5,
+            "line": 37
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 61,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "Slice",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 27
+          },
+          "start": {
+            "character": 5,
+            "line": 27
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 62,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 63,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 64,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 65,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 66,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 67,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 69,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Layer",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 70,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 71,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 72,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Layer",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 73,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "MapperAlias",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 9
+          },
+          "start": {
+            "character": 5,
+            "line": 9
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 74,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 75,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Layer",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 76,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 79,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Alias",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 80,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntMapper",
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "StringMapper",
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 17,
+            "line": 5
+          },
+          "start": {
+            "character": 5,
+            "line": 5
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 81,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 82,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Layer",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 14
+          },
+          "start": {
+            "character": 5,
+            "line": 14
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 83,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "SliceMapper",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 84,
+    "jsonrpc": "2.0",
+    "result": []
+  },
+  {
+    "id": 85,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 86,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 87,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Concrete",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 5,
+        "name": "Fixed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 28
+          },
+          "start": {
+            "character": 5,
+            "line": 28
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Defined",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "DefinedMapper",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 18,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Echo",
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 9,
+            "line": 6
+          },
+          "start": {
+            "character": 5,
+            "line": 6
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Embed",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 11
+          },
+          "start": {
+            "character": 5,
+            "line": 11
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 11,
+        "name": "Mapper",
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 8
+          },
+          "start": {
+            "character": 5,
+            "line": 8
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 88,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "GenericPair",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IntPair",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 10
+          },
+          "start": {
+            "character": 5,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Repeated",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 15
+          },
+          "start": {
+            "character": 5,
+            "line": 15
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 89,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "detail": "example.test/generichierarchy",
+        "kind": 11,
+        "name": "IndependentPair",
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 13
+          },
+          "start": {
+            "character": 5,
+            "line": 13
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "detail": "example.test/generichierarchy/lib",
+        "kind": 5,
+        "name": "Independent",
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 16,
+            "line": 17
+          },
+          "start": {
+            "character": 5,
+            "line": 17
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 90,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

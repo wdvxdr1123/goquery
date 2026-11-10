@@ -1,0 +1,114 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "documentSymbol": {
+            "hierarchicalDocumentSymbolSupport": false
+          },
+          "hover": {
+            "contentFormat": [
+              "markdown",
+              "plaintext"
+            ]
+          },
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "rename": {
+            "prepareSupport": true
+          },
+          "documentHighlight": {},
+          "documentLink": {},
+          "selectionRange": {},
+          "foldingRange": {
+            "lineFoldingOnly": false
+          },
+          "inlayHint": {},
+          "codeLens": {},
+          "formatting": {},
+          "codeAction": {
+            "codeActionLiteralSupport": {
+              "codeActionKind": {
+                "valueSet": [
+                  "quickfix",
+                  "refactor",
+                  "source",
+                  "source.organizeImports"
+                ]
+              }
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        },
+        "workspace": {
+          "workspaceEdit": {
+            "documentChanges": true
+          },
+          "configuration": true
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true,
+        "goroot": ""
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "$SOURCE_FROM_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/documentSymbol",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  }
+]

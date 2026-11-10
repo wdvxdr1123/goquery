@@ -1,0 +1,56 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "initializationOptions": {
+        "usePlaceholders": "yes"
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "initializationOptions": {
+        "completeFunctionCalls": 0
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": -1,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "initializationOptions": {
+        "completionDocumentation": "yes"
+      },
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

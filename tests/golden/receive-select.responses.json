@@ -1,0 +1,1510 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 3
+          },
+          "start": {
+            "character": 5,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 2
+          },
+          "start": {
+            "character": 15,
+            "line": 2
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 9
+          },
+          "start": {
+            "character": 14,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 10
+          },
+          "start": {
+            "character": 12,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 11
+          },
+          "start": {
+            "character": 12,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 23,
+            "line": 19
+          },
+          "start": {
+            "character": 19,
+            "line": 19
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "function(value int) int",
+          "parameters": [
+            {
+              "label": "value int"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "func(value int) int",
+          "parameters": [
+            {
+              "label": "value int"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "Probe",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Probe",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Probe",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(channel chan int)",
+          "filterText": "Shadow",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Shadow",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Shadow",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "filterText": "channel",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "channel",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "channel",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "filterText": "copied",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "copied",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "copied",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "direct",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "direct",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "direct",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(value int) int",
+          "filterText": "function",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "function",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "function",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "functionOK",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "functionOK",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "functionOK",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "hidden",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "hidden",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "hidden",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "ok",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "ok",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "ok",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "filterText": "paired",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "paired",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "paired",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "filterText": "received",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "received",
+          "sortText": "00010",
+          "textEdit": {
+            "newText": "received",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "result",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "result",
+          "sortText": "00011",
+          "textEdit": {
+            "newText": "result",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "filterText": "selected",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "selected",
+          "sortText": "00012",
+          "textEdit": {
+            "newText": "selected",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "selectedOK",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "selectedOK",
+          "sortText": "00013",
+          "textEdit": {
+            "newText": "selectedOK",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 17
+              },
+              "start": {
+                "character": 2,
+                "line": 17
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "Probe",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Probe",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Probe",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 27
+              },
+              "start": {
+                "character": 2,
+                "line": 27
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(channel chan int)",
+          "filterText": "Shadow",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "Shadow",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Shadow",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 27
+              },
+              "start": {
+                "character": 2,
+                "line": 27
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "channel",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "channel",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "channel",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 27
+              },
+              "start": {
+                "character": 2,
+                "line": 27
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "hidden",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "hidden",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "hidden",
+            "range": {
+              "end": {
+                "character": 2,
+                "line": 27
+              },
+              "start": {
+                "character": 2,
+                "line": 27
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "chan int",
+          "filterText": "channel",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "channel",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "channel",
+            "range": {
+              "end": {
+                "character": 26,
+                "line": 26
+              },
+              "start": {
+                "character": 19,
+                "line": 26
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Probe",
+          "start": 140,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/typedef • main.go",
+        "kind": 12,
+        "name": "Probe",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "invalid type: string \"$PREPARED_ITEM_23\", expected struct CallHierarchyItem"
+    },
+    "id": 24,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        7,
+        8,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        6,
+        1,
+        1026,
+        0,
+        7,
+        6,
+        7,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        6,
+        1,
+        11,
+        0,
+        0,
+        1,
+        6,
+        1,
+        1024,
+        0,
+        8,
+        4,
+        3,
+        34,
+        0,
+        5,
+        5,
+        6,
+        258,
+        0,
+        6,
+        6,
+        1,
+        264,
+        0,
+        8,
+        6,
+        1,
+        264,
+        0,
+        9,
+        6,
+        7,
+        0,
+        0,
+        7,
+        5,
+        6,
+        256,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        5,
+        2,
+        34,
+        1,
+        1,
+        7,
+        4,
+        32770,
+        0,
+        8,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        0,
+        0,
+        0,
+        9,
+        7,
+        2,
+        32,
+        1,
+        1,
+        8,
+        4,
+        2050,
+        0,
+        9,
+        2,
+        11,
+        0,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        2,
+        7,
+        4,
+        32768,
+        1,
+        1,
+        6,
+        4,
+        2050,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        2048,
+        1,
+        1,
+        6,
+        4,
+        2050,
+        0,
+        8,
+        2,
+        4,
+        130,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        2,
+        7,
+        4,
+        32768,
+        1,
+        1,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        8,
+        4,
+        2048,
+        0,
+        9,
+        4,
+        3,
+        32,
+        0,
+        5,
+        1,
+        9,
+        0,
+        1,
+        1,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        2048,
+        0,
+        7,
+        4,
+        3,
+        32,
+        0,
+        5,
+        1,
+        9,
+        0,
+        1,
+        1,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        6,
+        4,
+        2048,
+        0,
+        7,
+        4,
+        3,
+        32,
+        0,
+        5,
+        1,
+        9,
+        0,
+        1,
+        1,
+        8,
+        4,
+        34,
+        0,
+        10,
+        10,
+        4,
+        130,
+        0,
+        11,
+        2,
+        11,
+        0,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        2,
+        8,
+        0,
+        0,
+        0,
+        9,
+        9,
+        2,
+        32,
+        1,
+        1,
+        6,
+        4,
+        66,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        32,
+        0,
+        9,
+        1,
+        9,
+        0,
+        1,
+        1,
+        6,
+        4,
+        66,
+        0,
+        7,
+        2,
+        11,
+        0,
+        0,
+        4,
+        2,
+        11,
+        0,
+        0,
+        2,
+        8,
+        0,
+        0,
+        0,
+        9,
+        9,
+        2,
+        32,
+        0,
+        13,
+        1,
+        9,
+        0,
+        1,
+        1,
+        6,
+        7,
+        0,
+        1,
+        1,
+        4,
+        7,
+        0,
+        0,
+        5,
+        8,
+        4,
+        2050,
+        0,
+        10,
+        10,
+        4,
+        130,
+        0,
+        11,
+        2,
+        11,
+        0,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        2,
+        7,
+        4,
+        32768,
+        2,
+        2,
+        12,
+        4,
+        2050,
+        0,
+        13,
+        2,
+        11,
+        0,
+        0,
+        3,
+        8,
+        4,
+        2048,
+        1,
+        2,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        12,
+        4,
+        2048,
+        0,
+        13,
+        4,
+        3,
+        32,
+        0,
+        5,
+        1,
+        9,
+        0,
+        1,
+        2,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        8,
+        4,
+        2048,
+        0,
+        10,
+        10,
+        4,
+        128,
+        2,
+        1,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        2,
+        4,
+        128,
+        0,
+        4,
+        10,
+        4,
+        128,
+        0,
+        12,
+        6,
+        4,
+        64,
+        0,
+        8,
+        6,
+        4,
+        64,
+        2,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        6,
+        2,
+        34,
+        0,
+        7,
+        7,
+        6,
+        32770,
+        0,
+        8,
+        4,
+        7,
+        0,
+        0,
+        5,
+        3,
+        1,
+        72,
+        1,
+        1,
+        6,
+        7,
+        0,
+        1,
+        1,
+        4,
+        7,
+        0,
+        0,
+        5,
+        7,
+        4,
+        65602,
+        0,
+        8,
+        2,
+        11,
+        0,
+        0,
+        3,
+        2,
+        11,
+        0,
+        0,
+        2,
+        7,
+        6,
+        32768,
+        0,
+        8,
+        12,
+        10,
+        0,
+        2,
+        2,
+        4,
+        4,
+        66,
+        0,
+        5,
+        2,
+        11,
+        0,
+        0,
+        3,
+        7,
+        4,
+        64,
+        0,
+        8,
+        1,
+        11,
+        0,
+        0,
+        2,
+        1,
+        9,
+        0,
+        0,
+        3,
+        1,
+        4,
+        0,
+        0,
+        2,
+        1,
+        11,
+        0,
+        0,
+        2,
+        4,
+        4,
+        64
+      ]
+    }
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 11,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

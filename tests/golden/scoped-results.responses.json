@@ -1,0 +1,1022 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 23,
+                "line": 7
+              },
+              "start": {
+                "character": 19,
+                "line": 7
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 9
+              },
+              "start": {
+                "character": 11,
+                "line": 9
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 28,
+                "line": 10
+              },
+              "start": {
+                "character": 24,
+                "line": 10
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 33,
+                "line": 11
+              },
+              "start": {
+                "character": 29,
+                "line": 11
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 12
+              },
+              "start": {
+                "character": 21,
+                "line": 12
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 17
+          },
+          "start": {
+            "character": 17,
+            "line": 17
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 32,
+                "line": 13
+              },
+              "start": {
+                "character": 28,
+                "line": 13
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 15,
+                "line": 18
+              },
+              "start": {
+                "character": 11,
+                "line": 18
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Read(name string) string",
+          "parameters": [
+            {
+              "label": "name string"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() *handles.hidden",
+          "filterText": "Hidden",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Hidden",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "*handles.Handle",
+          "filterText": "Next",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Next",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Next",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 23,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 34,
+                "line": 15
+              },
+              "start": {
+                "character": 28,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 34,
+                "line": 15
+              },
+              "start": {
+                "character": 28,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 24,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 23,
+            "line": 7
+          },
+          "start": {
+            "character": 19,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 28,
+            "line": 10
+          },
+          "start": {
+            "character": 24,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 33,
+            "line": 11
+          },
+          "start": {
+            "character": 29,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 12
+          },
+          "start": {
+            "character": 21,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 26,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() *handles.hidden",
+          "filterText": "Hidden",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Hidden",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(name string) string",
+          "filterText": "Load",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Load",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Load",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "*handles.Handle",
+          "filterText": "Next",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Next",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Next",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 27,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() *handles.hidden",
+          "filterText": "Hidden",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Hidden",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "*handles.Handle",
+          "filterText": "Next",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Next",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Next",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 25,
+                "line": 14
+              },
+              "start": {
+                "character": 19,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 29,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

@@ -1,0 +1,271 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() *handles.hidden",
+          "filterText": "Hidden",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Hidden",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 6
+              },
+              "start": {
+                "character": 7,
+                "line": 6
+              }
+            }
+          }
+        },
+        {
+          "detail": "*handles.Handle",
+          "filterText": "Next",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Next",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Next",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 6
+              },
+              "start": {
+                "character": 7,
+                "line": 6
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 6
+              },
+              "start": {
+                "character": 7,
+                "line": 6
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(name string) string",
+          "filterText": "Read",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Read",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 6
+              },
+              "start": {
+                "character": 7,
+                "line": 6
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 14
+          },
+          "start": {
+            "character": 16,
+            "line": 14
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 17
+          },
+          "start": {
+            "character": 17,
+            "line": 17
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

@@ -1,0 +1,120 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter"
+            ],
+            "tokenModifiers": [
+              "definition",
+              "readonly",
+              "static",
+              "defaultLibrary",
+              "signature"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\nconst Exported = 7\nvar Global = 1\ntype Box[T any] struct { Value T; len int }\nfunc (b Box[Renamed]) Read() Renamed { return b.Value }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/project/lib\"\nconst PackageConst = 1\nconst Counter = iota\nvar PackageVar int\nfunc Generic[T any](value T, values []int) (result T) {\n const Local = 2\n _ = Local; _ = PackageConst; _ = lib.Exported; _ = lib.Global\n _ = len(values); _ = true; _ = false\n var ptr *int = nil; _ = ptr\n box := lib.Box[T]{}\n _ = box.Value; _ = box.Read()\n { len := func() int { return 0 }; _ = len() }\n { const true = 3; _ = true }\n var any int; _ = any\n type string struct{}; _ = string{}\n result = value\n return\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/lib\"\nvar PackageConst = 1\nconst Counter = iota\nvar PackageVar int\nfunc Generic[T any](value T, values []int) (result T) {\n const Local = 2\n _ = Local; _ = PackageConst; _ = lib.Exported; _ = lib.Global\n _ = len(values); _ = true; _ = false\n var ptr *int = nil; _ = ptr\n box := lib.Box[T]{}\n _ = box.Value; _ = box.Read()\n { len := func() int { return 0 }; _ = len() }\n { const true = 3; _ = true }\n var any int; _ = any\n type string struct{}; _ = string{}\n result = value\n return\n}\nfunc len(values []int) int { return 0 }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

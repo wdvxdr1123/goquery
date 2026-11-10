@@ -1,0 +1,140 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Num int\ntype Alias = string\ntype Record struct { N Num; Buf []byte }\ntype Box[T any] struct { Value T; Items []T; Next *Box[T] }\ntype Identity[T any] = T\ntype Forward[A,B any] = Box[B]\ntype Factory[T any] func() T\nvar Imported []int\nconst Number, Text = 3, \"remote\"\nconst Size = 2\ntype Fixed [Size*Size]int\ntype List []int\ntype GenericArray[T any] [2]T\ntype AliasList = []int\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/project/lib\"\ntype T struct { Wrong int }\ntype Defined lib.Record\ntype Alias = lib.Num\nvar GlobalN, GlobalS = 1, \"world\"\nfunc Forms(n lib.Num, s lib.Alias, r lib.Record, b lib.Box[int], q lib.Box[string], f lib.Factory[int], a [3]int, slice []int, m map[string]int, ch chan int, recv <-chan int, send chan<- int, p *int, ok bool, text string, i interface{}, d Defined, fixed lib.Fixed, list lib.List, generic lib.GenericArray[string], aliasList lib.AliasList) {\n _ = n; _ = s; _ = r.N; _ = r.Buf\n _ = fixed; _ = list; _ = generic; _ = aliasList\n _ = b.Value; _ = q.Value; _ = b.Items; _ = q.Items; _ = b.Next\n _ = f; _ = a; _ = slice; _ = m; _ = ch; _ = recv; _ = send; _ = p; _ = ok; _ = text; _ = i; _ = d\n _ = lib.Imported; _ = lib.Number; _ = lib.Text; _ = GlobalN; _ = GlobalS\n var alias Alias; _ = alias\n localN, localS := 2, \"local\"; _ = localN; _ = localS\n type Local []int\n var local Local; _ = local\n fn := func() int { return 0 }; _ = fn\n ptr := &localN; _ = ptr\n record := lib.Record{}; _ = record\n const Yes = true; _ = Yes\n const Typed bool = true; const Copied = Typed; _ = Typed; _ = Copied\n const Untyped = \"source\"; var Default = Yes; var DefaultS = Untyped; _ = Default; _ = DefaultS\n}\nfunc Generic[T any](unknown T, forwarded lib.Identity[T], parenthesized lib.Identity[(T)], deep ((((((((((((((((((((((((((((((((((((((((T)))))))))))))))))))))))))))))))))))))))), box lib.Forward[int,string]) {\n _ = unknown; _ = forwarded; _ = parenthesized; _ = box.Value\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/project/lib\"\ntype T struct { Wrong int }\ntype Defined lib.Record\ntype Alias = lib.Num\nvar GlobalN, GlobalS = \"changed\", 1\nfunc Forms(n lib.Num, s lib.Alias, r lib.Record, b lib.Box[bool], q lib.Box[string], f lib.Factory[int], a [3]int, slice []int, m map[string]int, ch chan int, recv <-chan int, send chan<- int, p *int, ok bool, text string, i interface{}, d Defined, fixed lib.Fixed, list lib.List, generic lib.GenericArray[string], aliasList lib.AliasList) {\n _ = n; _ = s; _ = r.N; _ = r.Buf\n _ = fixed; _ = list; _ = generic; _ = aliasList\n _ = b.Value; _ = q.Value; _ = b.Items; _ = q.Items; _ = b.Next\n _ = f; _ = a; _ = slice; _ = m; _ = ch; _ = recv; _ = send; _ = p; _ = ok; _ = text; _ = i; _ = d\n _ = lib.Imported; _ = lib.Number; _ = lib.Text; _ = GlobalN; _ = GlobalS\n var alias Alias; _ = alias\n localN, localS := 2, \"local\"; _ = localN; _ = localS\n type Local []int\n var local Local; _ = local\n fn := func() int { return 0 }; _ = fn\n ptr := &localN; _ = ptr\n record := lib.Record{}; _ = record\n const Yes = true; _ = Yes\n const Typed bool = true; const Copied = Typed; _ = Typed; _ = Copied\n const Untyped = \"source\"; var Default = Yes; var DefaultS = Untyped; _ = Default; _ = DefaultS\n}\nfunc Generic[T any](unknown T, forwarded lib.Identity[T], parenthesized lib.Identity[(T)], deep ((((((((((((((((((((((((((((((((((((((((T)))))))))))))))))))))))))))))))))))))))), box lib.Forward[int,string]) {\n _ = unknown; _ = forwarded; _ = parenthesized; _ = box.Value\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

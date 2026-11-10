@@ -1,0 +1,510 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 7
+          },
+          "start": {
+            "character": 18,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(n int)",
+          "filterText": "Use",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Use",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Use",
+            "range": {
+              "end": {
+                "character": 9,
+                "line": 15
+              },
+              "start": {
+                "character": 6,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "activeParameter": 0,
+      "activeSignature": 0,
+      "signatures": [
+        {
+          "activeParameter": 0,
+          "label": "Use(n int)",
+          "parameters": [
+            {
+              "label": "n int"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 7
+          },
+          "start": {
+            "character": 18,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 7
+          },
+          "start": {
+            "character": 18,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 9,
+            "line": 15
+          },
+          "start": {
+            "character": 6,
+            "line": 15
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 17
+          },
+          "start": {
+            "character": 12,
+            "line": 17
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Navigate",
+          "start": 487,
+          "uri": "$FILE_URI"
+        },
+        "detail": "example.test/typeoracle • main.go",
+        "kind": 12,
+        "name": "Navigate",
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 5,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 16,
+              "line": 13
+            },
+            "start": {
+              "character": 11,
+              "line": 13
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Clone",
+            "start": 25,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/typeoracle • main.go",
+          "kind": 12,
+          "name": "Clone",
+          "range": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 10,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 19,
+              "line": 16
+            },
+            "start": {
+              "character": 11,
+              "line": 16
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "CloneMap",
+            "start": 107,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/typeoracle • main.go",
+          "kind": 12,
+          "name": "CloneMap",
+          "range": {
+            "end": {
+              "character": 13,
+              "line": 3
+            },
+            "start": {
+              "character": 5,
+              "line": 3
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 13,
+              "line": 3
+            },
+            "start": {
+              "character": 5,
+              "line": 3
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      },
+      {
+        "fromRanges": [
+          {
+            "end": {
+              "character": 9,
+              "line": 15
+            },
+            "start": {
+              "character": 6,
+              "line": 15
+            }
+          },
+          {
+            "end": {
+              "character": 15,
+              "line": 17
+            },
+            "start": {
+              "character": 12,
+              "line": 17
+            }
+          }
+        ],
+        "to": {
+          "data": {
+            "name": "Use",
+            "start": 351,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/typeoracle • main.go",
+          "kind": 12,
+          "name": "Use",
+          "range": {
+            "end": {
+              "character": 21,
+              "line": 7
+            },
+            "start": {
+              "character": 18,
+              "line": 7
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 21,
+              "line": 7
+            },
+            "start": {
+              "character": 18,
+              "line": 7
+            }
+          },
+          "uri": "$FILE_URI"
+        }
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 9
+          },
+          "start": {
+            "character": 19,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(n int)",
+          "filterText": "Use",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Use",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Use",
+            "range": {
+              "end": {
+                "character": 9,
+                "line": 15
+              },
+              "start": {
+                "character": 6,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 9
+          },
+          "start": {
+            "character": 19,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

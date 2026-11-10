@@ -1,0 +1,149 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport lib \"example.test/project/lib\"\nvar count int\nconst result = 1\ntype T struct{}\ntype Record struct { count int; len int }\ntype Receiver struct{}\nfunc (count Receiver) len() int { _ = count; return 0 }\ntype Service interface { Read(count string) (result bool) }\nvar Weird [len([1]func(){func(){ var inner int; inner = 1; _ = inner }})]byte\nvar Saved = func() { var count = 0; count = 1; _ = count }\nfunc Probe(count int) (result int) {\n count, added := count, 1; _ = added\n { count := count; _ = count }\n for loop := 0; loop < 1; loop++ { _ = loop }\n { late := 1; _ = late }\n { late := 2; _ = late }\n closure := func(count int) int { return count }; _ = closure\n type Callback func(count string, rest ...int) (result bool)\n var callback Callback; _ = callback\n { lib := 1; _ = lib }\n { int := 1; _ = int }\n _ = lib.Public\n result = count\n return\n}\nfunc Generic[T any](v T) { var callback func(T int); _ = callback; _ = v }\nfunc External(count int) (result int)\nvar rest int\nfunc Variadic(rest ...int) { _ = rest }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 49
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 9,
+        "character": 38
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport lib \"example.test/project/lib\"\nvar total int\nconst output = 1\ntype GlobalT struct{}\ntype Record struct { count int; len int }\ntype Receiver struct{}\nfunc (count Receiver) len() int { _ = count; return 0 }\ntype Service interface { Read(count string) (result bool) }\nvar Weird [len([1]func(){func(){ var inner int; inner = 1; _ = inner }})]byte\nvar Saved = func() { var count = 0; count = 1; _ = count }\nfunc Probe(count int) (result int) {\n count, added := count, 1; _ = added\n { count := count; _ = count }\n for loop := 0; loop < 1; loop++ { _ = loop }\n { late := 1; _ = late }\n { late := 2; _ = late }\n closure := func(count int) int { return count }; _ = closure\n type Callback func(count string, rest ...int) (result bool)\n var callback Callback; _ = callback\n { lib := 1; _ = lib }\n { int := 1; _ = int }\n _ = lib.Public\n result = count\n return\n}\nfunc Generic[T any](v T) { var callback func(T int); _ = callback; _ = v }\nfunc External(count int) (result int)\nvar rest int\nfunc Variadic(rest ...int) { _ = rest }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

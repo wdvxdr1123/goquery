@@ -1,0 +1,625 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MODFILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Parse",
+          "start": 54,
+          "uri": "$CMD_MODFILE_URI"
+        },
+        "detail": "cmd/vendor/golang.org/x/mod/modfile • rule.go",
+        "kind": 12,
+        "name": "Parse",
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 10,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MODFILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "ToASCII",
+          "start": 41,
+          "uri": "$CMD_IDNA_URI"
+        },
+        "detail": "cmd/vendor/golang.org/x/net/idna • idna.go",
+        "kind": 12,
+        "name": "ToASCII",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_CONTEXT_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "NewContext",
+          "start": 42,
+          "uri": "$CMD_CONTEXT_URI"
+        },
+        "detail": "cmd/compile/internal/types2 • context.go",
+        "kind": 12,
+        "name": "NewContext",
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_CONTEXT_URI"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$CMD_SEMVER_URI"
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "Compare",
+          "start": 20,
+          "uri": "$CMD_SEMVER_URI"
+        },
+        "detail": "cmd/vendor/golang.org/x/mod/semver • semver.go",
+        "kind": 12,
+        "name": "Compare",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$CMD_SEMVER_URI"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "ValidHeaderFieldName",
+          "start": 53,
+          "uri": "$SDK_HTTPGUTS_URI"
+        },
+        "detail": "vendor/golang.org/x/net/http/httpguts • httplex.go",
+        "kind": 12,
+        "name": "ValidHeaderFieldName",
+        "range": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 25,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$SDK_HTTPGUTS_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "data": {
+          "name": "ToASCII",
+          "start": 18,
+          "uri": "$SDK_IDNA_URI"
+        },
+        "detail": "vendor/golang.org/x/net/idna • idna.go",
+        "kind": 12,
+        "name": "ToASCII",
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 1
+          },
+          "start": {
+            "character": 5,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_IDNA_URI"
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MAIN_URI"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 2
+          },
+          "start": {
+            "character": 22,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MAIN_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 2
+          },
+          "start": {
+            "character": 5,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MODFILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 16,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 17,
+    "jsonrpc": "2.0",
+    "result": {
+      "data": [
+        0,
+        0,
+        7,
+        7,
+        0,
+        0,
+        8,
+        4,
+        0,
+        0,
+        1,
+        0,
+        6,
+        7,
+        0,
+        0,
+        26,
+        7,
+        0,
+        0,
+        0,
+        28,
+        4,
+        0,
+        0,
+        0,
+        12,
+        4,
+        0,
+        0,
+        1,
+        0,
+        4,
+        7,
+        0,
+        0,
+        5,
+        4,
+        2,
+        2,
+        0,
+        9,
+        7,
+        0,
+        0,
+        0,
+        8,
+        5,
+        2,
+        0,
+        0,
+        6,
+        4,
+        8,
+        0,
+        0,
+        7,
+        4,
+        0,
+        0,
+        0,
+        5,
+        7,
+        2,
+        0,
+        0,
+        8,
+        3,
+        8,
+        0,
+        0,
+        6,
+        4,
+        0,
+        0,
+        0,
+        5,
+        5,
+        2,
+        0,
+        0,
+        6,
+        3,
+        8,
+        0
+      ]
+    }
+  },
+  {
+    "id": 18,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 64,
+            "line": 2
+          },
+          "start": {
+            "character": 59,
+            "line": 2
+          }
+        },
+        "uri": "$CMD_MAIN_URI"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 1
+          },
+          "start": {
+            "character": 17,
+            "line": 1
+          }
+        },
+        "uri": "$SDK_HTTP_TEST_URI"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

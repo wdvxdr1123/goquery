@@ -1,0 +1,240 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\ntype SearchBox struct { SearchField int }\ntype SearchFace interface { SearchAction() }\ntype SearchAlias = SearchBox\ntype SearchNumber int\nconst SearchConstant = 1\nvar SearchVariable int\nfunc SearchHTTPServer() {}\nfunc SearchHashStream() {}\nfunc SearchXMLParser() {}\nfunc (s *SearchBox) SearchMethod() {}\nfunc Search世界() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SrHS"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Search"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "search"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^main.Search"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchMethod$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "'SearchBox"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "searchbox$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchBox$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "searchBox$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Search SearchBox"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "project Search"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "lib.Public"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^lib."
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "Search世界"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "世界$"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "^main.Search世界"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchField"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchAction"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "notfound"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "workspace/symbol",
+    "params": {
+      "query": ""
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "   "
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\ntype SearchBox struct { SearchField int }\ntype SearchFace interface { SearchAction() }\ntype SearchAlias = SearchBox\ntype SearchNumber int\nconst SearchConstant = 1\nvar SearchVariable int\nfunc SearchHTTPSession() {}\nfunc SearchHashStream() {}\nfunc SearchXMLParser() {}\nfunc (s *SearchBox) SearchMethod() {}\nfunc Search世界() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchHTTPSession"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "workspace/symbol",
+    "params": {
+      "query": "SearchHTTPSession"
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

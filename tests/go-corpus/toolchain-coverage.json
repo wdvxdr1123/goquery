@@ -1,0 +1,6806 @@
+{
+  "timestamp": "2026-11-07T05:58:58.122463+00:00",
+  "version": "go1.27.3",
+  "go": "go version go1.27.3",
+  "corpus": "<temp>/goquery-go1.27.3/go-go1.27.3",
+  "scope": "All src directories outside testdata, including cmd, vendor, tests and platform variants; no build-tag filtering",
+  "command": "GOQUERY_GO_SCOPE=toolchain cargo test --test stdio go_source_package_corpus --offline -- --ignored --nocapture",
+  "passed": true,
+  "packages": 800,
+  "files": 6821,
+  "headers": 110203,
+  "types": 394492,
+  "initializers": 179374,
+  "bodies": 104246,
+  "full_file_validation": true,
+  "remaining_inventory_skips": 298,
+  "removed_verified_skips": [
+    "cmd/addr2line",
+    "cmd/api",
+    "cmd/asm",
+    "cmd/asm/internal/arch",
+    "cmd/asm/internal/asm",
+    "cmd/asm/internal/flags",
+    "cmd/asm/internal/lex",
+    "cmd/buildid",
+    "cmd/cgo",
+    "cmd/cgo/internal/cgotest",
+    "cmd/cgo/internal/swig",
+    "cmd/cgo/internal/test",
+    "cmd/cgo/internal/test/gcc68255",
+    "cmd/cgo/internal/test/issue23555a",
+    "cmd/cgo/internal/test/issue23555b",
+    "cmd/cgo/internal/test/issue24161arg",
+    "cmd/cgo/internal/test/issue24161e0",
+    "cmd/cgo/internal/test/issue24161e1",
+    "cmd/cgo/internal/test/issue24161e2",
+    "cmd/cgo/internal/test/issue24161res",
+    "cmd/cgo/internal/test/issue26213",
+    "cmd/cgo/internal/test/issue26430",
+    "cmd/cgo/internal/test/issue26743",
+    "cmd/cgo/internal/test/issue27054",
+    "cmd/cgo/internal/test/issue27340",
+    "cmd/cgo/internal/test/issue29563",
+    "cmd/cgo/internal/test/issue30527",
+    "cmd/cgo/internal/test/issue41761a",
+    "cmd/cgo/internal/test/issue43639",
+    "cmd/cgo/internal/test/issue52611a",
+    "cmd/cgo/internal/test/issue52611b",
+    "cmd/cgo/internal/test/issue76861",
+    "cmd/cgo/internal/test/issue8756",
+    "cmd/cgo/internal/test/issue8828",
+    "cmd/cgo/internal/test/issue9026",
+    "cmd/cgo/internal/test/issue9400",
+    "cmd/cgo/internal/test/issue9510a",
+    "cmd/cgo/internal/test/issue9510b",
+    "cmd/cgo/internal/testcarchive",
+    "cmd/cgo/internal/testcshared",
+    "cmd/cgo/internal/testerrors",
+    "cmd/cgo/internal/testfortran",
+    "cmd/cgo/internal/testgodefs",
+    "cmd/cgo/internal/testlife",
+    "cmd/cgo/internal/testnocgo",
+    "cmd/cgo/internal/testout",
+    "cmd/cgo/internal/testplugin",
+    "cmd/cgo/internal/testsanitizers",
+    "cmd/cgo/internal/testshared",
+    "cmd/cgo/internal/testso",
+    "cmd/cgo/internal/teststdio",
+    "cmd/cgo/internal/testtls",
+    "cmd/compile",
+    "cmd/compile/internal/abi",
+    "cmd/compile/internal/abt",
+    "cmd/compile/internal/amd64",
+    "cmd/compile/internal/arm",
+    "cmd/compile/internal/arm64",
+    "cmd/compile/internal/base",
+    "cmd/compile/internal/bitvec",
+    "cmd/compile/internal/bloop",
+    "cmd/compile/internal/compare",
+    "cmd/compile/internal/coverage",
+    "cmd/compile/internal/deadlocals",
+    "cmd/compile/internal/devirtualize",
+    "cmd/compile/internal/dwarfgen",
+    "cmd/compile/internal/escape",
+    "cmd/compile/internal/gc",
+    "cmd/compile/internal/importer",
+    "cmd/compile/internal/inline",
+    "cmd/compile/internal/inline/inlheur",
+    "cmd/compile/internal/inline/interleaved",
+    "cmd/compile/internal/ir",
+    "cmd/compile/internal/liveness",
+    "cmd/compile/internal/logopt",
+    "cmd/compile/internal/loong64",
+    "cmd/compile/internal/loopvar",
+    "cmd/compile/internal/midway",
+    "cmd/compile/internal/mips",
+    "cmd/compile/internal/mips64",
+    "cmd/compile/internal/noder",
+    "cmd/compile/internal/objw",
+    "cmd/compile/internal/pgoir",
+    "cmd/compile/internal/pkginit",
+    "cmd/compile/internal/ppc64",
+    "cmd/compile/internal/rangefunc",
+    "cmd/compile/internal/reflectdata",
+    "cmd/compile/internal/riscv64",
+    "cmd/compile/internal/rttype",
+    "cmd/compile/internal/s390x",
+    "cmd/compile/internal/slice",
+    "cmd/compile/internal/ssa",
+    "cmd/compile/internal/ssa/_gen",
+    "cmd/compile/internal/ssa/_gen/vendor/golang.org/x/tools/go/ast/astutil",
+    "cmd/compile/internal/ssagen",
+    "cmd/compile/internal/staticdata",
+    "cmd/compile/internal/staticinit",
+    "cmd/compile/internal/syntax",
+    "cmd/compile/internal/test",
+    "cmd/compile/internal/typebits",
+    "cmd/compile/internal/typecheck",
+    "cmd/compile/internal/typecheck/_builtin",
+    "cmd/compile/internal/types",
+    "cmd/compile/internal/types2",
+    "cmd/compile/internal/walk",
+    "cmd/compile/internal/wasm",
+    "cmd/compile/internal/x86",
+    "cmd/covdata",
+    "cmd/cover",
+    "cmd/dist",
+    "cmd/distpack",
+    "cmd/fix",
+    "cmd/go",
+    "cmd/go/internal/auth",
+    "cmd/go/internal/base",
+    "cmd/go/internal/bug",
+    "cmd/go/internal/cache",
+    "cmd/go/internal/cacheprog",
+    "cmd/go/internal/cfg",
+    "cmd/go/internal/clean",
+    "cmd/go/internal/cmdflag",
+    "cmd/go/internal/doc",
+    "cmd/go/internal/envcmd",
+    "cmd/go/internal/fips140",
+    "cmd/go/internal/fmtcmd",
+    "cmd/go/internal/fsys",
+    "cmd/go/internal/generate",
+    "cmd/go/internal/gover",
+    "cmd/go/internal/help",
+    "cmd/go/internal/imports",
+    "cmd/go/internal/list",
+    "cmd/go/internal/load",
+    "cmd/go/internal/lockedfile",
+    "cmd/go/internal/lockedfile/internal/filelock",
+    "cmd/go/internal/mmap",
+    "cmd/go/internal/modcmd",
+    "cmd/go/internal/modfetch",
+    "cmd/go/internal/modfetch/codehost",
+    "cmd/go/internal/modfetch/zip_sum_test",
+    "cmd/go/internal/modget",
+    "cmd/go/internal/modindex",
+    "cmd/go/internal/modinfo",
+    "cmd/go/internal/modload",
+    "cmd/go/internal/mvs",
+    "cmd/go/internal/run",
+    "cmd/go/internal/search",
+    "cmd/go/internal/str",
+    "cmd/go/internal/telemetrycmd",
+    "cmd/go/internal/telemetrystats",
+    "cmd/go/internal/test",
+    "cmd/go/internal/test/internal/genflags",
+    "cmd/go/internal/tool",
+    "cmd/go/internal/toolchain",
+    "cmd/go/internal/trace",
+    "cmd/go/internal/vcs",
+    "cmd/go/internal/vcweb",
+    "cmd/go/internal/vcweb/vcstest",
+    "cmd/go/internal/version",
+    "cmd/go/internal/verylongtest",
+    "cmd/go/internal/vet",
+    "cmd/go/internal/web",
+    "cmd/go/internal/web/intercept",
+    "cmd/go/internal/work",
+    "cmd/go/internal/workcmd",
+    "cmd/gofmt",
+    "cmd/internal/archive",
+    "cmd/internal/bio",
+    "cmd/internal/bootstrap_test",
+    "cmd/internal/browser",
+    "cmd/internal/buildid",
+    "cmd/internal/codesign",
+    "cmd/internal/cov",
+    "cmd/internal/cov/covcmd",
+    "cmd/internal/disasm",
+    "cmd/internal/dwarf",
+    "cmd/internal/edit",
+    "cmd/internal/fuzztest",
+    "cmd/internal/gcprog",
+    "cmd/internal/goobj",
+    "cmd/internal/hash",
+    "cmd/internal/macho",
+    "cmd/internal/metadata",
+    "cmd/internal/moddeps",
+    "cmd/internal/obj",
+    "cmd/internal/obj/arm",
+    "cmd/internal/obj/arm64",
+    "cmd/internal/obj/loong64",
+    "cmd/internal/obj/mips",
+    "cmd/internal/obj/ppc64",
+    "cmd/internal/obj/riscv",
+    "cmd/internal/obj/s390x",
+    "cmd/internal/obj/wasm",
+    "cmd/internal/obj/x86",
+    "cmd/internal/objabi",
+    "cmd/internal/objfile",
+    "cmd/internal/osinfo",
+    "cmd/internal/par",
+    "cmd/internal/pathcache",
+    "cmd/internal/pgo",
+    "cmd/internal/pkgpath",
+    "cmd/internal/pkgpattern",
+    "cmd/internal/quoted",
+    "cmd/internal/robustio",
+    "cmd/internal/script",
+    "cmd/internal/script/scripttest",
+    "cmd/internal/src",
+    "cmd/internal/sys",
+    "cmd/internal/telemetry",
+    "cmd/internal/telemetry/counter",
+    "cmd/internal/test2json",
+    "cmd/internal/testdir",
+    "cmd/link",
+    "cmd/link/internal/amd64",
+    "cmd/link/internal/arm",
+    "cmd/link/internal/arm64",
+    "cmd/link/internal/benchmark",
+    "cmd/link/internal/dwtest",
+    "cmd/link/internal/ld",
+    "cmd/link/internal/loadelf",
+    "cmd/link/internal/loader",
+    "cmd/link/internal/loadmacho",
+    "cmd/link/internal/loadpe",
+    "cmd/link/internal/loadxcoff",
+    "cmd/link/internal/loong64",
+    "cmd/link/internal/mips",
+    "cmd/link/internal/mips64",
+    "cmd/link/internal/ppc64",
+    "cmd/link/internal/riscv64",
+    "cmd/link/internal/s390x",
+    "cmd/link/internal/sym",
+    "cmd/link/internal/wasm",
+    "cmd/link/internal/x86",
+    "cmd/nm",
+    "cmd/objdump",
+    "cmd/pack",
+    "cmd/pprof",
+    "cmd/preprofile",
+    "cmd/relnote",
+    "cmd/test2json",
+    "cmd/tools",
+    "cmd/trace",
+    "cmd/vendor/github.com/google/pprof/driver",
+    "cmd/vendor/github.com/google/pprof/internal/binutils",
+    "cmd/vendor/github.com/google/pprof/internal/driver",
+    "cmd/vendor/github.com/google/pprof/internal/elfexec",
+    "cmd/vendor/github.com/google/pprof/internal/graph",
+    "cmd/vendor/github.com/google/pprof/internal/measurement",
+    "cmd/vendor/github.com/google/pprof/internal/plugin",
+    "cmd/vendor/github.com/google/pprof/internal/report",
+    "cmd/vendor/github.com/google/pprof/internal/symbolizer",
+    "cmd/vendor/github.com/google/pprof/internal/symbolz",
+    "cmd/vendor/github.com/google/pprof/internal/transport",
+    "cmd/vendor/github.com/google/pprof/profile",
+    "cmd/vendor/github.com/google/pprof/third_party/svgpan",
+    "cmd/vendor/github.com/ianlancetaylor/demangle",
+    "cmd/vendor/golang.org/x/arch/arm/armasm",
+    "cmd/vendor/golang.org/x/arch/arm64/arm64asm",
+    "cmd/vendor/golang.org/x/arch/loong64/loong64asm",
+    "cmd/vendor/golang.org/x/arch/ppc64/ppc64asm",
+    "cmd/vendor/golang.org/x/arch/riscv64/riscv64asm",
+    "cmd/vendor/golang.org/x/arch/s390x/s390xasm",
+    "cmd/vendor/golang.org/x/arch/x86/x86asm",
+    "cmd/vendor/golang.org/x/build/relnote",
+    "cmd/vendor/golang.org/x/mod/internal/lazyregexp",
+    "cmd/vendor/golang.org/x/mod/modfile",
+    "cmd/vendor/golang.org/x/mod/module",
+    "cmd/vendor/golang.org/x/mod/semver",
+    "cmd/vendor/golang.org/x/mod/sumdb",
+    "cmd/vendor/golang.org/x/mod/sumdb/dirhash",
+    "cmd/vendor/golang.org/x/mod/sumdb/note",
+    "cmd/vendor/golang.org/x/mod/sumdb/tlog",
+    "cmd/vendor/golang.org/x/mod/zip",
+    "cmd/vendor/golang.org/x/sync/errgroup",
+    "cmd/vendor/golang.org/x/sync/semaphore",
+    "cmd/vendor/golang.org/x/sys/plan9",
+    "cmd/vendor/golang.org/x/sys/unix",
+    "cmd/vendor/golang.org/x/sys/windows",
+    "cmd/vendor/golang.org/x/telemetry",
+    "cmd/vendor/golang.org/x/telemetry/counter",
+    "cmd/vendor/golang.org/x/telemetry/counter/countertest",
+    "cmd/vendor/golang.org/x/telemetry/internal/config",
+    "cmd/vendor/golang.org/x/telemetry/internal/configstore",
+    "cmd/vendor/golang.org/x/telemetry/internal/counter",
+    "cmd/vendor/golang.org/x/telemetry/internal/crashmonitor",
+    "cmd/vendor/golang.org/x/telemetry/internal/mmap",
+    "cmd/vendor/golang.org/x/telemetry/internal/telemetry",
+    "cmd/vendor/golang.org/x/telemetry/internal/upload",
+    "cmd/vendor/golang.org/x/term",
+    "cmd/vendor/golang.org/x/text/cases",
+    "cmd/vendor/golang.org/x/text/internal",
+    "cmd/vendor/golang.org/x/text/internal/language",
+    "cmd/vendor/golang.org/x/text/internal/language/compact",
+    "cmd/vendor/golang.org/x/text/internal/tag",
+    "cmd/vendor/golang.org/x/text/language",
+    "cmd/vendor/golang.org/x/text/transform",
+    "cmd/vendor/golang.org/x/text/unicode/norm",
+    "cmd/vendor/golang.org/x/tools/cmd/bisect",
+    "cmd/vendor/golang.org/x/tools/cover",
+    "cmd/vendor/golang.org/x/tools/go/analysis",
+    "cmd/vendor/golang.org/x/tools/go/analysis/internal/analysisflags",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/appends",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/asmdecl",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/assign",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/atomic",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/bools",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/buildtag",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/cgocall",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/composite",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/copylock",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/ctrlflow",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/defers",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/directive",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/errorsas",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/framepointer",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/hostport",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/httpresponse",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/ifaceassert",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/inline",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/inspect",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/internal/gofixdirective",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/loopclosure",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/lostcancel",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/modernize",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/nilfunc",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/printf",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/shift",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/sigchanyzer",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/slog",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/stdmethods",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/stdversion",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/stringintconv",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/structtag",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/testinggoroutine",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/tests",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/timeformat",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/unmarshal",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/unreachable",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/unsafeptr",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/unusedresult",
+    "cmd/vendor/golang.org/x/tools/go/analysis/passes/waitgroup",
+    "cmd/vendor/golang.org/x/tools/go/analysis/suite/fix",
+    "cmd/vendor/golang.org/x/tools/go/analysis/suite/vet",
+    "cmd/vendor/golang.org/x/tools/go/analysis/unitchecker",
+    "cmd/vendor/golang.org/x/tools/go/ast/astutil",
+    "cmd/vendor/golang.org/x/tools/go/ast/edge",
+    "cmd/vendor/golang.org/x/tools/go/ast/inspector",
+    "cmd/vendor/golang.org/x/tools/go/cfg",
+    "cmd/vendor/golang.org/x/tools/go/types/objectpath",
+    "cmd/vendor/golang.org/x/tools/go/types/typeutil",
+    "cmd/vendor/golang.org/x/tools/internal/analysis/analyzerutil",
+    "cmd/vendor/golang.org/x/tools/internal/analysis/driverutil",
+    "cmd/vendor/golang.org/x/tools/internal/analysis/typeindex",
+    "cmd/vendor/golang.org/x/tools/internal/astutil",
+    "cmd/vendor/golang.org/x/tools/internal/astutil/free",
+    "cmd/vendor/golang.org/x/tools/internal/bisect",
+    "cmd/vendor/golang.org/x/tools/internal/diff",
+    "cmd/vendor/golang.org/x/tools/internal/diff/lcs",
+    "cmd/vendor/golang.org/x/tools/internal/facts",
+    "cmd/vendor/golang.org/x/tools/internal/fmtstr",
+    "cmd/vendor/golang.org/x/tools/internal/goplsexport",
+    "cmd/vendor/golang.org/x/tools/internal/moreiters",
+    "cmd/vendor/golang.org/x/tools/internal/packagepath",
+    "cmd/vendor/golang.org/x/tools/internal/refactor",
+    "cmd/vendor/golang.org/x/tools/internal/refactor/inline",
+    "cmd/vendor/golang.org/x/tools/internal/stdlib",
+    "cmd/vendor/golang.org/x/tools/internal/typeparams",
+    "cmd/vendor/golang.org/x/tools/internal/typesinternal",
+    "cmd/vendor/golang.org/x/tools/internal/typesinternal/typeindex",
+    "cmd/vendor/golang.org/x/tools/internal/versions",
+    "cmd/vendor/golang.org/x/tools/refactor/satisfy",
+    "cmd/vendor/rsc.io/markdown",
+    "cmd/vet"
+  ],
+  "source_manifest_sha256": "1b1d048d151ded1a741d7e0d94efc156881d33023462c9b230d87fbc661d15c5",
+  "syntax_manifest_sha256": "1b3eca9f639f91f60421829627b209ee043a0f576c1ffe196255e706e3f3e0a1",
+  "hash_method": "SHA256 of sorted relative UTF-8 path, NUL, file SHA256 ASCII hex, newline; source paths relative to src, syntax paths relative to repository",
+  "oracle_sha256": "d15fa63bee8c4c5c9d4c6f26d6e66e2b8a647ab9bb5ffe9719dee192f694b52b",
+  "runner_sha256": "61cd9f89871b8912f9c024f5e73247e80fe64235d9d707fc83bcde6428c3bdc3",
+  "skip_manifest_sha256": "c45f935ab2ce369d1a35b1c8b5d483731b651afff65c9e6775791361d7f24e8f",
+  "commit": "3f6b0a42407fd2275ff23cf649be5ba376e09283",
+  "limitations": [
+    "Positive full-file/component/token acceptance does not establish negative grammar or semantic parity",
+    "298 testdata directories still require per-file positive/negative classification",
+    "Numeric-literal validity and exact Unicode identifier categories remain incomplete",
+    "This syntax-only round does not update LSP latency or process-memory claims"
+  ],
+  "directories": [
+    {
+      "directory": "archive/tar",
+      "files": 14,
+      "headers": 245,
+      "types": 921,
+      "initializers": 72,
+      "bodies": 245
+    },
+    {
+      "directory": "archive/zip",
+      "files": 11,
+      "headers": 265,
+      "types": 857,
+      "initializers": 56,
+      "bodies": 265
+    },
+    {
+      "directory": "arena",
+      "files": 2,
+      "headers": 13,
+      "types": 35,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "bufio",
+      "files": 7,
+      "headers": 226,
+      "types": 635,
+      "initializers": 36,
+      "bodies": 226
+    },
+    {
+      "directory": "builtin",
+      "files": 1,
+      "headers": 18,
+      "types": 68,
+      "initializers": 3,
+      "bodies": 0
+    },
+    {
+      "directory": "bytes",
+      "files": 12,
+      "headers": 471,
+      "types": 973,
+      "initializers": 62,
+      "bodies": 471
+    },
+    {
+      "directory": "cmd/addr2line",
+      "files": 2,
+      "headers": 8,
+      "types": 11,
+      "initializers": 1,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/api",
+      "files": 3,
+      "headers": 59,
+      "types": 183,
+      "initializers": 15,
+      "bodies": 59
+    },
+    {
+      "directory": "cmd/asm",
+      "files": 2,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/asm/internal/arch",
+      "files": 8,
+      "headers": 61,
+      "types": 172,
+      "initializers": 11,
+      "bodies": 61
+    },
+    {
+      "directory": "cmd/asm/internal/asm",
+      "files": 7,
+      "headers": 131,
+      "types": 371,
+      "initializers": 18,
+      "bodies": 131
+    },
+    {
+      "directory": "cmd/asm/internal/flags",
+      "files": 1,
+      "headers": 5,
+      "types": 14,
+      "initializers": 11,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/asm/internal/lex",
+      "files": 6,
+      "headers": 64,
+      "types": 191,
+      "initializers": 3,
+      "bodies": 64
+    },
+    {
+      "directory": "cmd/buildid",
+      "files": 2,
+      "headers": 2,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo",
+      "files": 7,
+      "headers": 158,
+      "types": 658,
+      "initializers": 61,
+      "bodies": 158
+    },
+    {
+      "directory": "cmd/cgo/internal/cgotest",
+      "files": 1,
+      "headers": 2,
+      "types": 6,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/swig",
+      "files": 1,
+      "headers": 11,
+      "types": 18,
+      "initializers": 0,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/cgo/internal/test",
+      "files": 59,
+      "headers": 1683,
+      "types": 1778,
+      "initializers": 32,
+      "bodies": 1681
+    },
+    {
+      "directory": "cmd/cgo/internal/test/gcc68255",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue23555a",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue23555b",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue24161arg",
+      "files": 2,
+      "headers": 2,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue24161e0",
+      "files": 1,
+      "headers": 2,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue24161e1",
+      "files": 1,
+      "headers": 3,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue24161e2",
+      "files": 1,
+      "headers": 3,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue24161res",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue26213",
+      "files": 1,
+      "headers": 1,
+      "types": 16,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue26430",
+      "files": 2,
+      "headers": 2,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue26743",
+      "files": 2,
+      "headers": 0,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue27054",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue27340",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue29563",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue30527",
+      "files": 2,
+      "headers": 1,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue41761a",
+      "files": 1,
+      "headers": 0,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue43639",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue52611a",
+      "files": 2,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue52611b",
+      "files": 2,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue76861",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue8756",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue8828",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue9026",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue9400",
+      "files": 2,
+      "headers": 2,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue9510a",
+      "files": 1,
+      "headers": 1,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/test/issue9510b",
+      "files": 1,
+      "headers": 1,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/testcarchive",
+      "files": 1,
+      "headers": 52,
+      "types": 83,
+      "initializers": 3,
+      "bodies": 52
+    },
+    {
+      "directory": "cmd/cgo/internal/testcshared",
+      "files": 1,
+      "headers": 34,
+      "types": 80,
+      "initializers": 1,
+      "bodies": 34
+    },
+    {
+      "directory": "cmd/cgo/internal/testerrors",
+      "files": 4,
+      "headers": 27,
+      "types": 77,
+      "initializers": 10,
+      "bodies": 27
+    },
+    {
+      "directory": "cmd/cgo/internal/testfortran",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/testgodefs",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/cgo/internal/testlife",
+      "files": 1,
+      "headers": 3,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/cgo/internal/testnocgo",
+      "files": 2,
+      "headers": 3,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/cgo/internal/testout",
+      "files": 1,
+      "headers": 4,
+      "types": 13,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/cgo/internal/testplugin",
+      "files": 1,
+      "headers": 39,
+      "types": 55,
+      "initializers": 2,
+      "bodies": 39
+    },
+    {
+      "directory": "cmd/cgo/internal/testsanitizers",
+      "files": 8,
+      "headers": 51,
+      "types": 134,
+      "initializers": 2,
+      "bodies": 51
+    },
+    {
+      "directory": "cmd/cgo/internal/testshared",
+      "files": 1,
+      "headers": 70,
+      "types": 127,
+      "initializers": 8,
+      "bodies": 70
+    },
+    {
+      "directory": "cmd/cgo/internal/testso",
+      "files": 1,
+      "headers": 3,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/cgo/internal/teststdio",
+      "files": 1,
+      "headers": 4,
+      "types": 5,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/cgo/internal/testtls",
+      "files": 3,
+      "headers": 3,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/compile",
+      "files": 3,
+      "headers": 3,
+      "types": 4,
+      "initializers": 2,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/compile/internal/abi",
+      "files": 1,
+      "headers": 39,
+      "types": 144,
+      "initializers": 0,
+      "bodies": 39
+    },
+    {
+      "directory": "cmd/compile/internal/abt",
+      "files": 2,
+      "headers": 85,
+      "types": 253,
+      "initializers": 3,
+      "bodies": 85
+    },
+    {
+      "directory": "cmd/compile/internal/amd64",
+      "files": 7,
+      "headers": 92,
+      "types": 277,
+      "initializers": 6,
+      "bodies": 92
+    },
+    {
+      "directory": "cmd/compile/internal/arm",
+      "files": 3,
+      "headers": 14,
+      "types": 58,
+      "initializers": 4,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/compile/internal/arm64",
+      "files": 4,
+      "headers": 54,
+      "types": 209,
+      "initializers": 4,
+      "bodies": 54
+    },
+    {
+      "directory": "cmd/compile/internal/base",
+      "files": 13,
+      "headers": 95,
+      "types": 450,
+      "initializers": 5,
+      "bodies": 95
+    },
+    {
+      "directory": "cmd/compile/internal/bitvec",
+      "files": 1,
+      "headers": 17,
+      "types": 43,
+      "initializers": 3,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/compile/internal/bloop",
+      "files": 1,
+      "headers": 13,
+      "types": 57,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/compile/internal/compare",
+      "files": 2,
+      "headers": 20,
+      "types": 70,
+      "initializers": 0,
+      "bodies": 20
+    },
+    {
+      "directory": "cmd/compile/internal/coverage",
+      "files": 1,
+      "headers": 5,
+      "types": 19,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/compile/internal/deadlocals",
+      "files": 1,
+      "headers": 8,
+      "types": 34,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/compile/internal/devirtualize",
+      "files": 3,
+      "headers": 41,
+      "types": 189,
+      "initializers": 2,
+      "bodies": 41
+    },
+    {
+      "directory": "cmd/compile/internal/dwarfgen",
+      "files": 6,
+      "headers": 68,
+      "types": 261,
+      "initializers": 2,
+      "bodies": 68
+    },
+    {
+      "directory": "cmd/compile/internal/escape",
+      "files": 10,
+      "headers": 107,
+      "types": 534,
+      "initializers": 6,
+      "bodies": 107
+    },
+    {
+      "directory": "cmd/compile/internal/gc",
+      "files": 5,
+      "headers": 30,
+      "types": 39,
+      "initializers": 1,
+      "bodies": 30
+    },
+    {
+      "directory": "cmd/compile/internal/importer",
+      "files": 4,
+      "headers": 69,
+      "types": 238,
+      "initializers": 2,
+      "bodies": 69
+    },
+    {
+      "directory": "cmd/compile/internal/inline",
+      "files": 1,
+      "headers": 41,
+      "types": 172,
+      "initializers": 16,
+      "bodies": 41
+    },
+    {
+      "directory": "cmd/compile/internal/inline/inlheur",
+      "files": 27,
+      "headers": 201,
+      "types": 746,
+      "initializers": 43,
+      "bodies": 201
+    },
+    {
+      "directory": "cmd/compile/internal/inline/interleaved",
+      "files": 1,
+      "headers": 15,
+      "types": 51,
+      "initializers": 0,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/compile/internal/ir",
+      "files": 33,
+      "headers": 779,
+      "types": 3199,
+      "initializers": 44,
+      "bodies": 779
+    },
+    {
+      "directory": "cmd/compile/internal/liveness",
+      "files": 6,
+      "headers": 114,
+      "types": 421,
+      "initializers": 9,
+      "bodies": 114
+    },
+    {
+      "directory": "cmd/compile/internal/logopt",
+      "files": 2,
+      "headers": 34,
+      "types": 128,
+      "initializers": 5,
+      "bodies": 34
+    },
+    {
+      "directory": "cmd/compile/internal/loong64",
+      "files": 3,
+      "headers": 15,
+      "types": 60,
+      "initializers": 1,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/compile/internal/loopvar",
+      "files": 2,
+      "headers": 32,
+      "types": 91,
+      "initializers": 3,
+      "bodies": 32
+    },
+    {
+      "directory": "cmd/compile/internal/midway",
+      "files": 5,
+      "headers": 52,
+      "types": 216,
+      "initializers": 5,
+      "bodies": 52
+    },
+    {
+      "directory": "cmd/compile/internal/mips",
+      "files": 3,
+      "headers": 10,
+      "types": 38,
+      "initializers": 1,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/compile/internal/mips64",
+      "files": 3,
+      "headers": 10,
+      "types": 35,
+      "initializers": 1,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/compile/internal/noder",
+      "files": 18,
+      "headers": 402,
+      "types": 1515,
+      "initializers": 24,
+      "bodies": 402
+    },
+    {
+      "directory": "cmd/compile/internal/objw",
+      "files": 2,
+      "headers": 23,
+      "types": 98,
+      "initializers": 2,
+      "bodies": 23
+    },
+    {
+      "directory": "cmd/compile/internal/pgoir",
+      "files": 1,
+      "headers": 16,
+      "types": 63,
+      "initializers": 2,
+      "bodies": 16
+    },
+    {
+      "directory": "cmd/compile/internal/pkginit",
+      "files": 2,
+      "headers": 7,
+      "types": 20,
+      "initializers": 2,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/compile/internal/ppc64",
+      "files": 4,
+      "headers": 10,
+      "types": 43,
+      "initializers": 3,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/compile/internal/rangefunc",
+      "files": 2,
+      "headers": 220,
+      "types": 482,
+      "initializers": 17,
+      "bodies": 218
+    },
+    {
+      "directory": "cmd/compile/internal/reflectdata",
+      "files": 5,
+      "headers": 117,
+      "types": 342,
+      "initializers": 14,
+      "bodies": 117
+    },
+    {
+      "directory": "cmd/compile/internal/riscv64",
+      "files": 4,
+      "headers": 13,
+      "types": 56,
+      "initializers": 3,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/compile/internal/rttype",
+      "files": 1,
+      "headers": 21,
+      "types": 78,
+      "initializers": 0,
+      "bodies": 21
+    },
+    {
+      "directory": "cmd/compile/internal/s390x",
+      "files": 3,
+      "headers": 14,
+      "types": 57,
+      "initializers": 1,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/compile/internal/slice",
+      "files": 1,
+      "headers": 8,
+      "types": 44,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/compile/internal/ssa",
+      "files": 133,
+      "headers": 6688,
+      "types": 15413,
+      "initializers": 257,
+      "bodies": 6683
+    },
+    {
+      "directory": "cmd/compile/internal/ssa/_gen",
+      "files": 24,
+      "headers": 119,
+      "types": 415,
+      "initializers": 39,
+      "bodies": 119
+    },
+    {
+      "directory": "cmd/compile/internal/ssa/_gen/vendor/golang.org/x/tools/go/ast/astutil",
+      "files": 4,
+      "headers": 43,
+      "types": 165,
+      "initializers": 1,
+      "bodies": 43
+    },
+    {
+      "directory": "cmd/compile/internal/ssagen",
+      "files": 11,
+      "headers": 1037,
+      "types": 4550,
+      "initializers": 40,
+      "bodies": 1037
+    },
+    {
+      "directory": "cmd/compile/internal/staticdata",
+      "files": 2,
+      "headers": 21,
+      "types": 69,
+      "initializers": 4,
+      "bodies": 21
+    },
+    {
+      "directory": "cmd/compile/internal/staticinit",
+      "files": 1,
+      "headers": 33,
+      "types": 170,
+      "initializers": 1,
+      "bodies": 33
+    },
+    {
+      "directory": "cmd/compile/internal/syntax",
+      "files": 24,
+      "headers": 327,
+      "types": 1270,
+      "initializers": 53,
+      "bodies": 327
+    },
+    {
+      "directory": "cmd/compile/internal/test",
+      "files": 46,
+      "headers": 2080,
+      "types": 4961,
+      "initializers": 33,
+      "bodies": 2076
+    },
+    {
+      "directory": "cmd/compile/internal/typebits",
+      "files": 1,
+      "headers": 3,
+      "types": 10,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/compile/internal/typecheck",
+      "files": 18,
+      "headers": 200,
+      "types": 672,
+      "initializers": 14,
+      "bodies": 200
+    },
+    {
+      "directory": "cmd/compile/internal/typecheck/_builtin",
+      "files": 2,
+      "headers": 217,
+      "types": 571,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/compile/internal/types",
+      "files": 15,
+      "headers": 252,
+      "types": 745,
+      "initializers": 52,
+      "bodies": 252
+    },
+    {
+      "directory": "cmd/compile/internal/types2",
+      "files": 97,
+      "headers": 1163,
+      "types": 4164,
+      "initializers": 77,
+      "bodies": 1162
+    },
+    {
+      "directory": "cmd/compile/internal/walk",
+      "files": 14,
+      "headers": 236,
+      "types": 1084,
+      "initializers": 11,
+      "bodies": 236
+    },
+    {
+      "directory": "cmd/compile/internal/wasm",
+      "files": 2,
+      "headers": 21,
+      "types": 49,
+      "initializers": 0,
+      "bodies": 21
+    },
+    {
+      "directory": "cmd/compile/internal/x86",
+      "files": 3,
+      "headers": 10,
+      "types": 35,
+      "initializers": 3,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/covdata",
+      "files": 9,
+      "headers": 104,
+      "types": 324,
+      "initializers": 21,
+      "bodies": 104
+    },
+    {
+      "directory": "cmd/cover",
+      "files": 8,
+      "headers": 98,
+      "types": 341,
+      "initializers": 17,
+      "bodies": 98
+    },
+    {
+      "directory": "cmd/dist",
+      "files": 20,
+      "headers": 204,
+      "types": 552,
+      "initializers": 43,
+      "bodies": 201
+    },
+    {
+      "directory": "cmd/distpack",
+      "files": 4,
+      "headers": 46,
+      "types": 122,
+      "initializers": 6,
+      "bodies": 46
+    },
+    {
+      "directory": "cmd/fix",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/go",
+      "files": 19,
+      "headers": 197,
+      "types": 377,
+      "initializers": 28,
+      "bodies": 197
+    },
+    {
+      "directory": "cmd/go/internal/auth",
+      "files": 9,
+      "headers": 34,
+      "types": 90,
+      "initializers": 4,
+      "bodies": 34
+    },
+    {
+      "directory": "cmd/go/internal/base",
+      "files": 12,
+      "headers": 55,
+      "types": 119,
+      "initializers": 10,
+      "bodies": 55
+    },
+    {
+      "directory": "cmd/go/internal/bug",
+      "files": 1,
+      "headers": 11,
+      "types": 18,
+      "initializers": 3,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/go/internal/cache",
+      "files": 6,
+      "headers": 63,
+      "types": 247,
+      "initializers": 17,
+      "bodies": 63
+    },
+    {
+      "directory": "cmd/go/internal/cacheprog",
+      "files": 1,
+      "headers": 0,
+      "types": 17,
+      "initializers": 3,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/go/internal/cfg",
+      "files": 2,
+      "headers": 34,
+      "types": 120,
+      "initializers": 30,
+      "bodies": 34
+    },
+    {
+      "directory": "cmd/go/internal/clean",
+      "files": 1,
+      "headers": 7,
+      "types": 19,
+      "initializers": 4,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/go/internal/cmdflag",
+      "files": 1,
+      "headers": 4,
+      "types": 25,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/go/internal/doc",
+      "files": 9,
+      "headers": 92,
+      "types": 339,
+      "initializers": 14,
+      "bodies": 92
+    },
+    {
+      "directory": "cmd/go/internal/envcmd",
+      "files": 2,
+      "headers": 29,
+      "types": 60,
+      "initializers": 5,
+      "bodies": 29
+    },
+    {
+      "directory": "cmd/go/internal/fips140",
+      "files": 3,
+      "headers": 18,
+      "types": 27,
+      "initializers": 2,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/go/internal/fmtcmd",
+      "files": 1,
+      "headers": 3,
+      "types": 4,
+      "initializers": 1,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/go/internal/fsys",
+      "files": 4,
+      "headers": 92,
+      "types": 285,
+      "initializers": 10,
+      "bodies": 92
+    },
+    {
+      "directory": "cmd/go/internal/generate",
+      "files": 2,
+      "headers": 15,
+      "types": 53,
+      "initializers": 7,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/go/internal/gover",
+      "files": 9,
+      "headers": 44,
+      "types": 126,
+      "initializers": 22,
+      "bodies": 41
+    },
+    {
+      "directory": "cmd/go/internal/help",
+      "files": 2,
+      "headers": 6,
+      "types": 24,
+      "initializers": 15,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/go/internal/imports",
+      "files": 6,
+      "headers": 38,
+      "types": 111,
+      "initializers": 16,
+      "bodies": 38
+    },
+    {
+      "directory": "cmd/go/internal/list",
+      "files": 2,
+      "headers": 24,
+      "types": 69,
+      "initializers": 14,
+      "bodies": 24
+    },
+    {
+      "directory": "cmd/go/internal/load",
+      "files": 9,
+      "headers": 167,
+      "types": 757,
+      "initializers": 21,
+      "bodies": 167
+    },
+    {
+      "directory": "cmd/go/internal/lockedfile",
+      "files": 6,
+      "headers": 37,
+      "types": 82,
+      "initializers": 3,
+      "bodies": 37
+    },
+    {
+      "directory": "cmd/go/internal/lockedfile/internal/filelock",
+      "files": 6,
+      "headers": 26,
+      "types": 79,
+      "initializers": 13,
+      "bodies": 26
+    },
+    {
+      "directory": "cmd/go/internal/mmap",
+      "files": 5,
+      "headers": 5,
+      "types": 18,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/go/internal/modcmd",
+      "files": 9,
+      "headers": 72,
+      "types": 198,
+      "initializers": 21,
+      "bodies": 72
+    },
+    {
+      "directory": "cmd/go/internal/modfetch",
+      "files": 13,
+      "headers": 234,
+      "types": 930,
+      "initializers": 29,
+      "bodies": 234
+    },
+    {
+      "directory": "cmd/go/internal/modfetch/codehost",
+      "files": 6,
+      "headers": 136,
+      "types": 586,
+      "initializers": 15,
+      "bodies": 136
+    },
+    {
+      "directory": "cmd/go/internal/modfetch/zip_sum_test",
+      "files": 1,
+      "headers": 5,
+      "types": 10,
+      "initializers": 7,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/go/internal/modget",
+      "files": 2,
+      "headers": 89,
+      "types": 342,
+      "initializers": 9,
+      "bodies": 89
+    },
+    {
+      "directory": "cmd/go/internal/modindex",
+      "files": 7,
+      "headers": 122,
+      "types": 450,
+      "initializers": 29,
+      "bodies": 122
+    },
+    {
+      "directory": "cmd/go/internal/modinfo",
+      "files": 1,
+      "headers": 3,
+      "types": 30,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/go/internal/modload",
+      "files": 16,
+      "headers": 379,
+      "types": 1613,
+      "initializers": 34,
+      "bodies": 378
+    },
+    {
+      "directory": "cmd/go/internal/mvs",
+      "files": 4,
+      "headers": 45,
+      "types": 188,
+      "initializers": 1,
+      "bodies": 45
+    },
+    {
+      "directory": "cmd/go/internal/run",
+      "files": 1,
+      "headers": 5,
+      "types": 13,
+      "initializers": 1,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/go/internal/search",
+      "files": 1,
+      "headers": 27,
+      "types": 76,
+      "initializers": 0,
+      "bodies": 27
+    },
+    {
+      "directory": "cmd/go/internal/str",
+      "files": 3,
+      "headers": 13,
+      "types": 34,
+      "initializers": 1,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/go/internal/telemetrycmd",
+      "files": 1,
+      "headers": 3,
+      "types": 4,
+      "initializers": 1,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/go/internal/telemetrystats",
+      "files": 5,
+      "headers": 8,
+      "types": 7,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/go/internal/test",
+      "files": 6,
+      "headers": 56,
+      "types": 194,
+      "initializers": 20,
+      "bodies": 56
+    },
+    {
+      "directory": "cmd/go/internal/test/internal/genflags",
+      "files": 2,
+      "headers": 4,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/go/internal/tool",
+      "files": 4,
+      "headers": 17,
+      "types": 53,
+      "initializers": 4,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/go/internal/toolchain",
+      "files": 11,
+      "headers": 41,
+      "types": 125,
+      "initializers": 15,
+      "bodies": 41
+    },
+    {
+      "directory": "cmd/go/internal/trace",
+      "files": 1,
+      "headers": 12,
+      "types": 50,
+      "initializers": 5,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/go/internal/vcs",
+      "files": 4,
+      "headers": 64,
+      "types": 305,
+      "initializers": 18,
+      "bodies": 64
+    },
+    {
+      "directory": "cmd/go/internal/vcweb",
+      "files": 10,
+      "headers": 81,
+      "types": 279,
+      "initializers": 3,
+      "bodies": 81
+    },
+    {
+      "directory": "cmd/go/internal/vcweb/vcstest",
+      "files": 2,
+      "headers": 19,
+      "types": 37,
+      "initializers": 4,
+      "bodies": 19
+    },
+    {
+      "directory": "cmd/go/internal/version",
+      "files": 1,
+      "headers": 6,
+      "types": 16,
+      "initializers": 4,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/go/internal/verylongtest",
+      "files": 3,
+      "headers": 14,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/go/internal/vet",
+      "files": 2,
+      "headers": 17,
+      "types": 66,
+      "initializers": 5,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/go/internal/web",
+      "files": 11,
+      "headers": 38,
+      "types": 124,
+      "initializers": 9,
+      "bodies": 38
+    },
+    {
+      "directory": "cmd/go/internal/web/intercept",
+      "files": 1,
+      "headers": 4,
+      "types": 12,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/go/internal/work",
+      "files": 14,
+      "headers": 322,
+      "types": 1361,
+      "initializers": 36,
+      "bodies": 322
+    },
+    {
+      "directory": "cmd/go/internal/workcmd",
+      "files": 6,
+      "headers": 31,
+      "types": 79,
+      "initializers": 12,
+      "bodies": 31
+    },
+    {
+      "directory": "cmd/gofmt",
+      "files": 8,
+      "headers": 74,
+      "types": 232,
+      "initializers": 25,
+      "bodies": 74
+    },
+    {
+      "directory": "cmd/internal/archive",
+      "files": 2,
+      "headers": 29,
+      "types": 117,
+      "initializers": 12,
+      "bodies": 29
+    },
+    {
+      "directory": "cmd/internal/bio",
+      "files": 3,
+      "headers": 16,
+      "types": 51,
+      "initializers": 1,
+      "bodies": 16
+    },
+    {
+      "directory": "cmd/internal/bootstrap_test",
+      "files": 3,
+      "headers": 6,
+      "types": 19,
+      "initializers": 0,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/internal/browser",
+      "files": 1,
+      "headers": 4,
+      "types": 7,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/internal/buildid",
+      "files": 4,
+      "headers": 25,
+      "types": 97,
+      "initializers": 14,
+      "bodies": 25
+    },
+    {
+      "directory": "cmd/internal/codesign",
+      "files": 1,
+      "headers": 10,
+      "types": 68,
+      "initializers": 23,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/internal/cov",
+      "files": 3,
+      "headers": 24,
+      "types": 134,
+      "initializers": 2,
+      "bodies": 24
+    },
+    {
+      "directory": "cmd/internal/cov/covcmd",
+      "files": 1,
+      "headers": 1,
+      "types": 20,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/internal/disasm",
+      "files": 1,
+      "headers": 20,
+      "types": 151,
+      "initializers": 2,
+      "bodies": 20
+    },
+    {
+      "directory": "cmd/internal/dwarf",
+      "files": 5,
+      "headers": 57,
+      "types": 322,
+      "initializers": 422,
+      "bodies": 57
+    },
+    {
+      "directory": "cmd/internal/edit",
+      "files": 2,
+      "headers": 10,
+      "types": 31,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/internal/fuzztest",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/internal/gcprog",
+      "files": 1,
+      "headers": 12,
+      "types": 37,
+      "initializers": 1,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/internal/goobj",
+      "files": 6,
+      "headers": 150,
+      "types": 415,
+      "initializers": 25,
+      "bodies": 150
+    },
+    {
+      "directory": "cmd/internal/hash",
+      "files": 1,
+      "headers": 2,
+      "types": 3,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/internal/macho",
+      "files": 1,
+      "headers": 7,
+      "types": 34,
+      "initializers": 53,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/internal/metadata",
+      "files": 1,
+      "headers": 1,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/internal/moddeps",
+      "files": 1,
+      "headers": 14,
+      "types": 42,
+      "initializers": 0,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/internal/obj",
+      "files": 22,
+      "headers": 291,
+      "types": 1158,
+      "initializers": 82,
+      "bodies": 291
+    },
+    {
+      "directory": "cmd/internal/obj/arm",
+      "files": 6,
+      "headers": 50,
+      "types": 232,
+      "initializers": 64,
+      "bodies": 50
+    },
+    {
+      "directory": "cmd/internal/obj/arm64",
+      "files": 17,
+      "headers": 419,
+      "types": 1445,
+      "initializers": 924,
+      "bodies": 414
+    },
+    {
+      "directory": "cmd/internal/obj/loong64",
+      "files": 10,
+      "headers": 74,
+      "types": 274,
+      "initializers": 61,
+      "bodies": 74
+    },
+    {
+      "directory": "cmd/internal/obj/mips",
+      "files": 6,
+      "headers": 51,
+      "types": 197,
+      "initializers": 54,
+      "bodies": 51
+    },
+    {
+      "directory": "cmd/internal/obj/ppc64",
+      "files": 9,
+      "headers": 147,
+      "types": 605,
+      "initializers": 134,
+      "bodies": 147
+    },
+    {
+      "directory": "cmd/internal/obj/riscv",
+      "files": 8,
+      "headers": 205,
+      "types": 539,
+      "initializers": 147,
+      "bodies": 205
+    },
+    {
+      "directory": "cmd/internal/obj/s390x",
+      "files": 10,
+      "headers": 87,
+      "types": 1433,
+      "initializers": 1259,
+      "bodies": 87
+    },
+    {
+      "directory": "cmd/internal/obj/wasm",
+      "files": 3,
+      "headers": 19,
+      "types": 74,
+      "initializers": 20,
+      "bodies": 19
+    },
+    {
+      "directory": "cmd/internal/obj/x86",
+      "files": 13,
+      "headers": 128,
+      "types": 453,
+      "initializers": 352,
+      "bodies": 128
+    },
+    {
+      "directory": "cmd/internal/objabi",
+      "files": 16,
+      "headers": 64,
+      "types": 166,
+      "initializers": 23,
+      "bodies": 64
+    },
+    {
+      "directory": "cmd/internal/objfile",
+      "files": 7,
+      "headers": 79,
+      "types": 338,
+      "initializers": 3,
+      "bodies": 79
+    },
+    {
+      "directory": "cmd/internal/osinfo",
+      "files": 10,
+      "headers": 12,
+      "types": 32,
+      "initializers": 0,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/internal/par",
+      "files": 4,
+      "headers": 32,
+      "types": 87,
+      "initializers": 1,
+      "bodies": 27
+    },
+    {
+      "directory": "cmd/internal/pathcache",
+      "files": 1,
+      "headers": 2,
+      "types": 6,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/internal/pgo",
+      "files": 5,
+      "headers": 20,
+      "types": 61,
+      "initializers": 1,
+      "bodies": 20
+    },
+    {
+      "directory": "cmd/internal/pkgpath",
+      "files": 2,
+      "headers": 11,
+      "types": 26,
+      "initializers": 4,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/internal/pkgpattern",
+      "files": 2,
+      "headers": 18,
+      "types": 55,
+      "initializers": 4,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/internal/quoted",
+      "files": 2,
+      "headers": 9,
+      "types": 29,
+      "initializers": 1,
+      "bodies": 9
+    },
+    {
+      "directory": "cmd/internal/robustio",
+      "files": 5,
+      "headers": 16,
+      "types": 42,
+      "initializers": 3,
+      "bodies": 16
+    },
+    {
+      "directory": "cmd/internal/script",
+      "files": 8,
+      "headers": 136,
+      "types": 552,
+      "initializers": 7,
+      "bodies": 136
+    },
+    {
+      "directory": "cmd/internal/script/scripttest",
+      "files": 6,
+      "headers": 50,
+      "types": 138,
+      "initializers": 1,
+      "bodies": 50
+    },
+    {
+      "directory": "cmd/internal/src",
+      "files": 4,
+      "headers": 73,
+      "types": 209,
+      "initializers": 18,
+      "bodies": 73
+    },
+    {
+      "directory": "cmd/internal/sys",
+      "files": 3,
+      "headers": 2,
+      "types": 17,
+      "initializers": 27,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/internal/telemetry",
+      "files": 2,
+      "headers": 10,
+      "types": 9,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/internal/telemetry/counter",
+      "files": 2,
+      "headers": 15,
+      "types": 27,
+      "initializers": 0,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/internal/test2json",
+      "files": 2,
+      "headers": 39,
+      "types": 126,
+      "initializers": 20,
+      "bodies": 39
+    },
+    {
+      "directory": "cmd/internal/testdir",
+      "files": 1,
+      "headers": 50,
+      "types": 204,
+      "initializers": 28,
+      "bodies": 50
+    },
+    {
+      "directory": "cmd/link",
+      "files": 8,
+      "headers": 93,
+      "types": 228,
+      "initializers": 27,
+      "bodies": 93
+    },
+    {
+      "directory": "cmd/link/internal/amd64",
+      "files": 3,
+      "headers": 13,
+      "types": 65,
+      "initializers": 5,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/link/internal/arm",
+      "files": 3,
+      "headers": 22,
+      "types": 104,
+      "initializers": 5,
+      "bodies": 22
+    },
+    {
+      "directory": "cmd/link/internal/arm64",
+      "files": 3,
+      "headers": 21,
+      "types": 102,
+      "initializers": 7,
+      "bodies": 21
+    },
+    {
+      "directory": "cmd/link/internal/benchmark",
+      "files": 2,
+      "headers": 11,
+      "types": 35,
+      "initializers": 2,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/link/internal/dwtest",
+      "files": 1,
+      "headers": 13,
+      "types": 52,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/link/internal/ld",
+      "files": 54,
+      "headers": 833,
+      "types": 3409,
+      "initializers": 502,
+      "bodies": 831
+    },
+    {
+      "directory": "cmd/link/internal/loadelf",
+      "files": 1,
+      "headers": 12,
+      "types": 120,
+      "initializers": 8,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/link/internal/loader",
+      "files": 3,
+      "headers": 311,
+      "types": 1067,
+      "initializers": 5,
+      "bodies": 311
+    },
+    {
+      "directory": "cmd/link/internal/loadmacho",
+      "files": 1,
+      "headers": 7,
+      "types": 130,
+      "initializers": 33,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/link/internal/loadpe",
+      "files": 2,
+      "headers": 14,
+      "types": 84,
+      "initializers": 118,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/link/internal/loadxcoff",
+      "files": 1,
+      "headers": 4,
+      "types": 30,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/link/internal/loong64",
+      "files": 3,
+      "headers": 17,
+      "types": 87,
+      "initializers": 5,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/link/internal/mips",
+      "files": 3,
+      "headers": 11,
+      "types": 62,
+      "initializers": 5,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/link/internal/mips64",
+      "files": 3,
+      "headers": 11,
+      "types": 63,
+      "initializers": 5,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/link/internal/ppc64",
+      "files": 3,
+      "headers": 38,
+      "types": 183,
+      "initializers": 43,
+      "bodies": 38
+    },
+    {
+      "directory": "cmd/link/internal/riscv64",
+      "files": 3,
+      "headers": 18,
+      "types": 90,
+      "initializers": 6,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/link/internal/s390x",
+      "files": 3,
+      "headers": 11,
+      "types": 55,
+      "initializers": 5,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/link/internal/sym",
+      "files": 7,
+      "headers": 12,
+      "types": 80,
+      "initializers": 12,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/link/internal/wasm",
+      "files": 2,
+      "headers": 30,
+      "types": 94,
+      "initializers": 20,
+      "bodies": 30
+    },
+    {
+      "directory": "cmd/link/internal/x86",
+      "files": 3,
+      "headers": 13,
+      "types": 65,
+      "initializers": 5,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/nm",
+      "files": 5,
+      "headers": 22,
+      "types": 39,
+      "initializers": 9,
+      "bodies": 22
+    },
+    {
+      "directory": "cmd/objdump",
+      "files": 2,
+      "headers": 14,
+      "types": 20,
+      "initializers": 16,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/pack",
+      "files": 3,
+      "headers": 50,
+      "types": 119,
+      "initializers": 5,
+      "bodies": 50
+    },
+    {
+      "directory": "cmd/pprof",
+      "files": 4,
+      "headers": 35,
+      "types": 120,
+      "initializers": 2,
+      "bodies": 35
+    },
+    {
+      "directory": "cmd/preprofile",
+      "files": 1,
+      "headers": 3,
+      "types": 4,
+      "initializers": 2,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/relnote",
+      "files": 1,
+      "headers": 1,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/test2json",
+      "files": 3,
+      "headers": 4,
+      "types": 8,
+      "initializers": 4,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/tools",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/trace",
+      "files": 16,
+      "headers": 206,
+      "types": 774,
+      "initializers": 15,
+      "bodies": 203
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/driver",
+      "files": 1,
+      "headers": 8,
+      "types": 179,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/binutils",
+      "files": 5,
+      "headers": 59,
+      "types": 287,
+      "initializers": 11,
+      "bodies": 59
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/driver",
+      "files": 16,
+      "headers": 179,
+      "types": 708,
+      "initializers": 19,
+      "bodies": 179
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/elfexec",
+      "files": 1,
+      "headers": 9,
+      "types": 43,
+      "initializers": 2,
+      "bodies": 9
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/graph",
+      "files": 2,
+      "headers": 81,
+      "types": 338,
+      "initializers": 7,
+      "bodies": 81
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/measurement",
+      "files": 1,
+      "headers": 11,
+      "types": 46,
+      "initializers": 1,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/plugin",
+      "files": 1,
+      "headers": 0,
+      "types": 137,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/report",
+      "files": 7,
+      "headers": 93,
+      "types": 486,
+      "initializers": 7,
+      "bodies": 93
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/symbolizer",
+      "files": 1,
+      "headers": 12,
+      "types": 46,
+      "initializers": 3,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/symbolz",
+      "files": 1,
+      "headers": 5,
+      "types": 29,
+      "initializers": 1,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/internal/transport",
+      "files": 1,
+      "headers": 4,
+      "types": 17,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/profile",
+      "files": 9,
+      "headers": 212,
+      "types": 844,
+      "initializers": 50,
+      "bodies": 212
+    },
+    {
+      "directory": "cmd/vendor/github.com/google/pprof/third_party/svgpan",
+      "files": 1,
+      "headers": 0,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/vendor/github.com/ianlancetaylor/demangle",
+      "files": 3,
+      "headers": 551,
+      "types": 2382,
+      "initializers": 14,
+      "bodies": 551
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/arm/armasm",
+      "files": 5,
+      "headers": 42,
+      "types": 179,
+      "initializers": 24,
+      "bodies": 42
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/arm64/arm64asm",
+      "files": 8,
+      "headers": 164,
+      "types": 501,
+      "initializers": 17,
+      "bodies": 164
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/loong64/loong64asm",
+      "files": 6,
+      "headers": 20,
+      "types": 135,
+      "initializers": 10,
+      "bodies": 20
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/ppc64/ppc64asm",
+      "files": 7,
+      "headers": 40,
+      "types": 171,
+      "initializers": 121,
+      "bodies": 40
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/riscv64/riscv64asm",
+      "files": 8,
+      "headers": 25,
+      "types": 538,
+      "initializers": 290,
+      "bodies": 25
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/s390x/s390xasm",
+      "files": 6,
+      "headers": 56,
+      "types": 365,
+      "initializers": 75,
+      "bodies": 56
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/arch/x86/x86asm",
+      "files": 8,
+      "headers": 48,
+      "types": 319,
+      "initializers": 66,
+      "bodies": 48
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/build/relnote",
+      "files": 3,
+      "headers": 40,
+      "types": 122,
+      "initializers": 1,
+      "bodies": 40
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/internal/lazyregexp",
+      "files": 1,
+      "headers": 11,
+      "types": 33,
+      "initializers": 1,
+      "bodies": 11
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/modfile",
+      "files": 4,
+      "headers": 139,
+      "types": 514,
+      "initializers": 8,
+      "bodies": 139
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/module",
+      "files": 2,
+      "headers": 45,
+      "types": 127,
+      "initializers": 5,
+      "bodies": 45
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/semver",
+      "files": 1,
+      "headers": 23,
+      "types": 59,
+      "initializers": 0,
+      "bodies": 23
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/sumdb",
+      "files": 4,
+      "headers": 36,
+      "types": 202,
+      "initializers": 6,
+      "bodies": 36
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/sumdb/dirhash",
+      "files": 1,
+      "headers": 7,
+      "types": 39,
+      "initializers": 1,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/sumdb/note",
+      "files": 1,
+      "headers": 22,
+      "types": 127,
+      "initializers": 12,
+      "bodies": 22
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/sumdb/tlog",
+      "files": 3,
+      "headers": 43,
+      "types": 200,
+      "initializers": 8,
+      "bodies": 43
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/mod/zip",
+      "files": 1,
+      "headers": 47,
+      "types": 169,
+      "initializers": 15,
+      "bodies": 47
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/sync/errgroup",
+      "files": 1,
+      "headers": 10,
+      "types": 23,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/sync/semaphore",
+      "files": 1,
+      "headers": 5,
+      "types": 21,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/sys/plan9",
+      "files": 14,
+      "headers": 131,
+      "types": 466,
+      "initializers": 124,
+      "bodies": 124
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/sys/unix",
+      "files": 283,
+      "headers": 6124,
+      "types": 43960,
+      "initializers": 74743,
+      "bodies": 6002
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/sys/windows",
+      "files": 23,
+      "headers": 857,
+      "types": 14553,
+      "initializers": 12897,
+      "bodies": 855
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry",
+      "files": 7,
+      "headers": 19,
+      "types": 37,
+      "initializers": 3,
+      "bodies": 19
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/counter",
+      "files": 2,
+      "headers": 10,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/counter/countertest",
+      "files": 1,
+      "headers": 6,
+      "types": 13,
+      "initializers": 1,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/config",
+      "files": 1,
+      "headers": 13,
+      "types": 51,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/configstore",
+      "files": 2,
+      "headers": 5,
+      "types": 16,
+      "initializers": 3,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/counter",
+      "files": 4,
+      "headers": 76,
+      "types": 215,
+      "initializers": 23,
+      "bodies": 76
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/crashmonitor",
+      "files": 1,
+      "headers": 10,
+      "types": 22,
+      "initializers": 2,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/mmap",
+      "files": 4,
+      "headers": 8,
+      "types": 25,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/telemetry",
+      "files": 4,
+      "headers": 12,
+      "types": 58,
+      "initializers": 2,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/telemetry/internal/upload",
+      "files": 5,
+      "headers": 22,
+      "types": 94,
+      "initializers": 3,
+      "bodies": 22
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/term",
+      "files": 8,
+      "headers": 64,
+      "types": 233,
+      "initializers": 19,
+      "bodies": 64
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/cases",
+      "files": 9,
+      "headers": 90,
+      "types": 326,
+      "initializers": 49,
+      "bodies": 90
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/internal",
+      "files": 2,
+      "headers": 7,
+      "types": 20,
+      "initializers": 0,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/internal/language",
+      "files": 10,
+      "headers": 131,
+      "types": 390,
+      "initializers": 175,
+      "bodies": 131
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/internal/language/compact",
+      "files": 5,
+      "headers": 18,
+      "types": 907,
+      "initializers": 863,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/internal/tag",
+      "files": 1,
+      "headers": 7,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/language",
+      "files": 7,
+      "headers": 106,
+      "types": 449,
+      "initializers": 139,
+      "bodies": 106
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/transform",
+      "files": 1,
+      "headers": 23,
+      "types": 130,
+      "initializers": 9,
+      "bodies": 23
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/text/unicode/norm",
+      "files": 10,
+      "headers": 148,
+      "types": 509,
+      "initializers": 82,
+      "bodies": 148
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/cmd/bisect",
+      "files": 2,
+      "headers": 18,
+      "types": 75,
+      "initializers": 0,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/cover",
+      "files": 1,
+      "headers": 15,
+      "types": 62,
+      "initializers": 0,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis",
+      "files": 4,
+      "headers": 8,
+      "types": 119,
+      "initializers": 0,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/internal/analysisflags",
+      "files": 2,
+      "headers": 19,
+      "types": 51,
+      "initializers": 5,
+      "bodies": 19
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/appends",
+      "files": 2,
+      "headers": 2,
+      "types": 8,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/asmdecl",
+      "files": 1,
+      "headers": 12,
+      "types": 93,
+      "initializers": 28,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/assign",
+      "files": 2,
+      "headers": 2,
+      "types": 15,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/atomic",
+      "files": 2,
+      "headers": 4,
+      "types": 15,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/bools",
+      "files": 1,
+      "headers": 6,
+      "types": 30,
+      "initializers": 4,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/buildtag",
+      "files": 1,
+      "headers": 13,
+      "types": 46,
+      "initializers": 2,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/cgocall",
+      "files": 3,
+      "headers": 13,
+      "types": 64,
+      "initializers": 3,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/composite",
+      "files": 2,
+      "headers": 5,
+      "types": 19,
+      "initializers": 4,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/copylock",
+      "files": 1,
+      "headers": 15,
+      "types": 60,
+      "initializers": 2,
+      "bodies": 15
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/ctrlflow",
+      "files": 1,
+      "headers": 10,
+      "types": 45,
+      "initializers": 2,
+      "bodies": 10
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/defers",
+      "files": 2,
+      "headers": 3,
+      "types": 9,
+      "initializers": 1,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/directive",
+      "files": 1,
+      "headers": 7,
+      "types": 28,
+      "initializers": 2,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/errorsas",
+      "files": 1,
+      "headers": 2,
+      "types": 9,
+      "initializers": 4,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/framepointer",
+      "files": 1,
+      "headers": 5,
+      "types": 23,
+      "initializers": 4,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/hostport",
+      "files": 1,
+      "headers": 2,
+      "types": 11,
+      "initializers": 2,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/httpresponse",
+      "files": 1,
+      "headers": 5,
+      "types": 26,
+      "initializers": 2,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/ifaceassert",
+      "files": 2,
+      "headers": 3,
+      "types": 17,
+      "initializers": 1,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/inline",
+      "files": 2,
+      "headers": 23,
+      "types": 105,
+      "initializers": 1,
+      "bodies": 23
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/inspect",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/internal/gofixdirective",
+      "files": 1,
+      "headers": 5,
+      "types": 25,
+      "initializers": 1,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/loopclosure",
+      "files": 2,
+      "headers": 12,
+      "types": 51,
+      "initializers": 1,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/lostcancel",
+      "files": 2,
+      "headers": 12,
+      "types": 58,
+      "initializers": 3,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/modernize",
+      "files": 29,
+      "headers": 134,
+      "types": 741,
+      "initializers": 44,
+      "bodies": 134
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/nilfunc",
+      "files": 2,
+      "headers": 2,
+      "types": 9,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/printf",
+      "files": 3,
+      "headers": 39,
+      "types": 198,
+      "initializers": 16,
+      "bodies": 39
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/shift",
+      "files": 2,
+      "headers": 7,
+      "types": 18,
+      "initializers": 2,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/sigchanyzer",
+      "files": 2,
+      "headers": 6,
+      "types": 22,
+      "initializers": 1,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/slog",
+      "files": 2,
+      "headers": 6,
+      "types": 24,
+      "initializers": 4,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/stdmethods",
+      "files": 2,
+      "headers": 8,
+      "types": 24,
+      "initializers": 3,
+      "bodies": 8
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/stdversion",
+      "files": 1,
+      "headers": 5,
+      "types": 19,
+      "initializers": 2,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/stringintconv",
+      "files": 2,
+      "headers": 6,
+      "types": 30,
+      "initializers": 1,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/structtag",
+      "files": 1,
+      "headers": 7,
+      "types": 34,
+      "initializers": 9,
+      "bodies": 7
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/testinggoroutine",
+      "files": 3,
+      "headers": 16,
+      "types": 80,
+      "initializers": 2,
+      "bodies": 16
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/tests",
+      "files": 2,
+      "headers": 21,
+      "types": 74,
+      "initializers": 3,
+      "bodies": 21
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/timeformat",
+      "files": 2,
+      "headers": 3,
+      "types": 12,
+      "initializers": 3,
+      "bodies": 3
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/unmarshal",
+      "files": 2,
+      "headers": 2,
+      "types": 7,
+      "initializers": 1,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/unreachable",
+      "files": 2,
+      "headers": 4,
+      "types": 25,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/unsafeptr",
+      "files": 2,
+      "headers": 6,
+      "types": 21,
+      "initializers": 1,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/unusedresult",
+      "files": 2,
+      "headers": 5,
+      "types": 17,
+      "initializers": 2,
+      "bodies": 5
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/passes/waitgroup",
+      "files": 2,
+      "headers": 4,
+      "types": 17,
+      "initializers": 2,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/suite/fix",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/suite/vet",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/analysis/unitchecker",
+      "files": 1,
+      "headers": 25,
+      "types": 109,
+      "initializers": 4,
+      "bodies": 25
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/ast/astutil",
+      "files": 4,
+      "headers": 46,
+      "types": 169,
+      "initializers": 1,
+      "bodies": 46
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/ast/edge",
+      "files": 1,
+      "headers": 6,
+      "types": 23,
+      "initializers": 3,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/ast/inspector",
+      "files": 5,
+      "headers": 45,
+      "types": 164,
+      "initializers": 1,
+      "bodies": 45
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/cfg",
+      "files": 2,
+      "headers": 23,
+      "types": 115,
+      "initializers": 1,
+      "bodies": 23
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/types/objectpath",
+      "files": 1,
+      "headers": 13,
+      "types": 108,
+      "initializers": 14,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/go/types/typeutil",
+      "files": 5,
+      "headers": 33,
+      "types": 117,
+      "initializers": 1,
+      "bodies": 33
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/analysis/analyzerutil",
+      "files": 4,
+      "headers": 4,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/analysis/driverutil",
+      "files": 5,
+      "headers": 18,
+      "types": 108,
+      "initializers": 0,
+      "bodies": 18
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/analysis/typeindex",
+      "files": 1,
+      "headers": 1,
+      "types": 4,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/astutil",
+      "files": 9,
+      "headers": 42,
+      "types": 146,
+      "initializers": 0,
+      "bodies": 42
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/astutil/free",
+      "files": 1,
+      "headers": 17,
+      "types": 54,
+      "initializers": 0,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/bisect",
+      "files": 1,
+      "headers": 13,
+      "types": 49,
+      "initializers": 2,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/diff",
+      "files": 4,
+      "headers": 28,
+      "types": 100,
+      "initializers": 3,
+      "bodies": 28
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/diff/lcs",
+      "files": 5,
+      "headers": 45,
+      "types": 161,
+      "initializers": 3,
+      "bodies": 45
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/facts",
+      "files": 2,
+      "headers": 17,
+      "types": 75,
+      "initializers": 1,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/fmtstr",
+      "files": 1,
+      "headers": 9,
+      "types": 53,
+      "initializers": 1,
+      "bodies": 9
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/goplsexport",
+      "files": 1,
+      "headers": 0,
+      "types": 8,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/moreiters",
+      "files": 1,
+      "headers": 6,
+      "types": 26,
+      "initializers": 0,
+      "bodies": 6
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/packagepath",
+      "files": 1,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/refactor",
+      "files": 4,
+      "headers": 17,
+      "types": 80,
+      "initializers": 0,
+      "bodies": 17
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/refactor/inline",
+      "files": 7,
+      "headers": 145,
+      "types": 791,
+      "initializers": 9,
+      "bodies": 145
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/stdlib",
+      "files": 4,
+      "headers": 14,
+      "types": 49,
+      "initializers": 5,
+      "bodies": 14
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/typeparams",
+      "files": 6,
+      "headers": 35,
+      "types": 116,
+      "initializers": 4,
+      "bodies": 35
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/typesinternal",
+      "files": 14,
+      "headers": 42,
+      "types": 171,
+      "initializers": 16,
+      "bodies": 40
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/typesinternal/typeindex",
+      "files": 1,
+      "headers": 12,
+      "types": 50,
+      "initializers": 0,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/internal/versions",
+      "files": 4,
+      "headers": 13,
+      "types": 36,
+      "initializers": 12,
+      "bodies": 13
+    },
+    {
+      "directory": "cmd/vendor/golang.org/x/tools/refactor/satisfy",
+      "files": 1,
+      "headers": 12,
+      "types": 86,
+      "initializers": 3,
+      "bodies": 12
+    },
+    {
+      "directory": "cmd/vendor/rsc.io/markdown",
+      "files": 14,
+      "headers": 239,
+      "types": 1013,
+      "initializers": 13,
+      "bodies": 239
+    },
+    {
+      "directory": "cmd/vet",
+      "files": 3,
+      "headers": 18,
+      "types": 51,
+      "initializers": 4,
+      "bodies": 18
+    },
+    {
+      "directory": "cmp",
+      "files": 2,
+      "headers": 13,
+      "types": 48,
+      "initializers": 4,
+      "bodies": 13
+    },
+    {
+      "directory": "compress/bzip2",
+      "files": 5,
+      "headers": 36,
+      "types": 128,
+      "initializers": 7,
+      "bodies": 36
+    },
+    {
+      "directory": "compress/flate",
+      "files": 25,
+      "headers": 239,
+      "types": 816,
+      "initializers": 91,
+      "bodies": 239
+    },
+    {
+      "directory": "compress/gzip",
+      "files": 7,
+      "headers": 44,
+      "types": 132,
+      "initializers": 17,
+      "bodies": 44
+    },
+    {
+      "directory": "compress/lzw",
+      "files": 4,
+      "headers": 39,
+      "types": 147,
+      "initializers": 13,
+      "bodies": 39
+    },
+    {
+      "directory": "compress/zlib",
+      "files": 5,
+      "headers": 25,
+      "types": 94,
+      "initializers": 13,
+      "bodies": 25
+    },
+    {
+      "directory": "container/heap",
+      "files": 4,
+      "headers": 34,
+      "types": 86,
+      "initializers": 0,
+      "bodies": 34
+    },
+    {
+      "directory": "container/list",
+      "files": 3,
+      "headers": 37,
+      "types": 88,
+      "initializers": 0,
+      "bodies": 37
+    },
+    {
+      "directory": "container/ring",
+      "files": 3,
+      "headers": 33,
+      "types": 59,
+      "initializers": 0,
+      "bodies": 33
+    },
+    {
+      "directory": "context",
+      "files": 7,
+      "headers": 226,
+      "types": 469,
+      "initializers": 11,
+      "bodies": 226
+    },
+    {
+      "directory": "crypto",
+      "files": 4,
+      "headers": 29,
+      "types": 114,
+      "initializers": 3,
+      "bodies": 29
+    },
+    {
+      "directory": "crypto/aes",
+      "files": 2,
+      "headers": 26,
+      "types": 37,
+      "initializers": 2,
+      "bodies": 26
+    },
+    {
+      "directory": "crypto/boring",
+      "files": 3,
+      "headers": 3,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/cipher",
+      "files": 22,
+      "headers": 196,
+      "types": 518,
+      "initializers": 23,
+      "bodies": 196
+    },
+    {
+      "directory": "crypto/des",
+      "files": 6,
+      "headers": 47,
+      "types": 83,
+      "initializers": 20,
+      "bodies": 47
+    },
+    {
+      "directory": "crypto/dsa",
+      "files": 3,
+      "headers": 15,
+      "types": 52,
+      "initializers": 3,
+      "bodies": 15
+    },
+    {
+      "directory": "crypto/ecdh",
+      "files": 5,
+      "headers": 80,
+      "types": 281,
+      "initializers": 15,
+      "bodies": 80
+    },
+    {
+      "directory": "crypto/ecdsa",
+      "files": 8,
+      "headers": 136,
+      "types": 370,
+      "initializers": 3,
+      "bodies": 136
+    },
+    {
+      "directory": "crypto/ed25519",
+      "files": 4,
+      "headers": 39,
+      "types": 103,
+      "initializers": 5,
+      "bodies": 39
+    },
+    {
+      "directory": "crypto/elliptic",
+      "files": 6,
+      "headers": 83,
+      "types": 248,
+      "initializers": 8,
+      "bodies": 81
+    },
+    {
+      "directory": "crypto/fips140",
+      "files": 4,
+      "headers": 21,
+      "types": 15,
+      "initializers": 1,
+      "bodies": 18
+    },
+    {
+      "directory": "crypto/hkdf",
+      "files": 4,
+      "headers": 15,
+      "types": 51,
+      "initializers": 1,
+      "bodies": 15
+    },
+    {
+      "directory": "crypto/hmac",
+      "files": 3,
+      "headers": 28,
+      "types": 50,
+      "initializers": 1,
+      "bodies": 28
+    },
+    {
+      "directory": "crypto/hpke",
+      "files": 8,
+      "headers": 151,
+      "types": 635,
+      "initializers": 17,
+      "bodies": 151
+    },
+    {
+      "directory": "crypto/internal/boring",
+      "files": 11,
+      "headers": 208,
+      "types": 718,
+      "initializers": 26,
+      "bodies": 207
+    },
+    {
+      "directory": "crypto/internal/boring/bbig",
+      "files": 1,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/internal/boring/bcache",
+      "files": 2,
+      "headers": 14,
+      "types": 30,
+      "initializers": 1,
+      "bodies": 10
+    },
+    {
+      "directory": "crypto/internal/boring/sig",
+      "files": 1,
+      "headers": 3,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "crypto/internal/boring/syso",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "crypto/internal/constanttime",
+      "files": 1,
+      "headers": 5,
+      "types": 10,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "crypto/internal/cryptotest",
+      "files": 13,
+      "headers": 124,
+      "types": 172,
+      "initializers": 3,
+      "bodies": 124
+    },
+    {
+      "directory": "crypto/internal/cryptotest/wycheproof",
+      "files": 3,
+      "headers": 237,
+      "types": 2499,
+      "initializers": 235,
+      "bodies": 237
+    },
+    {
+      "directory": "crypto/internal/cryptotest/wycheproof/_schema",
+      "files": 1,
+      "headers": 3,
+      "types": 5,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/internal/cryptotest/x509limbo",
+      "files": 2,
+      "headers": 12,
+      "types": 178,
+      "initializers": 81,
+      "bodies": 12
+    },
+    {
+      "directory": "crypto/internal/cryptotest/x509limbo/_schema",
+      "files": 1,
+      "headers": 3,
+      "types": 8,
+      "initializers": 2,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/internal/entropy",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "crypto/internal/entropy/v1.0.0",
+      "files": 2,
+      "headers": 14,
+      "types": 40,
+      "initializers": 2,
+      "bodies": 14
+    },
+    {
+      "directory": "crypto/internal/fips140",
+      "files": 11,
+      "headers": 17,
+      "types": 26,
+      "initializers": 8,
+      "bodies": 14
+    },
+    {
+      "directory": "crypto/internal/fips140/aes",
+      "files": 18,
+      "headers": 93,
+      "types": 273,
+      "initializers": 34,
+      "bodies": 83
+    },
+    {
+      "directory": "crypto/internal/fips140/aes/_asm/ctr",
+      "files": 1,
+      "headers": 6,
+      "types": 8,
+      "initializers": 1,
+      "bodies": 6
+    },
+    {
+      "directory": "crypto/internal/fips140/aes/_asm/standard",
+      "files": 1,
+      "headers": 15,
+      "types": 6,
+      "initializers": 1,
+      "bodies": 15
+    },
+    {
+      "directory": "crypto/internal/fips140/aes/gcm",
+      "files": 12,
+      "headers": 87,
+      "types": 302,
+      "initializers": 14,
+      "bodies": 76
+    },
+    {
+      "directory": "crypto/internal/fips140/aes/gcm/_asm/gcm",
+      "files": 1,
+      "headers": 51,
+      "types": 65,
+      "initializers": 17,
+      "bodies": 51
+    },
+    {
+      "directory": "crypto/internal/fips140/alias",
+      "files": 1,
+      "headers": 2,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/internal/fips140/bigmod",
+      "files": 5,
+      "headers": 128,
+      "types": 323,
+      "initializers": 7,
+      "bodies": 125
+    },
+    {
+      "directory": "crypto/internal/fips140/bigmod/_asm",
+      "files": 1,
+      "headers": 2,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/internal/fips140/check",
+      "files": 1,
+      "headers": 1,
+      "types": 10,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "crypto/internal/fips140/check/checktest",
+      "files": 3,
+      "headers": 6,
+      "types": 12,
+      "initializers": 2,
+      "bodies": 4
+    },
+    {
+      "directory": "crypto/internal/fips140/drbg",
+      "files": 6,
+      "headers": 19,
+      "types": 37,
+      "initializers": 5,
+      "bodies": 19
+    },
+    {
+      "directory": "crypto/internal/fips140/ecdh",
+      "files": 3,
+      "headers": 20,
+      "types": 83,
+      "initializers": 9,
+      "bodies": 18
+    },
+    {
+      "directory": "crypto/internal/fips140/ecdsa",
+      "files": 6,
+      "headers": 73,
+      "types": 261,
+      "initializers": 17,
+      "bodies": 70
+    },
+    {
+      "directory": "crypto/internal/fips140/ed25519",
+      "files": 2,
+      "headers": 32,
+      "types": 108,
+      "initializers": 9,
+      "bodies": 32
+    },
+    {
+      "directory": "crypto/internal/fips140/edwards25519",
+      "files": 11,
+      "headers": 134,
+      "types": 860,
+      "initializers": 15,
+      "bodies": 134
+    },
+    {
+      "directory": "crypto/internal/fips140/edwards25519/field",
+      "files": 7,
+      "headers": 84,
+      "types": 221,
+      "initializers": 6,
+      "bodies": 83
+    },
+    {
+      "directory": "crypto/internal/fips140/edwards25519/field/_asm",
+      "files": 1,
+      "headers": 9,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 9
+    },
+    {
+      "directory": "crypto/internal/fips140/hkdf",
+      "files": 2,
+      "headers": 5,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "crypto/internal/fips140/hmac",
+      "files": 2,
+      "headers": 14,
+      "types": 47,
+      "initializers": 0,
+      "bodies": 14
+    },
+    {
+      "directory": "crypto/internal/fips140/mldsa",
+      "files": 6,
+      "headers": 131,
+      "types": 400,
+      "initializers": 36,
+      "bodies": 131
+    },
+    {
+      "directory": "crypto/internal/fips140/mlkem",
+      "files": 7,
+      "headers": 101,
+      "types": 325,
+      "initializers": 25,
+      "bodies": 101
+    },
+    {
+      "directory": "crypto/internal/fips140/nistec",
+      "files": 13,
+      "headers": 181,
+      "types": 526,
+      "initializers": 16,
+      "bodies": 170
+    },
+    {
+      "directory": "crypto/internal/fips140/nistec/_asm",
+      "files": 1,
+      "headers": 69,
+      "types": 101,
+      "initializers": 34,
+      "bodies": 69
+    },
+    {
+      "directory": "crypto/internal/fips140/nistec/fiat",
+      "files": 15,
+      "headers": 109,
+      "types": 6434,
+      "initializers": 7,
+      "bodies": 109
+    },
+    {
+      "directory": "crypto/internal/fips140/pbkdf2",
+      "files": 2,
+      "headers": 5,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 5
+    },
+    {
+      "directory": "crypto/internal/fips140/rsa",
+      "files": 9,
+      "headers": 62,
+      "types": 260,
+      "initializers": 12,
+      "bodies": 62
+    },
+    {
+      "directory": "crypto/internal/fips140/sha256",
+      "files": 9,
+      "headers": 32,
+      "types": 70,
+      "initializers": 31,
+      "bodies": 26
+    },
+    {
+      "directory": "crypto/internal/fips140/sha256/_asm",
+      "files": 3,
+      "headers": 32,
+      "types": 46,
+      "initializers": 59,
+      "bodies": 32
+    },
+    {
+      "directory": "crypto/internal/fips140/sha3",
+      "files": 9,
+      "headers": 65,
+      "types": 172,
+      "initializers": 25,
+      "bodies": 61
+    },
+    {
+      "directory": "crypto/internal/fips140/sha3/_asm",
+      "files": 1,
+      "headers": 11,
+      "types": 6,
+      "initializers": 20,
+      "bodies": 11
+    },
+    {
+      "directory": "crypto/internal/fips140/sha512",
+      "files": 9,
+      "headers": 32,
+      "types": 67,
+      "initializers": 48,
+      "bodies": 27
+    },
+    {
+      "directory": "crypto/internal/fips140/sha512/_asm",
+      "files": 1,
+      "headers": 11,
+      "types": 11,
+      "initializers": 9,
+      "bodies": 11
+    },
+    {
+      "directory": "crypto/internal/fips140/ssh",
+      "files": 1,
+      "headers": 3,
+      "types": 16,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/internal/fips140/subtle",
+      "files": 7,
+      "headers": 17,
+      "types": 33,
+      "initializers": 4,
+      "bodies": 12
+    },
+    {
+      "directory": "crypto/internal/fips140/tls12",
+      "files": 2,
+      "headers": 5,
+      "types": 18,
+      "initializers": 2,
+      "bodies": 5
+    },
+    {
+      "directory": "crypto/internal/fips140/tls13",
+      "files": 2,
+      "headers": 20,
+      "types": 81,
+      "initializers": 9,
+      "bodies": 20
+    },
+    {
+      "directory": "crypto/internal/fips140cache",
+      "files": 2,
+      "headers": 24,
+      "types": 60,
+      "initializers": 0,
+      "bodies": 23
+    },
+    {
+      "directory": "crypto/internal/fips140deps",
+      "files": 2,
+      "headers": 1,
+      "types": 1,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "crypto/internal/fips140deps/byteorder",
+      "files": 1,
+      "headers": 12,
+      "types": 27,
+      "initializers": 0,
+      "bodies": 12
+    },
+    {
+      "directory": "crypto/internal/fips140deps/cpu",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 31,
+      "bodies": 0
+    },
+    {
+      "directory": "crypto/internal/fips140deps/godebug",
+      "files": 1,
+      "headers": 3,
+      "types": 7,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/internal/fips140deps/time",
+      "files": 2,
+      "headers": 3,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/internal/fips140hash",
+      "files": 1,
+      "headers": 4,
+      "types": 11,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "crypto/internal/fips140only",
+      "files": 4,
+      "headers": 48,
+      "types": 56,
+      "initializers": 1,
+      "bodies": 48
+    },
+    {
+      "directory": "crypto/internal/fips140test",
+      "files": 23,
+      "headers": 414,
+      "types": 756,
+      "initializers": 14,
+      "bodies": 413
+    },
+    {
+      "directory": "crypto/internal/impl",
+      "files": 1,
+      "headers": 6,
+      "types": 18,
+      "initializers": 0,
+      "bodies": 6
+    },
+    {
+      "directory": "crypto/internal/rand",
+      "files": 5,
+      "headers": 7,
+      "types": 19,
+      "initializers": 2,
+      "bodies": 7
+    },
+    {
+      "directory": "crypto/internal/randutil",
+      "files": 1,
+      "headers": 1,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "crypto/internal/sysrand",
+      "files": 11,
+      "headers": 24,
+      "types": 42,
+      "initializers": 2,
+      "bodies": 22
+    },
+    {
+      "directory": "crypto/internal/sysrand/internal/seccomp",
+      "files": 2,
+      "headers": 2,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/md5",
+      "files": 7,
+      "headers": 53,
+      "types": 114,
+      "initializers": 21,
+      "bodies": 52
+    },
+    {
+      "directory": "crypto/md5/_asm",
+      "files": 1,
+      "headers": 9,
+      "types": 15,
+      "initializers": 0,
+      "bodies": 9
+    },
+    {
+      "directory": "crypto/mldsa",
+      "files": 7,
+      "headers": 133,
+      "types": 308,
+      "initializers": 16,
+      "bodies": 133
+    },
+    {
+      "directory": "crypto/mlkem",
+      "files": 4,
+      "headers": 49,
+      "types": 140,
+      "initializers": 9,
+      "bodies": 48
+    },
+    {
+      "directory": "crypto/mlkem/mlkemtest",
+      "files": 1,
+      "headers": 2,
+      "types": 8,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/pbkdf2",
+      "files": 3,
+      "headers": 12,
+      "types": 34,
+      "initializers": 2,
+      "bodies": 12
+    },
+    {
+      "directory": "crypto/rand",
+      "files": 7,
+      "headers": 56,
+      "types": 112,
+      "initializers": 2,
+      "bodies": 55
+    },
+    {
+      "directory": "crypto/rc4",
+      "files": 2,
+      "headers": 13,
+      "types": 29,
+      "initializers": 1,
+      "bodies": 13
+    },
+    {
+      "directory": "crypto/rsa",
+      "files": 13,
+      "headers": 199,
+      "types": 441,
+      "initializers": 24,
+      "bodies": 199
+    },
+    {
+      "directory": "crypto/sha1",
+      "files": 9,
+      "headers": 58,
+      "types": 116,
+      "initializers": 23,
+      "bodies": 53
+    },
+    {
+      "directory": "crypto/sha1/_asm",
+      "files": 2,
+      "headers": 200,
+      "types": 43,
+      "initializers": 2,
+      "bodies": 200
+    },
+    {
+      "directory": "crypto/sha256",
+      "files": 3,
+      "headers": 46,
+      "types": 71,
+      "initializers": 7,
+      "bodies": 46
+    },
+    {
+      "directory": "crypto/sha3",
+      "files": 2,
+      "headers": 96,
+      "types": 168,
+      "initializers": 3,
+      "bodies": 96
+    },
+    {
+      "directory": "crypto/sha512",
+      "files": 2,
+      "headers": 55,
+      "types": 96,
+      "initializers": 12,
+      "bodies": 55
+    },
+    {
+      "directory": "crypto/subtle",
+      "files": 6,
+      "headers": 46,
+      "types": 60,
+      "initializers": 3,
+      "bodies": 44
+    },
+    {
+      "directory": "crypto/tls",
+      "files": 45,
+      "headers": 1379,
+      "types": 4228,
+      "initializers": 442,
+      "bodies": 1379
+    },
+    {
+      "directory": "crypto/tls/fipsonly",
+      "files": 2,
+      "headers": 2,
+      "types": 1,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "crypto/tls/internal/fips140tls",
+      "files": 1,
+      "headers": 4,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "crypto/x509",
+      "files": 39,
+      "headers": 537,
+      "types": 1987,
+      "initializers": 259,
+      "bodies": 535
+    },
+    {
+      "directory": "crypto/x509/internal/macos",
+      "files": 2,
+      "headers": 54,
+      "types": 82,
+      "initializers": 6,
+      "bodies": 29
+    },
+    {
+      "directory": "crypto/x509/pkix",
+      "files": 1,
+      "headers": 7,
+      "types": 62,
+      "initializers": 10,
+      "bodies": 7
+    },
+    {
+      "directory": "database/sql",
+      "files": 11,
+      "headers": 772,
+      "types": 2476,
+      "initializers": 38,
+      "bodies": 771
+    },
+    {
+      "directory": "database/sql/driver",
+      "files": 3,
+      "headers": 16,
+      "types": 287,
+      "initializers": 12,
+      "bodies": 16
+    },
+    {
+      "directory": "database/sql/internal",
+      "files": 1,
+      "headers": 2,
+      "types": 6,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "debug/buildinfo",
+      "files": 3,
+      "headers": 59,
+      "types": 180,
+      "initializers": 7,
+      "bodies": 59
+    },
+    {
+      "directory": "debug/dwarf",
+      "files": 16,
+      "headers": 161,
+      "types": 956,
+      "initializers": 399,
+      "bodies": 161
+    },
+    {
+      "directory": "debug/elf",
+      "files": 7,
+      "headers": 153,
+      "types": 2185,
+      "initializers": 1530,
+      "bodies": 153
+    },
+    {
+      "directory": "debug/gosym",
+      "files": 4,
+      "headers": 90,
+      "types": 311,
+      "initializers": 6,
+      "bodies": 90
+    },
+    {
+      "directory": "debug/macho",
+      "files": 6,
+      "headers": 51,
+      "types": 490,
+      "initializers": 102,
+      "bodies": 51
+    },
+    {
+      "directory": "debug/pe",
+      "files": 9,
+      "headers": 46,
+      "types": 299,
+      "initializers": 100,
+      "bodies": 46
+    },
+    {
+      "directory": "debug/plan9obj",
+      "files": 3,
+      "headers": 15,
+      "types": 93,
+      "initializers": 6,
+      "bodies": 15
+    },
+    {
+      "directory": "embed",
+      "files": 2,
+      "headers": 29,
+      "types": 105,
+      "initializers": 7,
+      "bodies": 29
+    },
+    {
+      "directory": "embed/internal/embedtest",
+      "files": 2,
+      "headers": 13,
+      "types": 47,
+      "initializers": 8,
+      "bodies": 13
+    },
+    {
+      "directory": "encoding",
+      "files": 1,
+      "headers": 0,
+      "types": 26,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "encoding/ascii85",
+      "files": 2,
+      "headers": 20,
+      "types": 68,
+      "initializers": 2,
+      "bodies": 20
+    },
+    {
+      "directory": "encoding/asn1",
+      "files": 5,
+      "headers": 135,
+      "types": 575,
+      "initializers": 62,
+      "bodies": 135
+    },
+    {
+      "directory": "encoding/base32",
+      "files": 3,
+      "headers": 61,
+      "types": 183,
+      "initializers": 8,
+      "bodies": 61
+    },
+    {
+      "directory": "encoding/base64",
+      "files": 3,
+      "headers": 59,
+      "types": 171,
+      "initializers": 13,
+      "bodies": 59
+    },
+    {
+      "directory": "encoding/binary",
+      "files": 7,
+      "headers": 183,
+      "types": 493,
+      "initializers": 16,
+      "bodies": 183
+    },
+    {
+      "directory": "encoding/csv",
+      "files": 6,
+      "headers": 53,
+      "types": 159,
+      "initializers": 9,
+      "bodies": 53
+    },
+    {
+      "directory": "encoding/gob",
+      "files": 21,
+      "headers": 507,
+      "types": 1953,
+      "initializers": 78,
+      "bodies": 507
+    },
+    {
+      "directory": "encoding/hex",
+      "files": 3,
+      "headers": 44,
+      "types": 101,
+      "initializers": 7,
+      "bodies": 44
+    },
+    {
+      "directory": "encoding/json",
+      "files": 39,
+      "headers": 859,
+      "types": 3572,
+      "initializers": 96,
+      "bodies": 859
+    },
+    {
+      "directory": "encoding/json/internal",
+      "files": 1,
+      "headers": 2,
+      "types": 27,
+      "initializers": 3,
+      "bodies": 2
+    },
+    {
+      "directory": "encoding/json/internal/jsonflags",
+      "files": 2,
+      "headers": 7,
+      "types": 34,
+      "initializers": 16,
+      "bodies": 7
+    },
+    {
+      "directory": "encoding/json/internal/jsonopts",
+      "files": 3,
+      "headers": 25,
+      "types": 89,
+      "initializers": 6,
+      "bodies": 25
+    },
+    {
+      "directory": "encoding/json/internal/jsontest",
+      "files": 2,
+      "headers": 15,
+      "types": 466,
+      "initializers": 1,
+      "bodies": 15
+    },
+    {
+      "directory": "encoding/json/internal/jsonwire",
+      "files": 6,
+      "headers": 68,
+      "types": 215,
+      "initializers": 6,
+      "bodies": 68
+    },
+    {
+      "directory": "encoding/json/jsontext",
+      "files": 19,
+      "headers": 357,
+      "types": 1091,
+      "initializers": 64,
+      "bodies": 356
+    },
+    {
+      "directory": "encoding/json/v2",
+      "files": 25,
+      "headers": 723,
+      "types": 3192,
+      "initializers": 76,
+      "bodies": 719
+    },
+    {
+      "directory": "encoding/pem",
+      "files": 3,
+      "headers": 30,
+      "types": 72,
+      "initializers": 22,
+      "bodies": 30
+    },
+    {
+      "directory": "encoding/xml",
+      "files": 11,
+      "headers": 243,
+      "types": 1471,
+      "initializers": 88,
+      "bodies": 242
+    },
+    {
+      "directory": "errors",
+      "files": 7,
+      "headers": 62,
+      "types": 196,
+      "initializers": 4,
+      "bodies": 62
+    },
+    {
+      "directory": "expvar",
+      "files": 2,
+      "headers": 95,
+      "types": 201,
+      "initializers": 0,
+      "bodies": 95
+    },
+    {
+      "directory": "flag",
+      "files": 8,
+      "headers": 198,
+      "types": 551,
+      "initializers": 9,
+      "bodies": 198
+    },
+    {
+      "directory": "fmt",
+      "files": 14,
+      "headers": 340,
+      "types": 1119,
+      "initializers": 68,
+      "bodies": 340
+    },
+    {
+      "directory": "go/ast",
+      "files": 18,
+      "headers": 289,
+      "types": 995,
+      "initializers": 13,
+      "bodies": 289
+    },
+    {
+      "directory": "go/build",
+      "files": 10,
+      "headers": 123,
+      "types": 467,
+      "initializers": 36,
+      "bodies": 123
+    },
+    {
+      "directory": "go/build/constraint",
+      "files": 4,
+      "headers": 66,
+      "types": 195,
+      "initializers": 12,
+      "bodies": 66
+    },
+    {
+      "directory": "go/constant",
+      "files": 4,
+      "headers": 124,
+      "types": 290,
+      "initializers": 20,
+      "bodies": 124
+    },
+    {
+      "directory": "go/doc",
+      "files": 13,
+      "headers": 133,
+      "types": 485,
+      "initializers": 21,
+      "bodies": 133
+    },
+    {
+      "directory": "go/doc/comment",
+      "files": 12,
+      "headers": 99,
+      "types": 354,
+      "initializers": 5,
+      "bodies": 99
+    },
+    {
+      "directory": "go/format",
+      "files": 5,
+      "headers": 18,
+      "types": 77,
+      "initializers": 9,
+      "bodies": 18
+    },
+    {
+      "directory": "go/importer",
+      "files": 2,
+      "headers": 12,
+      "types": 46,
+      "initializers": 0,
+      "bodies": 12
+    },
+    {
+      "directory": "go/internal/gccgoimporter",
+      "files": 7,
+      "headers": 78,
+      "types": 308,
+      "initializers": 51,
+      "bodies": 78
+    },
+    {
+      "directory": "go/internal/gcimporter",
+      "files": 4,
+      "headers": 78,
+      "types": 254,
+      "initializers": 3,
+      "bodies": 78
+    },
+    {
+      "directory": "go/internal/srcimporter",
+      "files": 2,
+      "headers": 25,
+      "types": 74,
+      "initializers": 3,
+      "bodies": 24
+    },
+    {
+      "directory": "go/parser",
+      "files": 9,
+      "headers": 190,
+      "types": 636,
+      "initializers": 18,
+      "bodies": 190
+    },
+    {
+      "directory": "go/printer",
+      "files": 8,
+      "headers": 146,
+      "types": 484,
+      "initializers": 27,
+      "bodies": 146
+    },
+    {
+      "directory": "go/scanner",
+      "files": 4,
+      "headers": 80,
+      "types": 252,
+      "initializers": 17,
+      "bodies": 80
+    },
+    {
+      "directory": "go/token",
+      "files": 11,
+      "headers": 132,
+      "types": 337,
+      "initializers": 8,
+      "bodies": 132
+    },
+    {
+      "directory": "go/types",
+      "files": 111,
+      "headers": 1327,
+      "types": 4608,
+      "initializers": 98,
+      "bodies": 1325
+    },
+    {
+      "directory": "go/version",
+      "files": 2,
+      "headers": 11,
+      "types": 35,
+      "initializers": 3,
+      "bodies": 9
+    },
+    {
+      "directory": "hash",
+      "files": 3,
+      "headers": 13,
+      "types": 50,
+      "initializers": 1,
+      "bodies": 13
+    },
+    {
+      "directory": "hash/adler32",
+      "files": 2,
+      "headers": 19,
+      "types": 48,
+      "initializers": 6,
+      "bodies": 19
+    },
+    {
+      "directory": "hash/crc32",
+      "files": 12,
+      "headers": 114,
+      "types": 278,
+      "initializers": 22,
+      "bodies": 103
+    },
+    {
+      "directory": "hash/crc64",
+      "files": 2,
+      "headers": 34,
+      "types": 88,
+      "initializers": 7,
+      "bodies": 34
+    },
+    {
+      "directory": "hash/fnv",
+      "files": 2,
+      "headers": 99,
+      "types": 238,
+      "initializers": 23,
+      "bodies": 99
+    },
+    {
+      "directory": "hash/maphash",
+      "files": 6,
+      "headers": 115,
+      "types": 311,
+      "initializers": 6,
+      "bodies": 110
+    },
+    {
+      "directory": "html",
+      "files": 6,
+      "headers": 17,
+      "types": 27,
+      "initializers": 9,
+      "bodies": 17
+    },
+    {
+      "directory": "html/template",
+      "files": 31,
+      "headers": 372,
+      "types": 1101,
+      "initializers": 87,
+      "bodies": 372
+    },
+    {
+      "directory": "image",
+      "files": 10,
+      "headers": 246,
+      "types": 720,
+      "initializers": 9,
+      "bodies": 246
+    },
+    {
+      "directory": "image/color",
+      "files": 4,
+      "headers": 60,
+      "types": 176,
+      "initializers": 15,
+      "bodies": 60
+    },
+    {
+      "directory": "image/color/palette",
+      "files": 3,
+      "headers": 3,
+      "types": 3,
+      "initializers": 3,
+      "bodies": 3
+    },
+    {
+      "directory": "image/draw",
+      "files": 5,
+      "headers": 88,
+      "types": 301,
+      "initializers": 10,
+      "bodies": 88
+    },
+    {
+      "directory": "image/gif",
+      "files": 5,
+      "headers": 78,
+      "types": 242,
+      "initializers": 29,
+      "bodies": 78
+    },
+    {
+      "directory": "image/internal/imageutil",
+      "files": 3,
+      "headers": 2,
+      "types": 5,
+      "initializers": 6,
+      "bodies": 2
+    },
+    {
+      "directory": "image/jpeg",
+      "files": 9,
+      "headers": 110,
+      "types": 362,
+      "initializers": 59,
+      "bodies": 110
+    },
+    {
+      "directory": "image/png",
+      "files": 8,
+      "headers": 86,
+      "types": 293,
+      "initializers": 31,
+      "bodies": 86
+    },
+    {
+      "directory": "index/suffixarray",
+      "files": 6,
+      "headers": 120,
+      "types": 323,
+      "initializers": 9,
+      "bodies": 120
+    },
+    {
+      "directory": "internal/abi",
+      "files": 23,
+      "headers": 89,
+      "types": 374,
+      "initializers": 88,
+      "bodies": 86
+    },
+    {
+      "directory": "internal/asan",
+      "files": 3,
+      "headers": 4,
+      "types": 8,
+      "initializers": 2,
+      "bodies": 2
+    },
+    {
+      "directory": "internal/bisect",
+      "files": 1,
+      "headers": 24,
+      "types": 106,
+      "initializers": 2,
+      "bodies": 24
+    },
+    {
+      "directory": "internal/buildcfg",
+      "files": 3,
+      "headers": 35,
+      "types": 77,
+      "initializers": 21,
+      "bodies": 35
+    },
+    {
+      "directory": "internal/bytealg",
+      "files": 17,
+      "headers": 41,
+      "types": 92,
+      "initializers": 16,
+      "bodies": 30
+    },
+    {
+      "directory": "internal/byteorder",
+      "files": 1,
+      "headers": 18,
+      "types": 42,
+      "initializers": 0,
+      "bodies": 18
+    },
+    {
+      "directory": "internal/cfg",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/cgrouptest",
+      "files": 2,
+      "headers": 10,
+      "types": 26,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "internal/chacha8rand",
+      "files": 4,
+      "headers": 19,
+      "types": 51,
+      "initializers": 10,
+      "bodies": 18
+    },
+    {
+      "directory": "internal/copyright",
+      "files": 1,
+      "headers": 2,
+      "types": 5,
+      "initializers": 2,
+      "bodies": 2
+    },
+    {
+      "directory": "internal/coverage",
+      "files": 2,
+      "headers": 5,
+      "types": 67,
+      "initializers": 19,
+      "bodies": 5
+    },
+    {
+      "directory": "internal/coverage/calloc",
+      "files": 1,
+      "headers": 1,
+      "types": 5,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/coverage/cfile",
+      "files": 7,
+      "headers": 79,
+      "types": 231,
+      "initializers": 3,
+      "bodies": 78
+    },
+    {
+      "directory": "internal/coverage/cformat",
+      "files": 2,
+      "headers": 15,
+      "types": 63,
+      "initializers": 0,
+      "bodies": 15
+    },
+    {
+      "directory": "internal/coverage/cmerge",
+      "files": 2,
+      "headers": 10,
+      "types": 39,
+      "initializers": 1,
+      "bodies": 10
+    },
+    {
+      "directory": "internal/coverage/decodecounter",
+      "files": 1,
+      "headers": 17,
+      "types": 65,
+      "initializers": 1,
+      "bodies": 17
+    },
+    {
+      "directory": "internal/coverage/decodemeta",
+      "files": 2,
+      "headers": 17,
+      "types": 65,
+      "initializers": 0,
+      "bodies": 17
+    },
+    {
+      "directory": "internal/coverage/encodecounter",
+      "files": 1,
+      "headers": 13,
+      "types": 61,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "internal/coverage/encodemeta",
+      "files": 2,
+      "headers": 12,
+      "types": 67,
+      "initializers": 0,
+      "bodies": 12
+    },
+    {
+      "directory": "internal/coverage/pods",
+      "files": 2,
+      "headers": 13,
+      "types": 48,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "internal/coverage/rtcov",
+      "files": 1,
+      "headers": 1,
+      "types": 23,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/coverage/slicereader",
+      "files": 2,
+      "headers": 13,
+      "types": 38,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "internal/coverage/slicewriter",
+      "files": 2,
+      "headers": 9,
+      "types": 33,
+      "initializers": 0,
+      "bodies": 9
+    },
+    {
+      "directory": "internal/coverage/stringtab",
+      "files": 1,
+      "headers": 11,
+      "types": 30,
+      "initializers": 0,
+      "bodies": 11
+    },
+    {
+      "directory": "internal/coverage/test",
+      "files": 2,
+      "headers": 15,
+      "types": 39,
+      "initializers": 0,
+      "bodies": 15
+    },
+    {
+      "directory": "internal/coverage/uleb128",
+      "files": 1,
+      "headers": 1,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/cpu",
+      "files": 42,
+      "headers": 97,
+      "types": 314,
+      "initializers": 146,
+      "bodies": 75
+    },
+    {
+      "directory": "internal/dag",
+      "files": 4,
+      "headers": 27,
+      "types": 68,
+      "initializers": 1,
+      "bodies": 27
+    },
+    {
+      "directory": "internal/diff",
+      "files": 2,
+      "headers": 7,
+      "types": 23,
+      "initializers": 0,
+      "bodies": 7
+    },
+    {
+      "directory": "internal/exportdata",
+      "files": 2,
+      "headers": 9,
+      "types": 39,
+      "initializers": 1,
+      "bodies": 9
+    },
+    {
+      "directory": "internal/filepathlite",
+      "files": 5,
+      "headers": 42,
+      "types": 101,
+      "initializers": 7,
+      "bodies": 42
+    },
+    {
+      "directory": "internal/fmtsort",
+      "files": 3,
+      "headers": 16,
+      "types": 45,
+      "initializers": 3,
+      "bodies": 16
+    },
+    {
+      "directory": "internal/fuzz",
+      "files": 22,
+      "headers": 237,
+      "types": 753,
+      "initializers": 19,
+      "bodies": 237
+    },
+    {
+      "directory": "internal/gate",
+      "files": 2,
+      "headers": 10,
+      "types": 17,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "internal/goarch",
+      "files": 39,
+      "headers": 1,
+      "types": 5,
+      "initializers": 655,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/godebug",
+      "files": 2,
+      "headers": 29,
+      "types": 77,
+      "initializers": 0,
+      "bodies": 25
+    },
+    {
+      "directory": "internal/godebugs",
+      "files": 2,
+      "headers": 7,
+      "types": 25,
+      "initializers": 3,
+      "bodies": 7
+    },
+    {
+      "directory": "internal/goexperiment",
+      "files": 42,
+      "headers": 2,
+      "types": 24,
+      "initializers": 80,
+      "bodies": 2
+    },
+    {
+      "directory": "internal/goos",
+      "files": 21,
+      "headers": 1,
+      "types": 3,
+      "initializers": 325,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/goroot",
+      "files": 2,
+      "headers": 4,
+      "types": 18,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "internal/gover",
+      "files": 2,
+      "headers": 19,
+      "types": 62,
+      "initializers": 5,
+      "bodies": 16
+    },
+    {
+      "directory": "internal/goversion",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/lazyregexp",
+      "files": 1,
+      "headers": 12,
+      "types": 36,
+      "initializers": 1,
+      "bodies": 12
+    },
+    {
+      "directory": "internal/lazytemplate",
+      "files": 1,
+      "headers": 4,
+      "types": 13,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "internal/msan",
+      "files": 3,
+      "headers": 10,
+      "types": 20,
+      "initializers": 2,
+      "bodies": 5
+    },
+    {
+      "directory": "internal/nettest",
+      "files": 8,
+      "headers": 182,
+      "types": 387,
+      "initializers": 5,
+      "bodies": 181
+    },
+    {
+      "directory": "internal/nettrace",
+      "files": 1,
+      "headers": 0,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/obscuretestdata",
+      "files": 1,
+      "headers": 3,
+      "types": 8,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "internal/oserror",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 5,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/pkgbits",
+      "files": 11,
+      "headers": 82,
+      "types": 284,
+      "initializers": 24,
+      "bodies": 82
+    },
+    {
+      "directory": "internal/platform",
+      "files": 3,
+      "headers": 15,
+      "types": 45,
+      "initializers": 4,
+      "bodies": 15
+    },
+    {
+      "directory": "internal/poll",
+      "files": 56,
+      "headers": 365,
+      "types": 1301,
+      "initializers": 58,
+      "bodies": 349
+    },
+    {
+      "directory": "internal/profile",
+      "files": 8,
+      "headers": 161,
+      "types": 678,
+      "initializers": 10,
+      "bodies": 161
+    },
+    {
+      "directory": "internal/profilerecord",
+      "files": 1,
+      "headers": 2,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "internal/race",
+      "files": 3,
+      "headers": 28,
+      "types": 40,
+      "initializers": 2,
+      "bodies": 14
+    },
+    {
+      "directory": "internal/reflectlite",
+      "files": 8,
+      "headers": 201,
+      "types": 590,
+      "initializers": 28,
+      "bodies": 193
+    },
+    {
+      "directory": "internal/routebsd",
+      "files": 21,
+      "headers": 56,
+      "types": 237,
+      "initializers": 10,
+      "bodies": 56
+    },
+    {
+      "directory": "internal/runtime/atomic",
+      "files": 23,
+      "headers": 540,
+      "types": 1256,
+      "initializers": 4,
+      "bodies": 234
+    },
+    {
+      "directory": "internal/runtime/cgobench",
+      "files": 2,
+      "headers": 13,
+      "types": 9,
+      "initializers": 0,
+      "bodies": 13
+    },
+    {
+      "directory": "internal/runtime/cgroup",
+      "files": 7,
+      "headers": 57,
+      "types": 215,
+      "initializers": 27,
+      "bodies": 56
+    },
+    {
+      "directory": "internal/runtime/exithook",
+      "files": 1,
+      "headers": 3,
+      "types": 14,
+      "initializers": 0,
+      "bodies": 3
+    },
+    {
+      "directory": "internal/runtime/gc",
+      "files": 3,
+      "headers": 0,
+      "types": 2,
+      "initializers": 20,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/runtime/gc/internal/gen",
+      "files": 5,
+      "headers": 91,
+      "types": 337,
+      "initializers": 17,
+      "bodies": 88
+    },
+    {
+      "directory": "internal/runtime/gc/scan",
+      "files": 18,
+      "headers": 72,
+      "types": 199,
+      "initializers": 3,
+      "bodies": 68
+    },
+    {
+      "directory": "internal/runtime/maps",
+      "files": 20,
+      "headers": 211,
+      "types": 694,
+      "initializers": 27,
+      "bodies": 198
+    },
+    {
+      "directory": "internal/runtime/math",
+      "files": 2,
+      "headers": 6,
+      "types": 18,
+      "initializers": 7,
+      "bodies": 6
+    },
+    {
+      "directory": "internal/runtime/pprof/label",
+      "files": 1,
+      "headers": 1,
+      "types": 7,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/runtime/startlinetest",
+      "files": 1,
+      "headers": 1,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/runtime/sys",
+      "files": 9,
+      "headers": 25,
+      "types": 36,
+      "initializers": 20,
+      "bodies": 19
+    },
+    {
+      "directory": "internal/runtime/syscall/linux",
+      "files": 13,
+      "headers": 11,
+      "types": 85,
+      "initializers": 167,
+      "bodies": 10
+    },
+    {
+      "directory": "internal/runtime/syscall/windows",
+      "files": 5,
+      "headers": 30,
+      "types": 230,
+      "initializers": 51,
+      "bodies": 28
+    },
+    {
+      "directory": "internal/runtime/wasitest",
+      "files": 3,
+      "headers": 4,
+      "types": 12,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "internal/saferio",
+      "files": 2,
+      "headers": 21,
+      "types": 34,
+      "initializers": 1,
+      "bodies": 21
+    },
+    {
+      "directory": "internal/singleflight",
+      "files": 2,
+      "headers": 20,
+      "types": 66,
+      "initializers": 0,
+      "bodies": 20
+    },
+    {
+      "directory": "internal/strconv",
+      "files": 24,
+      "headers": 177,
+      "types": 544,
+      "initializers": 74,
+      "bodies": 177
+    },
+    {
+      "directory": "internal/stringslite",
+      "files": 1,
+      "headers": 10,
+      "types": 24,
+      "initializers": 0,
+      "bodies": 10
+    },
+    {
+      "directory": "internal/sync",
+      "files": 6,
+      "headers": 151,
+      "types": 431,
+      "initializers": 6,
+      "bodies": 139
+    },
+    {
+      "directory": "internal/synctest",
+      "files": 2,
+      "headers": 176,
+      "types": 137,
+      "initializers": 2,
+      "bodies": 167
+    },
+    {
+      "directory": "internal/syscall/execenv",
+      "files": 2,
+      "headers": 2,
+      "types": 7,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "internal/syscall/unix",
+      "files": 89,
+      "headers": 206,
+      "types": 897,
+      "initializers": 184,
+      "bodies": 135
+    },
+    {
+      "directory": "internal/syscall/windows",
+      "files": 18,
+      "headers": 138,
+      "types": 944,
+      "initializers": 477,
+      "bodies": 133
+    },
+    {
+      "directory": "internal/syscall/windows/registry",
+      "files": 7,
+      "headers": 53,
+      "types": 252,
+      "initializers": 51,
+      "bodies": 53
+    },
+    {
+      "directory": "internal/syscall/windows/sysdll",
+      "files": 1,
+      "headers": 1,
+      "types": 2,
+      "initializers": 1,
+      "bodies": 1
+    },
+    {
+      "directory": "internal/sysinfo",
+      "files": 6,
+      "headers": 6,
+      "types": 7,
+      "initializers": 2,
+      "bodies": 6
+    },
+    {
+      "directory": "internal/syslist",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 3,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/testenv",
+      "files": 9,
+      "headers": 63,
+      "types": 108,
+      "initializers": 12,
+      "bodies": 63
+    },
+    {
+      "directory": "internal/testhash",
+      "files": 1,
+      "headers": 11,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 11
+    },
+    {
+      "directory": "internal/testlog",
+      "files": 2,
+      "headers": 7,
+      "types": 20,
+      "initializers": 0,
+      "bodies": 7
+    },
+    {
+      "directory": "internal/testpty",
+      "files": 4,
+      "headers": 7,
+      "types": 23,
+      "initializers": 1,
+      "bodies": 7
+    },
+    {
+      "directory": "internal/trace",
+      "files": 24,
+      "headers": 319,
+      "types": 1443,
+      "initializers": 33,
+      "bodies": 316
+    },
+    {
+      "directory": "internal/trace/internal/testgen",
+      "files": 1,
+      "headers": 20,
+      "types": 107,
+      "initializers": 2,
+      "bodies": 20
+    },
+    {
+      "directory": "internal/trace/internal/tracev1",
+      "files": 3,
+      "headers": 46,
+      "types": 298,
+      "initializers": 80,
+      "bodies": 46
+    },
+    {
+      "directory": "internal/trace/raw",
+      "files": 6,
+      "headers": 19,
+      "types": 88,
+      "initializers": 1,
+      "bodies": 19
+    },
+    {
+      "directory": "internal/trace/testtrace",
+      "files": 6,
+      "headers": 24,
+      "types": 89,
+      "initializers": 2,
+      "bodies": 24
+    },
+    {
+      "directory": "internal/trace/tracev2",
+      "files": 4,
+      "headers": 9,
+      "types": 35,
+      "initializers": 15,
+      "bodies": 9
+    },
+    {
+      "directory": "internal/trace/traceviewer",
+      "files": 6,
+      "headers": 74,
+      "types": 301,
+      "initializers": 45,
+      "bodies": 74
+    },
+    {
+      "directory": "internal/trace/traceviewer/format",
+      "files": 1,
+      "headers": 0,
+      "types": 41,
+      "initializers": 3,
+      "bodies": 0
+    },
+    {
+      "directory": "internal/trace/version",
+      "files": 1,
+      "headers": 5,
+      "types": 23,
+      "initializers": 10,
+      "bodies": 5
+    },
+    {
+      "directory": "internal/txtar",
+      "files": 1,
+      "headers": 6,
+      "types": 25,
+      "initializers": 3,
+      "bodies": 6
+    },
+    {
+      "directory": "internal/types/errors",
+      "files": 4,
+      "headers": 13,
+      "types": 43,
+      "initializers": 14,
+      "bodies": 13
+    },
+    {
+      "directory": "internal/unsafeheader",
+      "files": 2,
+      "headers": 8,
+      "types": 19,
+      "initializers": 2,
+      "bodies": 8
+    },
+    {
+      "directory": "internal/xcoff",
+      "files": 5,
+      "headers": 22,
+      "types": 314,
+      "initializers": 139,
+      "bodies": 22
+    },
+    {
+      "directory": "internal/zstd",
+      "files": 13,
+      "headers": 87,
+      "types": 354,
+      "initializers": 23,
+      "bodies": 87
+    },
+    {
+      "directory": "io",
+      "files": 8,
+      "headers": 180,
+      "types": 603,
+      "initializers": 21,
+      "bodies": 180
+    },
+    {
+      "directory": "io/fs",
+      "files": 19,
+      "headers": 100,
+      "types": 406,
+      "initializers": 20,
+      "bodies": 100
+    },
+    {
+      "directory": "io/ioutil",
+      "files": 5,
+      "headers": 33,
+      "types": 51,
+      "initializers": 2,
+      "bodies": 33
+    },
+    {
+      "directory": "iter",
+      "files": 2,
+      "headers": 88,
+      "types": 183,
+      "initializers": 1,
+      "bodies": 84
+    },
+    {
+      "directory": "log",
+      "files": 3,
+      "headers": 101,
+      "types": 183,
+      "initializers": 11,
+      "bodies": 101
+    },
+    {
+      "directory": "log/internal",
+      "files": 1,
+      "headers": 0,
+      "types": 4,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "log/slog",
+      "files": 30,
+      "headers": 485,
+      "types": 1313,
+      "initializers": 25,
+      "bodies": 485
+    },
+    {
+      "directory": "log/slog/internal",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 1,
+      "bodies": 0
+    },
+    {
+      "directory": "log/slog/internal/benchmarks",
+      "files": 4,
+      "headers": 31,
+      "types": 81,
+      "initializers": 9,
+      "bodies": 31
+    },
+    {
+      "directory": "log/slog/internal/buffer",
+      "files": 2,
+      "headers": 13,
+      "types": 25,
+      "initializers": 1,
+      "bodies": 13
+    },
+    {
+      "directory": "log/syslog",
+      "files": 5,
+      "headers": 42,
+      "types": 129,
+      "initializers": 5,
+      "bodies": 42
+    },
+    {
+      "directory": "maps",
+      "files": 5,
+      "headers": 48,
+      "types": 115,
+      "initializers": 2,
+      "bodies": 47
+    },
+    {
+      "directory": "math",
+      "files": 67,
+      "headers": 463,
+      "types": 776,
+      "initializers": 479,
+      "bodies": 390
+    },
+    {
+      "directory": "math/big",
+      "files": 53,
+      "headers": 887,
+      "types": 2445,
+      "initializers": 150,
+      "bodies": 879
+    },
+    {
+      "directory": "math/big/internal/asmgen",
+      "files": 20,
+      "headers": 141,
+      "types": 465,
+      "initializers": 16,
+      "bodies": 141
+    },
+    {
+      "directory": "math/bits",
+      "files": 10,
+      "headers": 218,
+      "types": 393,
+      "initializers": 26,
+      "bodies": 218
+    },
+    {
+      "directory": "math/cmplx",
+      "files": 17,
+      "headers": 87,
+      "types": 144,
+      "initializers": 55,
+      "bodies": 87
+    },
+    {
+      "directory": "math/rand",
+      "files": 13,
+      "headers": 148,
+      "types": 323,
+      "initializers": 29,
+      "bodies": 147
+    },
+    {
+      "directory": "math/rand/v2",
+      "files": 14,
+      "headers": 164,
+      "types": 364,
+      "initializers": 24,
+      "bodies": 163
+    },
+    {
+      "directory": "mime",
+      "files": 15,
+      "headers": 105,
+      "types": 219,
+      "initializers": 19,
+      "bodies": 105
+    },
+    {
+      "directory": "mime/multipart",
+      "files": 8,
+      "headers": 105,
+      "types": 326,
+      "initializers": 20,
+      "bodies": 104
+    },
+    {
+      "directory": "mime/quotedprintable",
+      "files": 5,
+      "headers": 28,
+      "types": 69,
+      "initializers": 9,
+      "bodies": 28
+    },
+    {
+      "directory": "net",
+      "files": 229,
+      "headers": 2167,
+      "types": 6760,
+      "initializers": 330,
+      "bodies": 2163
+    },
+    {
+      "directory": "net/http",
+      "files": 72,
+      "headers": 3312,
+      "types": 8793,
+      "initializers": 332,
+      "bodies": 3303
+    },
+    {
+      "directory": "net/http/cgi",
+      "files": 6,
+      "headers": 67,
+      "types": 149,
+      "initializers": 2,
+      "bodies": 67
+    },
+    {
+      "directory": "net/http/cookiejar",
+      "files": 6,
+      "headers": 51,
+      "types": 169,
+      "initializers": 28,
+      "bodies": 51
+    },
+    {
+      "directory": "net/http/fcgi",
+      "files": 3,
+      "headers": 60,
+      "types": 239,
+      "initializers": 26,
+      "bodies": 60
+    },
+    {
+      "directory": "net/http/httptest",
+      "files": 7,
+      "headers": 160,
+      "types": 349,
+      "initializers": 2,
+      "bodies": 160
+    },
+    {
+      "directory": "net/http/httptrace",
+      "files": 3,
+      "headers": 25,
+      "types": 116,
+      "initializers": 0,
+      "bodies": 25
+    },
+    {
+      "directory": "net/http/httputil",
+      "files": 7,
+      "headers": 258,
+      "types": 705,
+      "initializers": 18,
+      "bodies": 258
+    },
+    {
+      "directory": "net/http/internal",
+      "files": 4,
+      "headers": 38,
+      "types": 126,
+      "initializers": 11,
+      "bodies": 38
+    },
+    {
+      "directory": "net/http/internal/ascii",
+      "files": 2,
+      "headers": 9,
+      "types": 21,
+      "initializers": 0,
+      "bodies": 9
+    },
+    {
+      "directory": "net/http/internal/http2",
+      "files": 42,
+      "headers": 1905,
+      "types": 5156,
+      "initializers": 512,
+      "bodies": 1904
+    },
+    {
+      "directory": "net/http/internal/httpcommon",
+      "files": 1,
+      "headers": 20,
+      "types": 81,
+      "initializers": 1,
+      "bodies": 20
+    },
+    {
+      "directory": "net/http/internal/httpsfv",
+      "files": 1,
+      "headers": 35,
+      "types": 118,
+      "initializers": 0,
+      "bodies": 35
+    },
+    {
+      "directory": "net/http/internal/testcert",
+      "files": 1,
+      "headers": 1,
+      "types": 2,
+      "initializers": 2,
+      "bodies": 1
+    },
+    {
+      "directory": "net/http/pprof",
+      "files": 2,
+      "headers": 29,
+      "types": 78,
+      "initializers": 3,
+      "bodies": 29
+    },
+    {
+      "directory": "net/internal/cgotest",
+      "files": 2,
+      "headers": 1,
+      "types": 2,
+      "initializers": 0,
+      "bodies": 1
+    },
+    {
+      "directory": "net/internal/socktest",
+      "files": 10,
+      "headers": 43,
+      "types": 177,
+      "initializers": 1,
+      "bodies": 43
+    },
+    {
+      "directory": "net/mail",
+      "files": 3,
+      "headers": 64,
+      "types": 182,
+      "initializers": 5,
+      "bodies": 64
+    },
+    {
+      "directory": "net/netip",
+      "files": 9,
+      "headers": 288,
+      "types": 679,
+      "initializers": 18,
+      "bodies": 288
+    },
+    {
+      "directory": "net/rpc",
+      "files": 5,
+      "headers": 131,
+      "types": 471,
+      "initializers": 12,
+      "bodies": 131
+    },
+    {
+      "directory": "net/rpc/jsonrpc",
+      "files": 3,
+      "headers": 41,
+      "types": 151,
+      "initializers": 2,
+      "bodies": 41
+    },
+    {
+      "directory": "net/smtp",
+      "files": 4,
+      "headers": 77,
+      "types": 228,
+      "initializers": 20,
+      "bodies": 77
+    },
+    {
+      "directory": "net/textproto",
+      "files": 8,
+      "headers": 91,
+      "types": 259,
+      "initializers": 11,
+      "bodies": 91
+    },
+    {
+      "directory": "net/url",
+      "files": 5,
+      "headers": 154,
+      "types": 361,
+      "initializers": 27,
+      "bodies": 153
+    },
+    {
+      "directory": "os",
+      "files": 165,
+      "headers": 1602,
+      "types": 4225,
+      "initializers": 172,
+      "bodies": 1593
+    },
+    {
+      "directory": "os/exec",
+      "files": 25,
+      "headers": 219,
+      "types": 464,
+      "initializers": 20,
+      "bodies": 219
+    },
+    {
+      "directory": "os/exec/internal/fdtest",
+      "files": 4,
+      "headers": 4,
+      "types": 9,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "os/signal",
+      "files": 11,
+      "headers": 103,
+      "types": 155,
+      "initializers": 14,
+      "bodies": 92
+    },
+    {
+      "directory": "os/user",
+      "files": 21,
+      "headers": 161,
+      "types": 477,
+      "initializers": 32,
+      "bodies": 161
+    },
+    {
+      "directory": "path",
+      "files": 5,
+      "headers": 36,
+      "types": 75,
+      "initializers": 9,
+      "bodies": 36
+    },
+    {
+      "directory": "path/filepath",
+      "files": 17,
+      "headers": 183,
+      "types": 456,
+      "initializers": 51,
+      "bodies": 183
+    },
+    {
+      "directory": "plugin",
+      "files": 4,
+      "headers": 9,
+      "types": 37,
+      "initializers": 0,
+      "bodies": 7
+    },
+    {
+      "directory": "reflect",
+      "files": 27,
+      "headers": 1341,
+      "types": 4137,
+      "initializers": 60,
+      "bodies": 1262
+    },
+    {
+      "directory": "reflect/internal/example1",
+      "files": 1,
+      "headers": 0,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "reflect/internal/example2",
+      "files": 1,
+      "headers": 0,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "regexp",
+      "files": 10,
+      "headers": 293,
+      "types": 866,
+      "initializers": 31,
+      "bodies": 293
+    },
+    {
+      "directory": "regexp/syntax",
+      "files": 11,
+      "headers": 137,
+      "types": 485,
+      "initializers": 77,
+      "bodies": 137
+    },
+    {
+      "directory": "runtime",
+      "files": 587,
+      "headers": 8844,
+      "types": 22823,
+      "initializers": 4722,
+      "bodies": 8284
+    },
+    {
+      "directory": "runtime/_mkmalloc",
+      "files": 4,
+      "headers": 52,
+      "types": 175,
+      "initializers": 15,
+      "bodies": 52
+    },
+    {
+      "directory": "runtime/_mkmalloc/astutil",
+      "files": 1,
+      "headers": 4,
+      "types": 13,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "runtime/asan",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "runtime/cgo",
+      "files": 18,
+      "headers": 17,
+      "types": 68,
+      "initializers": 30,
+      "bodies": 15
+    },
+    {
+      "directory": "runtime/coverage",
+      "files": 1,
+      "headers": 6,
+      "types": 10,
+      "initializers": 0,
+      "bodies": 6
+    },
+    {
+      "directory": "runtime/debug",
+      "files": 10,
+      "headers": 55,
+      "types": 127,
+      "initializers": 2,
+      "bodies": 43
+    },
+    {
+      "directory": "runtime/metrics",
+      "files": 7,
+      "headers": 17,
+      "types": 43,
+      "initializers": 3,
+      "bodies": 15
+    },
+    {
+      "directory": "runtime/msan",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "runtime/pprof",
+      "files": 27,
+      "headers": 433,
+      "types": 1068,
+      "initializers": 79,
+      "bodies": 413
+    },
+    {
+      "directory": "runtime/race",
+      "files": 14,
+      "headers": 22,
+      "types": 39,
+      "initializers": 10,
+      "bodies": 22
+    },
+    {
+      "directory": "runtime/race/internal/amd64v1",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "runtime/race/internal/amd64v3",
+      "files": 1,
+      "headers": 0,
+      "types": 0,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "runtime/secret",
+      "files": 8,
+      "headers": 62,
+      "types": 104,
+      "initializers": 4,
+      "bodies": 52
+    },
+    {
+      "directory": "runtime/trace",
+      "files": 12,
+      "headers": 86,
+      "types": 193,
+      "initializers": 9,
+      "bodies": 79
+    },
+    {
+      "directory": "simd",
+      "files": 20,
+      "headers": 870,
+      "types": 2726,
+      "initializers": 14,
+      "bodies": 491
+    },
+    {
+      "directory": "simd/archsimd",
+      "files": 34,
+      "headers": 3572,
+      "types": 9925,
+      "initializers": 33,
+      "bodies": 1162
+    },
+    {
+      "directory": "simd/archsimd/_gen",
+      "files": 1,
+      "headers": 14,
+      "types": 19,
+      "initializers": 11,
+      "bodies": 14
+    },
+    {
+      "directory": "simd/archsimd/_gen/midway",
+      "files": 1,
+      "headers": 27,
+      "types": 83,
+      "initializers": 2,
+      "bodies": 27
+    },
+    {
+      "directory": "simd/archsimd/_gen/sgutil",
+      "files": 7,
+      "headers": 36,
+      "types": 126,
+      "initializers": 24,
+      "bodies": 35
+    },
+    {
+      "directory": "simd/archsimd/_gen/simdgen",
+      "files": 13,
+      "headers": 163,
+      "types": 666,
+      "initializers": 57,
+      "bodies": 163
+    },
+    {
+      "directory": "simd/archsimd/_gen/simdgen/arm64",
+      "files": 6,
+      "headers": 68,
+      "types": 267,
+      "initializers": 37,
+      "bodies": 68
+    },
+    {
+      "directory": "simd/archsimd/_gen/tmplgen",
+      "files": 1,
+      "headers": 36,
+      "types": 159,
+      "initializers": 100,
+      "bodies": 36
+    },
+    {
+      "directory": "simd/archsimd/_gen/unify",
+      "files": 13,
+      "headers": 154,
+      "types": 616,
+      "initializers": 14,
+      "bodies": 153
+    },
+    {
+      "directory": "simd/archsimd/_gen/wasmgen",
+      "files": 1,
+      "headers": 94,
+      "types": 212,
+      "initializers": 108,
+      "bodies": 94
+    },
+    {
+      "directory": "simd/archsimd/internal/simd_test",
+      "files": 41,
+      "headers": 3065,
+      "types": 8823,
+      "initializers": 32,
+      "bodies": 3064
+    },
+    {
+      "directory": "simd/archsimd/internal/test_helpers",
+      "files": 1,
+      "headers": 2,
+      "types": 23,
+      "initializers": 0,
+      "bodies": 2
+    },
+    {
+      "directory": "simd/internal/bridge",
+      "files": 9,
+      "headers": 2103,
+      "types": 5910,
+      "initializers": 7,
+      "bodies": 2103
+    },
+    {
+      "directory": "slices",
+      "files": 10,
+      "headers": 311,
+      "types": 794,
+      "initializers": 15,
+      "bodies": 311
+    },
+    {
+      "directory": "sort",
+      "files": 16,
+      "headers": 262,
+      "types": 603,
+      "initializers": 19,
+      "bodies": 262
+    },
+    {
+      "directory": "strconv",
+      "files": 13,
+      "headers": 164,
+      "types": 364,
+      "initializers": 46,
+      "bodies": 164
+    },
+    {
+      "directory": "strings",
+      "files": 18,
+      "headers": 451,
+      "types": 948,
+      "initializers": 63,
+      "bodies": 451
+    },
+    {
+      "directory": "structs",
+      "files": 2,
+      "headers": 0,
+      "types": 3,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "sync",
+      "files": 26,
+      "headers": 482,
+      "types": 977,
+      "initializers": 28,
+      "bodies": 465
+    },
+    {
+      "directory": "sync/atomic",
+      "files": 8,
+      "headers": 356,
+      "types": 966,
+      "initializers": 10,
+      "bodies": 300
+    },
+    {
+      "directory": "syscall",
+      "files": 291,
+      "headers": 6629,
+      "types": 33031,
+      "initializers": 64055,
+      "bodies": 5532
+    },
+    {
+      "directory": "syscall/js",
+      "files": 4,
+      "headers": 133,
+      "types": 263,
+      "initializers": 19,
+      "bodies": 114
+    },
+    {
+      "directory": "testing",
+      "files": 25,
+      "headers": 635,
+      "types": 1453,
+      "initializers": 41,
+      "bodies": 635
+    },
+    {
+      "directory": "testing/cryptotest",
+      "files": 2,
+      "headers": 16,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 14
+    },
+    {
+      "directory": "testing/fstest",
+      "files": 4,
+      "headers": 62,
+      "types": 226,
+      "initializers": 3,
+      "bodies": 62
+    },
+    {
+      "directory": "testing/internal/testdeps",
+      "files": 1,
+      "headers": 22,
+      "types": 99,
+      "initializers": 0,
+      "bodies": 22
+    },
+    {
+      "directory": "testing/iotest",
+      "files": 7,
+      "headers": 40,
+      "types": 123,
+      "initializers": 2,
+      "bodies": 40
+    },
+    {
+      "directory": "testing/quick",
+      "files": 2,
+      "headers": 81,
+      "types": 237,
+      "initializers": 2,
+      "bodies": 81
+    },
+    {
+      "directory": "testing/slogtest",
+      "files": 3,
+      "headers": 39,
+      "types": 88,
+      "initializers": 1,
+      "bodies": 39
+    },
+    {
+      "directory": "testing/synctest",
+      "files": 4,
+      "headers": 64,
+      "types": 62,
+      "initializers": 0,
+      "bodies": 63
+    },
+    {
+      "directory": "text/scanner",
+      "files": 3,
+      "headers": 73,
+      "types": 214,
+      "initializers": 16,
+      "bodies": 73
+    },
+    {
+      "directory": "text/tabwriter",
+      "files": 3,
+      "headers": 44,
+      "types": 129,
+      "initializers": 8,
+      "bodies": 44
+    },
+    {
+      "directory": "text/template",
+      "files": 12,
+      "headers": 239,
+      "types": 796,
+      "initializers": 57,
+      "bodies": 239
+    },
+    {
+      "directory": "text/template/parse",
+      "files": 5,
+      "headers": 242,
+      "types": 777,
+      "initializers": 44,
+      "bodies": 242
+    },
+    {
+      "directory": "time",
+      "files": 38,
+      "headers": 702,
+      "types": 1588,
+      "initializers": 182,
+      "bodies": 691
+    },
+    {
+      "directory": "time/tzdata",
+      "files": 1,
+      "headers": 5,
+      "types": 11,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "unicode",
+      "files": 10,
+      "headers": 84,
+      "types": 154,
+      "initializers": 561,
+      "bodies": 84
+    },
+    {
+      "directory": "unicode/utf16",
+      "files": 3,
+      "headers": 26,
+      "types": 49,
+      "initializers": 15,
+      "bodies": 26
+    },
+    {
+      "directory": "unicode/utf8",
+      "files": 3,
+      "headers": 91,
+      "types": 136,
+      "initializers": 46,
+      "bodies": 91
+    },
+    {
+      "directory": "unique",
+      "files": 8,
+      "headers": 88,
+      "types": 219,
+      "initializers": 7,
+      "bodies": 80
+    },
+    {
+      "directory": "unsafe",
+      "files": 1,
+      "headers": 8,
+      "types": 22,
+      "initializers": 0,
+      "bodies": 0
+    },
+    {
+      "directory": "uuid",
+      "files": 2,
+      "headers": 33,
+      "types": 66,
+      "initializers": 1,
+      "bodies": 33
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/chacha20",
+      "files": 6,
+      "headers": 16,
+      "types": 62,
+      "initializers": 15,
+      "bodies": 13
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/chacha20poly1305",
+      "files": 7,
+      "headers": 24,
+      "types": 78,
+      "initializers": 6,
+      "bodies": 22
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/cryptobyte",
+      "files": 3,
+      "headers": 95,
+      "types": 302,
+      "initializers": 3,
+      "bodies": 95
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/cryptobyte/asn1",
+      "files": 1,
+      "headers": 2,
+      "types": 5,
+      "initializers": 18,
+      "bodies": 2
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/hkdf",
+      "files": 1,
+      "headers": 4,
+      "types": 23,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/internal/alias",
+      "files": 2,
+      "headers": 4,
+      "types": 8,
+      "initializers": 0,
+      "bodies": 4
+    },
+    {
+      "directory": "vendor/golang.org/x/crypto/internal/poly1305",
+      "files": 5,
+      "headers": 24,
+      "types": 91,
+      "initializers": 8,
+      "bodies": 22
+    },
+    {
+      "directory": "vendor/golang.org/x/net/dns/dnsmessage",
+      "files": 2,
+      "headers": 181,
+      "types": 809,
+      "initializers": 83,
+      "bodies": 181
+    },
+    {
+      "directory": "vendor/golang.org/x/net/http/httpguts",
+      "files": 2,
+      "headers": 15,
+      "types": 33,
+      "initializers": 3,
+      "bodies": 15
+    },
+    {
+      "directory": "vendor/golang.org/x/net/http/httpproxy",
+      "files": 1,
+      "headers": 15,
+      "types": 72,
+      "initializers": 1,
+      "bodies": 15
+    },
+    {
+      "directory": "vendor/golang.org/x/net/http2/hpack",
+      "files": 5,
+      "headers": 61,
+      "types": 215,
+      "initializers": 11,
+      "bodies": 61
+    },
+    {
+      "directory": "vendor/golang.org/x/net/http3",
+      "files": 1,
+      "headers": 4,
+      "types": 12,
+      "initializers": 1,
+      "bodies": 4
+    },
+    {
+      "directory": "vendor/golang.org/x/net/idna",
+      "files": 6,
+      "headers": 76,
+      "types": 263,
+      "initializers": 63,
+      "bodies": 76
+    },
+    {
+      "directory": "vendor/golang.org/x/net/internal/http3",
+      "files": 16,
+      "headers": 155,
+      "types": 584,
+      "initializers": 43,
+      "bodies": 155
+    },
+    {
+      "directory": "vendor/golang.org/x/net/internal/httpcommon",
+      "files": 3,
+      "headers": 20,
+      "types": 81,
+      "initializers": 1,
+      "bodies": 20
+    },
+    {
+      "directory": "vendor/golang.org/x/net/internal/quic/quicwire",
+      "files": 1,
+      "headers": 10,
+      "types": 27,
+      "initializers": 2,
+      "bodies": 10
+    },
+    {
+      "directory": "vendor/golang.org/x/net/lif",
+      "files": 7,
+      "headers": 27,
+      "types": 152,
+      "initializers": 10,
+      "bodies": 26
+    },
+    {
+      "directory": "vendor/golang.org/x/net/nettest",
+      "files": 5,
+      "headers": 70,
+      "types": 115,
+      "initializers": 4,
+      "bodies": 70
+    },
+    {
+      "directory": "vendor/golang.org/x/net/quic",
+      "files": 56,
+      "headers": 646,
+      "types": 2380,
+      "initializers": 165,
+      "bodies": 642
+    },
+    {
+      "directory": "vendor/golang.org/x/sys/cpu",
+      "files": 55,
+      "headers": 126,
+      "types": 477,
+      "initializers": 164,
+      "bodies": 103
+    },
+    {
+      "directory": "vendor/golang.org/x/text/secure/bidirule",
+      "files": 1,
+      "headers": 13,
+      "types": 48,
+      "initializers": 4,
+      "bodies": 13
+    },
+    {
+      "directory": "vendor/golang.org/x/text/transform",
+      "files": 1,
+      "headers": 23,
+      "types": 130,
+      "initializers": 9,
+      "bodies": 23
+    },
+    {
+      "directory": "vendor/golang.org/x/text/unicode/bidi",
+      "files": 7,
+      "headers": 91,
+      "types": 309,
+      "initializers": 19,
+      "bodies": 91
+    },
+    {
+      "directory": "vendor/golang.org/x/text/unicode/norm",
+      "files": 10,
+      "headers": 148,
+      "types": 509,
+      "initializers": 82,
+      "bodies": 148
+    },
+    {
+      "directory": "weak",
+      "files": 3,
+      "headers": 18,
+      "types": 34,
+      "initializers": 0,
+      "bodies": 15
+    }
+  ]
+}

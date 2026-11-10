@@ -1,0 +1,5 @@
+/target
+crates/lsp-types/target/
+crates/lsp-types/Cargo.lock
+__pycache__/
+*.py[cod]

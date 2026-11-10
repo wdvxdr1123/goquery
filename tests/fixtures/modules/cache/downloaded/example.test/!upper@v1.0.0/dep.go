@@ -1,0 +1,2 @@
+package renamed
+func Value() {}

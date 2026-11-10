@@ -1,0 +1,117 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {},
+      "initializationOptions": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\n// DocFunction reports whether a[0] < b. Second sentence.\n//\n// Another paragraph.\n//\n// # Example\n//\n//     DocFunction()\n//go:noinline\nfunc DocFunction() {}\n// DocRecord describes a record.\ntype DocRecord struct {\n // DocField belongs to the field.\n DocField int\n DocTrailing string `json:\"x\"` // DocTrailing is trailing.\n // Shared field documentation.\n DocLeft, DocRight bool\n DocMulti string /*First sentence.*/ /*Second sentence.*/\n DocBlank int\n\n // Detached comment.\n\n DocDetached int\n}\n// Group documentation.\nvar (\n DocGroup int\n // Own documentation.\n DocOwn int\n DocNested int = func() int {\n // Nested group.\n var (local int)\n return local\n }()\n DocAfter int\n DocFallback int // Trailing loses to the group.\n)\nvar DocTail int // DocTail has a trailing comment.\n/* DocBlock has a block comment.\nSecond line.\n*/\ntype DocBlock int\n// Unrelated documentation.\nvar Other int\n\nfunc DocUndocumented() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport \"example.test/project/lib\"\nfunc main() { var r lib.DocRecord; _ = r; lib.Doc }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 49
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport \"example.test/project/lib\"\nfunc main() { var r lib.DocRecord; _ = r; r.Doc }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 47
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\n// DocFunction reports whether a[0] < b. Second sentence.\n//\n// Another paragraph.\n//\n// # Example\n//\n//     DocFunction()\n//go:noinline\nfunc DocFunction() {}\n// DocRecord describes a record.\ntype DocRecord struct {\n // DocField has updated documentation.\n DocField int\n DocTrailing string `json:\"x\"` // DocTrailing is trailing.\n // Shared field documentation.\n DocLeft, DocRight bool\n DocMulti string /*First sentence.*/ /*Second sentence.*/\n DocBlank int\n\n // Detached comment.\n\n DocDetached int\n}\n// Group documentation.\nvar (\n DocGroup int\n // Own documentation.\n DocOwn int\n DocNested int = func() int {\n // Nested group.\n var (local int)\n return local\n }()\n DocAfter int\n DocFallback int // Trailing loses to the group.\n)\nvar DocTail int // DocTail has a trailing comment.\n/* DocBlock has a block comment.\nSecond line.\n*/\ntype DocBlock int\n// Unrelated documentation.\nvar Other int\n\nfunc DocUndocumented() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 2,
+        "character": 47
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

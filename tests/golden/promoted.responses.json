@@ -1,0 +1,717 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 3
+          },
+          "start": {
+            "character": 14,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 37,
+            "line": 8
+          },
+          "start": {
+            "character": 34,
+            "line": 8
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 10
+          },
+          "start": {
+            "character": 18,
+            "line": 10
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 12
+          },
+          "start": {
+            "character": 15,
+            "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "lib.Base",
+          "filterText": "Base",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Base",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Base",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 14
+              },
+              "start": {
+                "character": 3,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Run",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Run",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Run",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 14
+              },
+              "start": {
+                "character": 3,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "mid.Wrapper",
+          "filterText": "Wrapper",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Wrapper",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Wrapper",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 14
+              },
+              "start": {
+                "character": 3,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "A",
+          "filterText": "A",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "A",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "A",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 15
+              },
+              "start": {
+                "character": 3,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "B",
+          "filterText": "B",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "B",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "B",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 15
+              },
+              "start": {
+                "character": 3,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 8,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "lib.Base",
+          "filterText": "Base",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Base",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Base",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 16
+              },
+              "start": {
+                "character": 3,
+                "line": 16
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Run",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Run",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Run",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 16
+              },
+              "start": {
+                "character": 3,
+                "line": 16
+              }
+            }
+          }
+        },
+        {
+          "detail": "mid.Wrapper",
+          "filterText": "Wrapper",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Wrapper",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Wrapper",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 16
+              },
+              "start": {
+                "character": 3,
+                "line": 16
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "*Cycle",
+          "filterText": "Cycle",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Cycle",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Cycle",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 18
+              },
+              "start": {
+                "character": 3,
+                "line": 18
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Own",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Own",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Own",
+            "range": {
+              "end": {
+                "character": 6,
+                "line": 18
+              },
+              "start": {
+                "character": 3,
+                "line": 18
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 3
+          },
+          "start": {
+            "character": 14,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 6,
+            "line": 14
+          },
+          "start": {
+            "character": 3,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 2
+          },
+          "start": {
+            "character": 24,
+            "line": 2
+          }
+        },
+        "uri": "$MID_USE_URI"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 20,
+            "line": 22
+          },
+          "start": {
+            "character": 17,
+            "line": 22
+          }
+        },
+        "uri": "$FILE_URI"
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "Own",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Own",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Own",
+            "range": {
+              "end": {
+                "character": 34,
+                "line": 23
+              },
+              "start": {
+                "character": 31,
+                "line": 23
+              }
+            }
+          }
+        },
+        {
+          "detail": "error",
+          "filterText": "error",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "error",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "error",
+            "range": {
+              "end": {
+                "character": 34,
+                "line": 23
+              },
+              "start": {
+                "character": 31,
+                "line": 23
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "from": {
+          "data": {
+            "name": "Use",
+            "start": 360,
+            "uri": "$FILE_URI"
+          },
+          "detail": "example.test/promoted • main.go",
+          "kind": 12,
+          "name": "Use",
+          "range": {
+            "end": {
+              "character": 8,
+              "line": 13
+            },
+            "start": {
+              "character": 5,
+              "line": 13
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 8,
+              "line": 13
+            },
+            "start": {
+              "character": 5,
+              "line": 13
+            }
+          },
+          "uri": "$FILE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 6,
+              "line": 14
+            },
+            "start": {
+              "character": 3,
+              "line": 14
+            }
+          }
+        ]
+      },
+      {
+        "from": {
+          "data": {
+            "name": "Use",
+            "start": 18,
+            "uri": "$MID_USE_URI"
+          },
+          "detail": "example.test/promoted/mid • use.go",
+          "kind": 12,
+          "name": "Use",
+          "range": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "selectionRange": {
+            "end": {
+              "character": 8,
+              "line": 2
+            },
+            "start": {
+              "character": 5,
+              "line": 2
+            }
+          },
+          "uri": "$MID_USE_URI"
+        },
+        "fromRanges": [
+          {
+            "end": {
+              "character": 27,
+              "line": 2
+            },
+            "start": {
+              "character": 24,
+              "line": 2
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 3
+          },
+          "start": {
+            "character": 14,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 17,
+            "line": 3
+          },
+          "start": {
+            "character": 14,
+            "line": 3
+          }
+        },
+        "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 6,
+            "line": 14
+          },
+          "start": {
+            "character": 3,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 27,
+            "line": 2
+          },
+          "start": {
+            "character": 24,
+            "line": 2
+          }
+        },
+        "uri": "$MID_USE_URI"
+      }
+    ]
+  },
+  {
+    "id": 99,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

@@ -1,0 +1,36 @@
+[package]
+name = "goquery"
+version = "0.1.0"
+edition = "2024"
+license = "BSD-3-Clause"
+description = "A lightweight Go language server written in Rust"
+repository = "https://github.com/wdvxdr1123/goquery"
+readme = "README.md"
+keywords = ["lsp", "golang", "language-server", "editor"]
+categories = ["development-tools"]
+
+[workspace]
+members = []
+resolver = "3"
+
+[dependencies]
+tower-lsp = "0.20.0"
+tokio = { version = "1", features = ["io-std", "io-util", "rt"] }
+serde = "1"
+tower = { version = "0.4", features = ["limit"] }
+futures = "0.3"
+serde_json = "1"
+url = "2"
+walkdir = "2"
+
+[dev-dependencies]
+
+[profile.release]
+lto = true
+strip = true
+
+# Vendored lsp-types 0.94.1 keeps DocumentLink targets as the exact wire string:
+# gopls emits targets that url::Url would normalize or reject (bare hosts,
+# uppercase hosts, IDN, raw IPv6), and documentLink parity compares them as-is.
+[patch.crates-io]
+lsp-types = { path = "crates/lsp-types" }

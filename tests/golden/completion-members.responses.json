@@ -1,0 +1,794 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x int) string",
+          "filterText": "Action",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Action",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Action",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "Count",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Count",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Count",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        },
+        {
+          "detail": "Inner",
+          "filterText": "Inner",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Inner",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Inner",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "Label",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Label",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Label",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(x int) string",
+          "filterText": "Run",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Run",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "Run(${1:x int})",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "hidden",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "hidden",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "hidden",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 12
+              },
+              "start": {
+                "character": 7,
+                "line": 12
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "Left",
+          "filterText": "Left",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Left",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Left",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 13
+              },
+              "start": {
+                "character": 7,
+                "line": 13
+              }
+            }
+          }
+        },
+        {
+          "detail": "Right",
+          "filterText": "Right",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Right",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Right",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 13
+              },
+              "start": {
+                "character": 7,
+                "line": 13
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x int) string",
+          "filterText": "Action",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Action",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Action",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 14
+              },
+              "start": {
+                "character": 7,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "Count",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Count",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Count",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 14
+              },
+              "start": {
+                "character": 7,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "Inner",
+          "filterText": "Inner",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Inner",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Inner",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 14
+              },
+              "start": {
+                "character": 7,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(x int) string",
+          "filterText": "Run",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Run",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "Run(${1:x int})",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 14
+              },
+              "start": {
+                "character": 7,
+                "line": 14
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "hidden",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "hidden",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "hidden",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 14
+              },
+              "start": {
+                "character": 7,
+                "line": 14
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func() error",
+          "filterText": "Close",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Close",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Close()",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 15
+              },
+              "start": {
+                "character": 7,
+                "line": 15
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(dst []byte) (int, error)",
+          "filterText": "Read",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Read",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Read(${1:dst []byte})",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 15
+              },
+              "start": {
+                "character": 7,
+                "line": 15
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "Export",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Export",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Export",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 16
+              },
+              "start": {
+                "character": 14,
+                "line": 16
+              }
+            }
+          }
+        },
+        {
+          "detail": "func(x int) int",
+          "filterText": "Fn",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Fn",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "Fn",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 16
+              },
+              "start": {
+                "character": 14,
+                "line": 16
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "Run",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Run",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "Run()",
+            "range": {
+              "end": {
+                "character": 20,
+                "line": 16
+              },
+              "start": {
+                "character": 14,
+                "line": 16
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "hidden",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "hidden",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "hidden",
+            "range": {
+              "end": {
+                "character": 13,
+                "line": 17
+              },
+              "start": {
+                "character": 7,
+                "line": 17
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 11,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x int) string",
+          "filterText": "Action",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Action",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Action",
+            "range": {
+              "end": {
+                "character": 13,
+                "line": 18
+              },
+              "start": {
+                "character": 7,
+                "line": 18
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 12,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "string",
+          "filterText": "Label",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Label",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Label",
+            "range": {
+              "end": {
+                "character": 12,
+                "line": 19
+              },
+              "start": {
+                "character": 7,
+                "line": 19
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x int) string",
+          "filterText": "Run",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Run",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Run(${1:x int})",
+            "range": {
+              "end": {
+                "character": 10,
+                "line": 20
+              },
+              "start": {
+                "character": 7,
+                "line": 20
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 14,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(dst []byte) (int, error)",
+          "filterText": "Read",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read(${1:dst []byte})",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 21
+              },
+              "start": {
+                "character": 7,
+                "line": 21
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 15,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x int) int",
+          "filterText": "Fn",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Fn",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Fn",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 22
+              },
+              "start": {
+                "character": 14,
+                "line": 22
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 20,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(x string) string",
+          "filterText": "Fn",
+          "insertTextFormat": 2,
+          "kind": 5,
+          "label": "Fn",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Fn",
+            "range": {
+              "end": {
+                "character": 16,
+                "line": 22
+              },
+              "start": {
+                "character": 14,
+                "line": 22
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 21,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "func(dst []byte) (n int, err error)",
+          "filterText": "Read",
+          "insertTextFormat": 2,
+          "kind": 2,
+          "label": "Read",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Read(${1:dst []byte})",
+            "range": {
+              "end": {
+                "character": 11,
+                "line": 21
+              },
+              "start": {
+                "character": 7,
+                "line": 21
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 22,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": []
+    }
+  },
+  {
+    "id": 6,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

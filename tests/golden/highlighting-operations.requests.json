@@ -1,0 +1,118 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "typeParameter",
+              "parameter",
+              "property",
+              "variable",
+              "function",
+              "method",
+              "macro",
+              "keyword",
+              "comment",
+              "string",
+              "number",
+              "operator",
+              "label"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "array",
+              "bool",
+              "chan",
+              "format",
+              "interface",
+              "map",
+              "number",
+              "pointer",
+              "signature",
+              "slice",
+              "string",
+              "struct",
+              "shadowing"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nconst Text = \"a\" + \"b\"\nconst TypedText string = \"a\"\nconst Joined = TypedText + \"b\"\nconst Compare = 1 < 2\nconst Logic = true && false\nconst TypedBool bool = true\nconst Mixed = TypedBool || false\nconst Negated = !true\nconst TypedNegated = !TypedBool\nconst Shifted = 1 << 2\nconst Minimum = min(\"b\", \"a\")\nconst TypedMinimum = min(TypedText, \"b\")\nvar Compared = 1 != 2\nvar Combined = \"a\" + \"b\"\nfunc Probe(s string, n int, flag bool, buf []byte) {\n index := len(s) - 1\n total := n + 2 * 3\n shifted := 1 << n\n less := n < total\n logical := flag && true\n negated := !flag\n text := s + \"x\"\n low := min(n, 2)\n high := max(s, \"b\")\n copied := copy(buf, []byte{})\n capacity := cap(buf)\n realPart := real(1 + 2i)\n imaginaryPart := imag(1 + 2i)\n z := complex(1, 2)\n _ = index; _ = total; _ = shifted; _ = less; _ = logical\n _ = negated; _ = text; _ = low; _ = high; _ = copied\n _ = capacity; _ = realPart; _ = imaginaryPart; _ = z\n { len := func(s string) string { return s }; var explicit string = len(s); _ = explicit }\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nconst Text = \"a\" + \"b\"\nconst TypedText = \"a\"\nconst Joined = TypedText + \"b\"\nconst Compare = 1 < 2\nconst Logic = true && false\nconst TypedBool = true\nconst Mixed = TypedBool || false\nconst Negated = !true\nconst TypedNegated = !TypedBool\nconst Shifted = 1 << 2\nconst Minimum = min(\"b\", \"a\")\nconst TypedMinimum = min(TypedText, \"b\")\nvar Compared = 1 != 2\nvar Combined = \"a\" + \"b\"\nfunc Probe(s string, n int, flag bool, buf []byte) {\n index := len(s) - 1\n total := n + 2 * 3\n shifted := 1 << n\n less := n < total\n logical := flag && true\n negated := !flag\n text := s + \"x\"\n low := min(n, 2)\n high := max(s, \"b\")\n copied := copy(buf, []byte{})\n capacity := cap(buf)\n realPart := real(1 + 2i)\n imaginaryPart := imag(1 + 2i)\n z := complex(1, 2)\n _ = index; _ = total; _ = shifted; _ = less; _ = logical\n _ = negated; _ = text; _ = low; _ = high; _ = copied\n _ = capacity; _ = realPart; _ = imaginaryPart; _ = z\n { len := func(s string) string { return s }; var explicit string = len(s); _ = explicit }\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

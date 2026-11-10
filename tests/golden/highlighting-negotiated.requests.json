@@ -1,0 +1,88 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "number",
+              "keyword",
+              "comment",
+              "unknown-category"
+            ],
+            "tokenModifiers": [],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\r\nimport (\r\n \"example.test/project/lib\"\r\n alias \"example.test/project/other\"\r\n _ \"unsafe\"\r\n)\r\n// a comment with \ud83d\ude00 and \u4e16\u754c\r\n/* first \ud83d\ude00\r\n\r\n last \u4e16\u754c */\r\nconst Number = 0x1.fp2 + 3i\r\nvar Text = \"hello \\t\u4e16\u754c\"\r\nvar Raw = `first \ud83d\ude00\r\n\r\nlast \u4e16\u754c`\r\nfunc Probe(value int, input <-chan int) {\r\n value += 2\r\n value++ // same-line comment\r\n value = value &^ 1\r\n if value > 0 && value != 3 { value-- } else { return }\r\n for range 2 { break }\r\n _ = <-input\r\n _ = '\u754c'\r\n _ = lib.Thing{}\r\n _ = alias.Thing{}\r\n _ = []int{1, 2, 3}\r\n}\r\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport (\n \"example.test/project/lib\"\n alias \"example.test/project/other\"\n _ \"unsafe\"\n)\n// a comment with \ud83d\ude00 and \u4e16\u754c\n/* first \ud83d\ude00 changed\n\n last \u4e16\u754c */\nconst Number = 0x1.fp2 + 3i\nvar Text = \"hello \\t\u4e16\u754c\"\nvar Raw = `first \ud83d\ude00 changed\n\nlast \u4e16\u754c`\nfunc Probe(value int, input <-chan int) {\n value += 42\n value++ // same-line comment\n value = value &^ 1\n if value > 0 && value != 3 { value-- } else { return }\n for range 2 { break }\n _ = <-input\n _ = '\u754c'\n _ = lib.Thing{}\n _ = alias.Thing{}\n _ = []int{1, 2, 3}\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/semanticTokens/full",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

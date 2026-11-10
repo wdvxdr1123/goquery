@@ -1,0 +1,638 @@
+[
+  {
+    "id": 0,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "filterText": "DocAfter",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocAfter",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "DocAfter",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "DocBlock",
+          "insertTextFormat": 1,
+          "kind": 7,
+          "label": "DocBlock",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "DocBlock",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "DocFallback",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocFallback",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "DocFallback",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "DocFunction",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "DocFunction",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "DocFunction",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "DocGroup",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocGroup",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "DocGroup",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "DocNested",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocNested",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "DocNested",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "DocOwn",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocOwn",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "DocOwn",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "struct{...}",
+          "filterText": "DocRecord",
+          "insertTextFormat": 1,
+          "kind": 22,
+          "label": "DocRecord",
+          "sortText": "00007",
+          "textEdit": {
+            "newText": "DocRecord",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "filterText": "DocTail",
+          "insertTextFormat": 1,
+          "kind": 6,
+          "label": "DocTail",
+          "sortText": "00008",
+          "textEdit": {
+            "newText": "DocTail",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "func()",
+          "filterText": "DocUndocumented",
+          "insertTextFormat": 1,
+          "kind": 3,
+          "label": "DocUndocumented",
+          "sortText": "00009",
+          "textEdit": {
+            "newText": "DocUndocumented",
+            "range": {
+              "end": {
+                "character": 49,
+                "line": 2
+              },
+              "start": {
+                "character": 46,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "DocBlank",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocBlank",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "DocBlank",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "DocDetached",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocDetached",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "DocDetached",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "DocField",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocField",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "DocField",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "DocLeft",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocLeft",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "DocLeft",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "DocMulti",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocMulti",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "DocMulti",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "DocRight",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocRight",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "DocRight",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "DocTrailing",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocTrailing",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "DocTrailing",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "isIncomplete": true,
+      "items": [
+        {
+          "detail": "int",
+          "filterText": "DocBlank",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocBlank",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "DocBlank",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "DocDetached",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocDetached",
+          "sortText": "00001",
+          "textEdit": {
+            "newText": "DocDetached",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "int",
+          "filterText": "DocField",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocField",
+          "sortText": "00002",
+          "textEdit": {
+            "newText": "DocField",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "DocLeft",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocLeft",
+          "sortText": "00003",
+          "textEdit": {
+            "newText": "DocLeft",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "DocMulti",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocMulti",
+          "sortText": "00004",
+          "textEdit": {
+            "newText": "DocMulti",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "bool",
+          "filterText": "DocRight",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocRight",
+          "sortText": "00005",
+          "textEdit": {
+            "newText": "DocRight",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        },
+        {
+          "detail": "string",
+          "filterText": "DocTrailing",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "DocTrailing",
+          "sortText": "00006",
+          "textEdit": {
+            "newText": "DocTrailing",
+            "range": {
+              "end": {
+                "character": 47,
+                "line": 2
+              },
+              "start": {
+                "character": 44,
+                "line": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": null
+  }
+]

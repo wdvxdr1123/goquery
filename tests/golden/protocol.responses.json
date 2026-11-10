@@ -1,0 +1,204 @@
+[
+  {
+    "error": {
+      "code": -32002,
+      "message": "Server not initialized"
+    },
+    "id": 0,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "goexperiment must be a string"
+    },
+    "id": 1,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32002,
+      "message": "Server not initialized"
+    },
+    "id": 2,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "callHierarchyProvider": true,
+        "codeActionProvider": {
+          "codeActionKinds": [
+            "quickfix"
+          ],
+          "resolveProvider": false
+        },
+        "codeLensProvider": {
+          "resolveProvider": false
+        },
+        "completionProvider": {
+          "triggerCharacters": [
+            "."
+          ]
+        },
+        "declarationProvider": true,
+        "definitionProvider": true,
+        "documentFormattingProvider": true,
+        "documentHighlightProvider": true,
+        "documentLinkProvider": {
+          "resolveProvider": false
+        },
+        "documentSymbolProvider": true,
+        "foldingRangeProvider": true,
+        "hoverProvider": true,
+        "implementationProvider": true,
+        "positionEncoding": "utf-16",
+        "referencesProvider": true,
+        "renameProvider": {
+          "prepareProvider": true
+        },
+        "semanticTokensProvider": {
+          "full": true,
+          "legend": {
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static",
+              "signature",
+              "number",
+              "bool",
+              "string",
+              "interface",
+              "struct",
+              "pointer",
+              "array",
+              "slice",
+              "map",
+              "chan",
+              "shadowing",
+              "format"
+            ],
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ]
+          },
+          "range": true
+        },
+        "signatureHelpProvider": {
+          "retriggerCharacters": [
+            ")"
+          ],
+          "triggerCharacters": [
+            "(",
+            ","
+          ]
+        },
+        "textDocumentSync": 1,
+        "typeDefinitionProvider": true,
+        "typeHierarchyProvider": true,
+        "workspace": {
+          "workspaceFolders": {
+            "changeNotifications": true,
+            "supported": true
+          }
+        },
+        "workspaceSymbolProvider": true
+      },
+      "serverInfo": {
+        "name": "goquery",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request"
+    },
+    "id": 4,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "missing field `textDocument`"
+    },
+    "id": 5,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32602,
+      "message": "missing field `position`"
+    },
+    "id": 6,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32601,
+      "data": "unknown",
+      "message": "Method not found"
+    },
+    "id": 7,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request"
+    },
+    "id": 8,
+    "jsonrpc": "2.0"
+  },
+  {
+    "id": 9,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "id": 10,
+    "jsonrpc": "2.0",
+    "result": null
+  },
+  {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request"
+    },
+    "id": 11,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request"
+    },
+    "id": 12,
+    "jsonrpc": "2.0"
+  },
+  {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request"
+    },
+    "id": 13,
+    "jsonrpc": "2.0"
+  }
+]

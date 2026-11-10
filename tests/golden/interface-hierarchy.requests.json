@@ -1,0 +1,2268 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": false
+            }
+          },
+          "semanticTokens": {
+            "requests": {
+              "full": true
+            },
+            "tokenTypes": [
+              "namespace",
+              "type",
+              "function",
+              "method",
+              "variable",
+              "property",
+              "parameter",
+              "keyword",
+              "string",
+              "number",
+              "comment",
+              "operator",
+              "typeParameter"
+            ],
+            "tokenModifiers": [
+              "declaration",
+              "definition",
+              "readonly",
+              "defaultLibrary",
+              "static"
+            ],
+            "formats": [
+              "relative"
+            ]
+          }
+        }
+      },
+      "initializationOptions": {
+        "goroot": "",
+        "semanticTokens": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\n\nimport \"example.test/interfacehierarchy/lib\"\nimport \"example.test/interfacehierarchy/other\"\nimport \"example.test/interfacehierarchy/shadow\"\n\ntype Good struct{}\nfunc (Good) Use(interface { lib.A }) {}\nfunc (Good) Union(interface { B(int) string; A() }) {}\nfunc (Good) Duplicate(interface { A() }) {}\nfunc (Good) Int(interface { Get() int }) {}\nfunc (Good) String(interface { Get() string }) {}\nfunc (Good) Empty(any) {}\nfunc (Good) Fail(interface { Error() string }) {}\nfunc (Good) Nested(interface { Callback(func(interface { lib.A }) struct { X int }) }) {}\nfunc (Good) Recursive(interface { Next() lib.Node }) {}\nfunc (Good) Nominal(lib.A) {}\ntype ViaPrivate struct{}\nfunc (ViaPrivate) Private(interface { lib.Secret }) {}\nfunc (ViaPrivate) Both(interface { lib.Secret }) {}\ntype Different struct{}\nfunc (Different) Use(interface { B() }) {}\nfunc (Different) Union(interface { A() }) {}\nfunc (Different) Int(interface { Get() string }) {}\nfunc (Different) Nested(interface { Callback(func(interface { B() }) struct { X int }) }) {}\nfunc (Different) Recursive(interface { Next() lib.A }) {}\nfunc (Different) Nominal(interface { A() }) {}\ntype LocalPrivate struct{}\nfunc (LocalPrivate) Private(interface { hidden() }) {}\ntype BothPrivate interface { Both(interface { lib.Secret; other.Secret }) }\ntype BothPrivateImpl struct{}\nfunc (BothPrivateImpl) Both(interface { other.Secret; lib.Secret }) {}\n\nvar _ lib.Single = Good{}\nvar _ lib.Union = Good{}\nvar _ lib.Duplicate = Good{}\nvar _ lib.Private = ViaPrivate{}\nvar _ lib.TwoPrivate = ViaPrivate{}\nvar _ BothPrivate = BothPrivateImpl{}\nvar _ lib.Int = Good{}\nvar _ lib.Int = lib.GenericImpl[int]{}\nvar _ lib.String = Good{}\nvar _ lib.EmptyWant = Good{}\nvar _ lib.Failure = Good{}\nvar _ shadow.Want = shadow.Impl{}\nvar _ shadow.Want = Good{}\nvar _ lib.Nested = Good{}\nvar _ lib.Recursive = Good{}\nvar _ lib.Nominal = Good{}\nvar _ lib.Pair = lib.Repeated[int]{}\nfunc main() {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\n\ntype Text = string\ntype A interface { A() }\ntype B interface { B(int) string }\ntype Secret interface { hidden() }\ntype Generic[T any] interface { Get() T }\ntype GenericAlias[T any] = Generic[T]\ntype Defined[T any] Generic[T]\ntype Empty interface{}\ntype EmptyAlias = any\ntype Node interface { Next() Node }\ntype Single interface { Use(interface { A() }) }\ntype Union interface { Union(interface { A; B }) }\ntype Duplicate interface { Duplicate(interface { A; interface { A() } }) }\ntype Private interface { Private(interface { hidden() }) }\ntype PrivateImpl struct{}\nfunc (PrivateImpl) Private(interface { hidden() }) {}\ntype TwoPrivate interface { Both(interface { Secret; interface { hidden() } }) }\ntype Int interface { Int(interface { GenericAlias[int] }) }\ntype String interface { String(interface { Defined[string] }) }\ntype EmptyWant interface { Empty(interface { Empty; EmptyAlias }) }\ntype Failure interface { Fail(interface { error }) }\ntype Nested interface { Nested(interface { Callback(func(interface { A() }) struct { X int }) }) }\ntype Recursive interface { Recursive(interface { Node }) }\ntype Nominal interface { Nominal(A) }\ntype GenericImpl[T any] struct{}\nfunc (GenericImpl[V]) Int(interface { Get() V }) {}\ntype Repeated[T any] struct{}\nfunc (Repeated[V]) Pair(interface { Left() V; Right() V }) {}\ntype Pair interface { Pair(interface { Left() int; Right() int }) }\ntype Mixed interface { Pair(interface { Left() int; Right() string }) }\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$OTHER_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package other\n\ntype Secret interface { hidden() }\ntype Private struct{}\nfunc (Private) Private(interface { hidden() }) {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$SHADOW_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package shadow\n\nimport \"example.test/interfacehierarchy/lib\"\n\ntype string int\ntype Want interface { Fail(interface { error }) }\ntype Impl struct{}\nfunc (Impl) Fail(interface { Error() lib.Text }) {}\ntype Wrong struct{}\nfunc (Wrong) Fail(interface { Error() string }) {}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 12,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 13,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Union",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Union",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 13,
+            "character": 5
+          },
+          "end": {
+            "line": 13,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 14,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Duplicate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Duplicate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 14,
+            "character": 5
+          },
+          "end": {
+            "line": 14,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 15,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Private",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Private",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 15,
+            "character": 5
+          },
+          "end": {
+            "line": 15,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 18,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "TwoPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "TwoPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 18,
+            "character": 5
+          },
+          "end": {
+            "line": 18,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 19,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Int",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Int",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "String",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "String",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "EmptyWant",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "EmptyWant",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 21,
+            "character": 5
+          },
+          "end": {
+            "line": 21,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Failure",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Failure",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 22,
+            "character": 5
+          },
+          "end": {
+            "line": 22,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Nested",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Nested",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 23,
+            "character": 5
+          },
+          "end": {
+            "line": 23,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Recursive",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Recursive",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 24,
+            "character": 5
+          },
+          "end": {
+            "line": 24,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Nominal",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Nominal",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 12
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 25,
+            "character": 5
+          },
+          "end": {
+            "line": 25,
+            "character": 12
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Pair",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Pair",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Mixed",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 31,
+            "character": 5
+          },
+          "end": {
+            "line": 31,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 31,
+            "character": 5
+          },
+          "end": {
+            "line": 31,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Mixed",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 31,
+            "character": 5
+          },
+          "end": {
+            "line": 31,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 31,
+            "character": 5
+          },
+          "end": {
+            "line": 31,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 44,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "BothPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 29,
+            "character": 5
+          },
+          "end": {
+            "line": 29,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 29,
+            "character": 5
+          },
+          "end": {
+            "line": 29,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BothPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 29,
+            "character": 5
+          },
+          "end": {
+            "line": 29,
+            "character": 16
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 29,
+            "character": 5
+          },
+          "end": {
+            "line": 29,
+            "character": 16
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 46,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Good",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 48,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Good",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 49,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 17,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 50,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "ViaPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 51,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "ViaPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 15
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 17,
+            "character": 5
+          },
+          "end": {
+            "line": 17,
+            "character": 15
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 52,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 20,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 53,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Different",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 54,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Different",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 14
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 20,
+            "character": 5
+          },
+          "end": {
+            "line": 20,
+            "character": 14
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 55,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 56,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "LocalPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 17
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 17
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 57,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "LocalPrivate",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 17
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 27,
+            "character": 5
+          },
+          "end": {
+            "line": 27,
+            "character": 17
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 58,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 59,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "BothPrivateImpl",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 20
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 20
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 60,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "BothPrivateImpl",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy",
+        "uri": "$FILE_URI",
+        "range": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 20
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 30,
+            "character": 5
+          },
+          "end": {
+            "line": 30,
+            "character": 20
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 61,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$SHADOW_URI"
+      },
+      "position": {
+        "line": 5,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 62,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Want",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 63,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Want",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 5,
+            "character": 5
+          },
+          "end": {
+            "line": 5,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 64,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$SHADOW_URI"
+      },
+      "position": {
+        "line": 6,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 65,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Impl",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 66,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Impl",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 6,
+            "character": 5
+          },
+          "end": {
+            "line": 6,
+            "character": 9
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 67,
+    "method": "textDocument/prepareTypeHierarchy",
+    "params": {
+      "textDocument": {
+        "uri": "$SHADOW_URI"
+      },
+      "position": {
+        "line": 8,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 68,
+    "method": "typeHierarchy/supertypes",
+    "params": {
+      "item": {
+        "name": "Wrong",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 69,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Wrong",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/shadow",
+        "uri": "$SHADOW_URI",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 8,
+            "character": 5
+          },
+          "end": {
+            "line": 8,
+            "character": 10
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\n\nimport \"example.test/interfacehierarchy/lib\"\nimport \"example.test/interfacehierarchy/other\"\nimport \"example.test/interfacehierarchy/shadow\"\n\ntype Good struct{}\nfunc (Good) Use(interface { B() }) {}\nfunc (Good) Union(interface { B(int) string; A() }) {}\nfunc (Good) Duplicate(interface { A() }) {}\nfunc (Good) Int(interface { Get() int }) {}\nfunc (Good) String(interface { Get() string }) {}\nfunc (Good) Empty(any) {}\nfunc (Good) Fail(interface { Error() string }) {}\nfunc (Good) Nested(interface { Callback(func(interface { lib.A }) struct { X int }) }) {}\nfunc (Good) Recursive(interface { Next() lib.Node }) {}\nfunc (Good) Nominal(lib.A) {}\ntype ViaPrivate struct{}\nfunc (ViaPrivate) Private(interface { lib.Secret }) {}\nfunc (ViaPrivate) Both(interface { lib.Secret }) {}\ntype Different struct{}\nfunc (Different) Use(interface { B() }) {}\nfunc (Different) Union(interface { A() }) {}\nfunc (Different) Int(interface { Get() string }) {}\nfunc (Different) Nested(interface { Callback(func(interface { B() }) struct { X int }) }) {}\nfunc (Different) Recursive(interface { Next() lib.A }) {}\nfunc (Different) Nominal(interface { A() }) {}\ntype LocalPrivate struct{}\nfunc (LocalPrivate) Private(interface { hidden() }) {}\ntype BothPrivate interface { Both(interface { lib.Secret; other.Secret }) }\ntype BothPrivateImpl struct{}\nfunc (BothPrivateImpl) Both(interface { other.Secret; lib.Secret }) {}\n\nvar _ lib.Single = Good{}\nvar _ lib.Union = Good{}\nvar _ lib.Duplicate = Good{}\nvar _ lib.Private = ViaPrivate{}\nvar _ lib.TwoPrivate = ViaPrivate{}\nvar _ BothPrivate = BothPrivateImpl{}\nvar _ lib.Int = Good{}\nvar _ lib.Int = lib.GenericImpl[int]{}\nvar _ lib.String = Good{}\nvar _ lib.EmptyWant = Good{}\nvar _ lib.Failure = Good{}\nvar _ shadow.Want = shadow.Impl{}\nvar _ shadow.Want = Good{}\nvar _ lib.Nested = Good{}\nvar _ lib.Recursive = Good{}\nvar _ lib.Nominal = Good{}\nvar _ lib.Pair = lib.Repeated[int]{}\nfunc main() {}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 70,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 71,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\n\ntype Text = string\ntype A interface { A() }\ntype B interface { B(int) string }\ntype Secret interface { hidden() }\ntype Generic[T any] interface { Get() string }\ntype GenericAlias[T any] = Generic[T]\ntype Defined[T any] Generic[T]\ntype Empty interface{}\ntype EmptyAlias = any\ntype Node interface { Next() Node }\ntype Single interface { Use(interface { A() }) }\ntype Union interface { Union(interface { A; B }) }\ntype Duplicate interface { Duplicate(interface { A; interface { A() } }) }\ntype Private interface { Private(interface { hidden() }) }\ntype PrivateImpl struct{}\nfunc (PrivateImpl) Private(interface { hidden() }) {}\ntype TwoPrivate interface { Both(interface { Secret; interface { hidden() } }) }\ntype Int interface { Int(interface { GenericAlias[int] }) }\ntype String interface { String(interface { Defined[string] }) }\ntype EmptyWant interface { Empty(interface { Empty; EmptyAlias }) }\ntype Failure interface { Fail(interface { error }) }\ntype Nested interface { Nested(interface { Callback(func(interface { A() }) struct { X int }) }) }\ntype Recursive interface { Recursive(interface { Node }) }\ntype Nominal interface { Nominal(A) }\ntype GenericImpl[T any] struct{}\nfunc (GenericImpl[V]) Int(interface { Get() V }) {}\ntype Repeated[T any] struct{}\nfunc (Repeated[V]) Pair(interface { Left() V; Right() V }) {}\ntype Pair interface { Pair(interface { Left() int; Right() int }) }\ntype Mixed interface { Pair(interface { Left() int; Right() string }) }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 72,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Int",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 73,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Int",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 19,
+            "character": 5
+          },
+          "end": {
+            "line": 19,
+            "character": 8
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\n\ntype Text = string\ntype A interface { B; A }\ntype B interface { B(int) string }\ntype Secret interface { hidden() }\ntype Generic[T any] interface { Get() T }\ntype GenericAlias[T any] = Generic[T]\ntype Defined[T any] Generic[T]\ntype Empty interface{}\ntype EmptyAlias = any\ntype Node interface { Next() Node }\ntype Single interface { Use(interface { A() }) }\ntype Union interface { Union(interface { A; B }) }\ntype Duplicate interface { Duplicate(interface { A; interface { A() } }) }\ntype Private interface { Private(interface { hidden() }) }\ntype PrivateImpl struct{}\nfunc (PrivateImpl) Private(interface { hidden() }) {}\ntype TwoPrivate interface { Both(interface { Secret; interface { hidden() } }) }\ntype Int interface { Int(interface { GenericAlias[int] }) }\ntype String interface { String(interface { Defined[string] }) }\ntype EmptyWant interface { Empty(interface { Empty; EmptyAlias }) }\ntype Failure interface { Fail(interface { error }) }\ntype Nested interface { Nested(interface { Callback(func(interface { A() }) struct { X int }) }) }\ntype Recursive interface { Recursive(interface { Node }) }\ntype Nominal interface { Nominal(A) }\ntype GenericImpl[T any] struct{}\nfunc (GenericImpl[V]) Int(interface { Get() V }) {}\ntype Repeated[T any] struct{}\nfunc (Repeated[V]) Pair(interface { Left() V; Right() V }) {}\ntype Pair interface { Pair(interface { Left() int; Right() int }) }\ntype Mixed interface { Pair(interface { Left() int; Right() string }) }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 74,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "version": 4
+      },
+      "contentChanges": [
+        {
+          "text": "package lib\n\ntype Text = string\ntype A interface { ~int }\ntype B interface { B(int) string }\ntype Secret interface { hidden() }\ntype Generic[T any] interface { Get() T }\ntype GenericAlias[T any] = Generic[T]\ntype Defined[T any] Generic[T]\ntype Empty interface{}\ntype EmptyAlias = any\ntype Node interface { Next() Node }\ntype Single interface { Use(interface { A() }) }\ntype Union interface { Union(interface { A; B }) }\ntype Duplicate interface { Duplicate(interface { A; interface { A() } }) }\ntype Private interface { Private(interface { hidden() }) }\ntype PrivateImpl struct{}\nfunc (PrivateImpl) Private(interface { hidden() }) {}\ntype TwoPrivate interface { Both(interface { Secret; interface { hidden() } }) }\ntype Int interface { Int(interface { GenericAlias[int] }) }\ntype String interface { String(interface { Defined[string] }) }\ntype EmptyWant interface { Empty(interface { Empty; EmptyAlias }) }\ntype Failure interface { Fail(interface { error }) }\ntype Nested interface { Nested(interface { Callback(func(interface { A() }) struct { X int }) }) }\ntype Recursive interface { Recursive(interface { Node }) }\ntype Nominal interface { Nominal(A) }\ntype GenericImpl[T any] struct{}\nfunc (GenericImpl[V]) Int(interface { Get() V }) {}\ntype Repeated[T any] struct{}\nfunc (Repeated[V]) Pair(interface { Left() V; Right() V }) {}\ntype Pair interface { Pair(interface { Left() int; Right() int }) }\ntype Mixed interface { Pair(interface { Left() int; Right() string }) }\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 75,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 76,
+    "method": "typeHierarchy/subtypes",
+    "params": {
+      "item": {
+        "name": "Single",
+        "kind": 11,
+        "detail": "example.test/interfacehierarchy/lib",
+        "uri": "$LIB_URI",
+        "range": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        },
+        "selectionRange": {
+          "start": {
+            "line": 12,
+            "character": 5
+          },
+          "end": {
+            "line": 12,
+            "character": 11
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 77,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

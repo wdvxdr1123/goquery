@@ -1,0 +1,681 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "rootUri": "$ROOT_URI",
+      "capabilities": {
+        "textDocument": {
+          "completion": {
+            "completionItem": {
+              "snippetSupport": true
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$LIB_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package lib\ntype Payload struct { Value int }\ntype Base struct { Field int; Next Payload; hidden int }\nfunc (Base) Run() {}\ntype Alias = Base\ntype Generic[T any] struct { Item T }\ntype GAlias[A any] = Generic[A]\ntype Port interface { Read(dst []byte) (int, error) }\ntype PortAlias = Port\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$OTHER_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package bridge\nimport \"example.test/project/lib\"\ntype Forward = lib.Alias\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "languageId": "go",
+        "version": 1,
+        "text": "package main\nimport (lib \"example.test/project/lib\"; bridge \"example.test/project/other\")\ntype T struct { Wrong int }\ntype Payload struct { Value int }\ntype Box[T any] struct { Field T }\ntype Pair[A, B any] struct { First A; Second B }\ntype Simple = Box[Payload]\ntype GenericAlias[A any] = Box[A]\ntype Flip[A, B any] = Pair[B, A]\ntype Identity[A any] = A\ntype Nested[A any] = Identity[Box[A]]\ntype Plain = lib.Base\ntype Chain = Plain\ntype Anonymous = struct { Anon int }\ntype LocalMap map[int]int\ntype MapAlias = LocalMap\ntype Distinct lib.Base\ntype Embed struct { Plain }\ntype CycleA = CycleB\ntype CycleB = CycleA\nfunc Takes(p Plain) {}\nfunc Use(a Plain, b Chain, c Simple, g GenericAlias[Payload], f Flip[int, Payload], id Identity[Payload], n Nested[Payload], anon Anonymous, external lib.Alias, r lib.PortAlias, e Embed, api bridge.Forward, fixed lib.GAlias[Payload], defined Distinct) {\n _ = a.Field // plain-field\n _ = b.Field // chain-field\n _ = c.Field.Value // fixed-instance\n _ = g.Field.Value // generic-instance\n _ = f.First.Value // reordered\n _ = id.Value // parameter-target\n _ = n.Field.Value // nested-alias\n _ = anon.Anon // anonymous\n _ = external.Field // imported-alias\n _ = r.Read // interface-alias\n _ = e.Field // embedded-promotion\n _ = e.Plain // embedded-alias-name\n _ = api.Field // forwarding-package\n _ = fixed.Item.Value // imported-generic\n _ = a.Run // alias-method\n _ = defined.Run // distinct-method\n _ = defined.Field // distinct-field\n _ = GenericAlias[Payload]{Field: Payload{}} // generic-key\n _ = Anonymous{Anon: 1} // anonymous-key\n _ = a.Fie // complete-field\n Takes(a) // signature-alias\n}\nfunc MapKey() { const Anon = 1; _ = MapAlias{Anon: 0} } // alias-map-key\nfunc Shadow[Plain any](v Plain) { _ = v.Field } // parameter-shadow\nfunc Broken(c CycleA) { _ = c.Field } // cyclic-alias\ntype Forward[A any] = GenericAlias[A]\ntype NestedValid[A any] = Forward[Box[A]]\ntype PointerAlias[A any] = *Box[A]\ntype RecordAlias[A any] = struct { Item A }\nfunc More(n NestedValid[Payload], p PointerAlias[Payload], r RecordAlias[Payload]) {\n _ = n.Field.Field.Value // valid-nested\n _ = p.Field.Value // pointer-alias\n _ = r.Item.Value // record-alias\n}\n"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 24,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 26,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 27,
+        "character": 8
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 28,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 30,
+        "character": 14
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 31,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 32,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 33,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 35,
+        "character": 16
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 36,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 37,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 38,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 39,
+        "character": 27
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 40,
+        "character": 5
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 45,
+        "character": 40
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 46,
+        "character": 30
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 21,
+        "character": 11
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 25,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 36,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 36,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 10
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 29,
+        "character": 10
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 44,
+        "character": 45
+      },
+      "context": {
+        "includeDeclaration": false
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 44,
+        "character": 45
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "textDocument/completion",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 41,
+        "character": 10
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "textDocument/signatureHelp",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 42,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "text": "package main\nimport (lib \"example.test/project/lib\"; bridge \"example.test/project/other\")\ntype T struct { Wrong int }\ntype Payload struct { Value int }\ntype Box[T any] struct { Field T }\ntype Pair[A, B any] struct { First A; Second B }\ntype Simple = Box[Payload]\ntype GenericAlias[A any] = Box[A]\ntype Flip[A, B any] = Pair[B, A]\ntype Identity[A any] = A\ntype Nested[A any] = Identity[Box[A]]\ntype Plain = lib.Base\ntype Chain = Anonymous\ntype Anonymous = struct { Anon int }\ntype LocalMap map[int]int\ntype MapAlias = LocalMap\ntype Distinct lib.Base\ntype Embed struct { Plain }\ntype CycleA = CycleB\ntype CycleB = CycleA\nfunc Takes(p Plain) {}\nfunc Use(a Plain, b Chain, c Simple, g GenericAlias[Payload], f Flip[int, Payload], id Identity[Payload], n Nested[Payload], anon Anonymous, external lib.Alias, r lib.PortAlias, e Embed, api bridge.Forward, fixed lib.GAlias[Payload], defined Distinct) {\n _ = a.Field // plain-field\n _ = b.Anon // chain-field\n _ = c.Field.Value // fixed-instance\n _ = g.Field.Value // generic-instance\n _ = f.First.Value // reordered\n _ = id.Value // parameter-target\n _ = n.Field.Value // nested-alias\n _ = anon.Anon // anonymous\n _ = external.Field // imported-alias\n _ = r.Read // interface-alias\n _ = e.Field // embedded-promotion\n _ = e.Plain // embedded-alias-name\n _ = api.Field // forwarding-package\n _ = fixed.Item.Value // imported-generic\n _ = a.Run // alias-method\n _ = defined.Run // distinct-method\n _ = defined.Field // distinct-field\n _ = GenericAlias[Payload]{Field: Payload{}} // generic-key\n _ = Anonymous{Anon: 1} // anonymous-key\n _ = a.Fie // complete-field\n Takes(a) // signature-alias\n}\nfunc MapKey() { const Anon = 1; _ = MapAlias{Anon: 0} } // alias-map-key\nfunc Shadow[Plain any](v Plain) { _ = v.Field } // parameter-shadow\nfunc Broken(c CycleA) { _ = c.Field } // cyclic-alias\ntype Forward[A any] = GenericAlias[A]\ntype NestedValid[A any] = Forward[Box[A]]\ntype PointerAlias[A any] = *Box[A]\ntype RecordAlias[A any] = struct { Item A }\nfunc More(n NestedValid[Payload], p PointerAlias[Payload], r RecordAlias[Payload]) {\n _ = n.Field.Field.Value // valid-nested\n _ = p.Field.Value // pointer-alias\n _ = r.Item.Value // record-alias\n}\n"
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 23,
+        "character": 7
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "textDocument/references",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 22,
+        "character": 7
+      },
+      "context": {
+        "includeDeclaration": true
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didClose",
+    "params": {
+      "textDocument": {
+        "uri": "$OTHER_URI"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 34,
+        "character": 9
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 52,
+        "character": 19
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 53,
+        "character": 13
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "textDocument/definition",
+    "params": {
+      "textDocument": {
+        "uri": "$FILE_URI"
+      },
+      "position": {
+        "line": 54,
+        "character": 12
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "shutdown"
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "exit"
+  }
+]

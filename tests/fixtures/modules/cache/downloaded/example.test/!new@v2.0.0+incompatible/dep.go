@@ -1,0 +1,2 @@
+package old
+func Replaced() {}
