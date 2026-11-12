@@ -2,6 +2,39 @@
 use crate::syntax::ast::expression::{Diagnostic, Expr};
 use std::ops::Range;
 
+/// Bound for the flat type-shape summary. Excess nodes are omitted; the
+/// recursive syntax work stays bounded by the parser depth limit.
+pub(crate) const MAX_TYPE_NODES: usize = 8192;
+
+/// One node of the flat, pre-order type-shape summary. This is not a tree:
+/// children are identified only by their source spans.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TypeNodeKind {
+    Name,
+    Qualified,
+    Instantiation,
+    Pointer,
+    Array,
+    Slice,
+    Map,
+    Chan,
+    SendChan,
+    RecvChan,
+    Function,
+    Struct,
+    Interface,
+    Parenthesized,
+}
+
+/// A shallow type form with its byte span in the parsed source snapshot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TypeNode {
+    pub kind: TypeNodeKind,
+    pub span: Range<usize>,
+}
+
 /// A type-name occurrence with an optional file-local import qualifier.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -62,11 +95,18 @@ pub struct TypeSyntax {
     pub interface_members: Vec<InterfaceMember>,
     pub(crate) expressions: Vec<Expr>,
     pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) type_nodes: Vec<TypeNode>,
 }
 
 impl TypeSyntax {
     pub fn expressions(&self) -> &[Expr] {
         &self.expressions
+    }
+
+    /// Flat pre-order type forms; array lengths and nested expression syntax
+    /// are not type nodes.
+    pub fn type_nodes(&self) -> &[TypeNode] {
+        &self.type_nodes
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {

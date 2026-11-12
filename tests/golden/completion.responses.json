@@ -561,7 +561,7 @@
           }
         },
         {
-          "detail": "interface{}",
+          "detail": "any",
           "filterText": "value",
           "insertTextFormat": 1,
           "kind": 6,
@@ -717,7 +717,7 @@
           }
         },
         {
-          "detail": "interface{}",
+          "detail": "any",
           "filterText": "value",
           "insertTextFormat": 1,
           "kind": 6,

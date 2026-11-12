@@ -36,6 +36,7 @@ LSP `initializationOptions`, not the dynamic `workspace/configuration` channel:
 | `usePlaceholders` | bool | Insert snippet placeholders in function/method completions when the client supports snippets. Default `false`. |
 | `completeFunctionCalls` | bool | Insert call syntax on function/method completion. Default `true`. |
 | `completionDocumentation` | bool | Attach documentation to completion items. Default `true`. |
+| `pollIntervalMs` | integer | Direct-disk polling interval in milliseconds. `0` disables polling. Default: `GOQUERY_POLL_MS` if set, else `1000`; clamped to 100–60000 ms. After a detected direct edit the poller temporarily switches to 100 ms for 3 s to catch multi-file agent bursts. It notices agent/shell edits without editor events, including clean open buffers, new files and manifest changes; dirty editor buffers stay authoritative. |
 
 The module cache has no initialization option. It is discovered from
 `go env GOMODCACHE`, then `GOMODCACHE`, then the first `GOPATH` entry
@@ -52,4 +53,7 @@ Read once at startup:
 | --- | --- |
 | `GOQUERY_TRACE_QUERIES` | Log reference/call candidate and file counts to stderr. |
 | `GOQUERY_TRACE_MODULES` | Log module-graph planning. |
+| `GOQUERY_TRACE_EDITS` | Log each workspace mutation, its affected-document count and elapsed milliseconds to stderr (useful for diagnosing stale feedback after agent/editor changes). |
+| `GOQUERY_POLL_MS` | Default direct-disk polling interval when `pollIntervalMs` is not set (milliseconds, default `1000`; `0` disables). Values are clamped to 100–60000 ms. |
+| `GOQUERY_ONDEMAND_MAX_FILES` | Poll-scope file count up to which the first semantic request after 300 ms of idle time triggers one on-demand disk poll (default `512`; `0` disables). On larger trees a scan is too expensive; use a lower `pollIntervalMs`/`GOQUERY_POLL_MS` for faster background feedback. |
 | `GOQUERY_DISABLE_DIAG` | Disable pushed diagnostics. |

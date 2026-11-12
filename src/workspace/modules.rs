@@ -1,5 +1,6 @@
 //! Main/workspace selection and offline mounts; dependency replaces never apply.
 use super::Workspace;
+use super::discovery::PlanInstall;
 use super::packages;
 use crate::gomod::{Manifest, Replacement};
 use std::collections::{HashMap, HashSet};
@@ -139,6 +140,18 @@ impl ReferenceScope<'_> {
         workspace.roots.iter().any(|root| file.starts_with(root))
             || workspace.open.contains_key(file)
     }
+}
+
+/// What a manifest-triggered re-plan does with the current index.
+#[derive(Debug, PartialEq, Eq)]
+enum PlanAction {
+    /// The plan digest is unchanged and only main manifests changed.
+    Skip,
+    /// Main manifests changed the plan: reuse stubs under shared roots.
+    Incremental,
+    /// Nested manifests may have changed additional views, or no plan is
+    /// installed yet: rebuild from scratch.
+    Full,
 }
 
 impl Workspace {
@@ -380,18 +393,89 @@ impl Workspace {
         Ok(())
     }
 
-    pub(super) fn refresh_modules(&mut self) {
+    /// Re-plan the workspace for changed manifests. A plan whose roots, modules,
+    /// main modules and checkout mode are unchanged is a no-op when the changed
+    /// manifests are main-module manifests: the files and import identities stay
+    /// valid, so the expensive root walk and dependency/SDK reload are skipped.
+    /// Nested-module manifests still force a full rescan because they can change
+    /// additional views that the main plan does not record.
+    pub(super) fn refresh_modules(&mut self, changed: &[PathBuf]) {
         let folders = self.folders.clone();
-        if let Err(error) = self.scan_roots(folders) {
-            eprintln!("workspace modules: {error}");
+        let plan = match self.module_plan(&folders) {
+            Ok(plan) => plan,
+            Err(error) => {
+                eprintln!("workspace modules: {error}");
+                return;
+            }
+        };
+        match self.plan_action(&plan, changed) {
+            PlanAction::Skip => {
+                if self.trace.modules {
+                    eprintln!("modules: plan unchanged; skipped workspace rescan");
+                }
+            }
+            PlanAction::Incremental => {
+                if let Err(error) = self.install_plan_incremental(folders, plan) {
+                    eprintln!("workspace modules: {error}");
+                }
+            }
+            PlanAction::Full => {
+                if let Err(error) = self.install_plan(folders, plan, PlanInstall::Full) {
+                    eprintln!("workspace modules: {error}");
+                }
+            }
+        }
+    }
+
+    /// Classify one manifest-triggered re-plan without walking the filesystem.
+    fn plan_action(&self, plan: &Plan, changed: &[PathBuf]) -> PlanAction {
+        let main_only = changed.iter().all(|file| self.main_manifest(file));
+        if !main_only {
+            return PlanAction::Full;
+        }
+        if self.plan_digest == Some(plan_digest(plan)) {
+            return PlanAction::Skip;
+        }
+        if self.plan_digest.is_some() {
+            PlanAction::Incremental
+        } else {
+            PlanAction::Full
+        }
+    }
+
+    /// Manifests that can only affect `Plan` (and are fully represented in its
+    /// digest): the selected go.work file and main-module go.mod files.
+    fn main_manifest(&self, file: &Path) -> bool {
+        match file.file_name().and_then(|name| name.to_str()) {
+            Some("go.work") => true,
+            Some("go.mod") => file
+                .parent()
+                .is_some_and(|directory| self.main_modules.contains(directory)),
+            _ => false,
         }
     }
 
     pub(super) fn reindex(&mut self, file: &Path) {
         if configuration(file) {
-            self.refresh_modules();
+            self.refresh_modules(std::slice::from_ref(&file.to_path_buf()));
         } else {
             self.index(file);
         }
     }
+}
+
+/// Stable identity of a plan: used to skip rebuilds when a manifest edit does
+/// not change any selected root, module path, main module or checkout mode.
+pub(super) fn plan_digest(plan: &Plan) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    plan.roots.hash(&mut hasher);
+    let mut modules: Vec<_> = plan.modules.iter().collect();
+    modules.sort();
+    modules.hash(&mut hasher);
+    let mut mains: Vec<_> = plan.mains.iter().collect();
+    mains.sort();
+    mains.hash(&mut hasher);
+    plan.compiler_checkout.hash(&mut hasher);
+    hasher.finish()
 }

@@ -159,6 +159,7 @@ impl<'workspace> Inference<'workspace, '_> {
             let inference = Inference {
                 workspace: self.workspace,
                 name_index: None,
+                scoped_bindings: None,
                 file,
                 source: &wrapped,
                 locals: &locals,

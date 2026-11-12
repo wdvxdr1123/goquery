@@ -1043,6 +1043,70 @@ fn evaluate_named_constant(
         .map(|(_, value)| (annotation, value))
 }
 
+/// Resolve a constant by its unqualified or import-qualified name.
+fn resolve_constant<'a>(
+    workspace: &'a crate::workspace::Workspace,
+    origin: &Path,
+    name: &str,
+) -> Option<(std::path::PathBuf, &'a Symbol)> {
+    if let Some((alias, constant)) = name.split_once('.') {
+        workspace
+            .imported_symbol_iter(origin, alias)
+            .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
+            .map(|(path, symbol)| (path.clone(), symbol))
+    } else {
+        workspace
+            .unqualified_symbol(origin, name)
+            .filter(|(_, symbol)| symbol.is_const())
+            .map(|(path, symbol)| (path.clone(), symbol))
+    }
+}
+
+const MAX_STRING_CONSTANT_DEPTH: usize = 16;
+
+/// Evaluate a string constant expression through its named constant
+/// declarations. gopls evaluates every constant expression with go/constant;
+/// string concatenation is the form hover needs here, because gopls always
+/// describes a string constant by its evaluated value.
+fn evaluate_string_constant(
+    context: &Context<'_>,
+    origin: &Path,
+    expression: &str,
+    depth: usize,
+) -> Option<(Option<String>, Vec<u8>)> {
+    if depth >= MAX_STRING_CONSTANT_DEPTH {
+        return None;
+    }
+    super::value::string_expression(expression, depth, &mut |name, next| {
+        let (file, symbol) = resolve_constant(context.workspace(), origin, name)?;
+        let source_text = render::declaration_source(context, &file)?;
+        let source = source_text.text();
+        let declaration = symbol.declaration()?;
+        let spec = source.get(declaration)?;
+        let shape = value_shape(spec)?;
+        let group = const_group_context(source, symbol.start);
+        let (annotation, expression) = if let Some(value) = shape.value_text {
+            (shape.annotation.map(str::to_owned), value.to_owned())
+        } else {
+            let group = group.as_ref()?;
+            (
+                group.last_annotation.clone(),
+                group.last_expression.clone()?,
+            )
+        };
+        let iota = group.as_ref().map_or(0, |group| group.iota_index);
+        let substituted = super::value::substitute_iota(&expression, iota);
+        let (nested, bytes) = evaluate_string_constant(context, &file, &substituted, next)?;
+        let annotation = annotation.or(nested).map(|text| {
+            context
+                .workspace()
+                .requalified_type(context.file(), &file, text.trim())
+                .unwrap_or(text)
+        });
+        Some((annotation, bytes))
+    })
+}
+
 /// RHS source text of an alias declaration (`type FileMode = fs.FileMode`).
 fn alias_rhs_text(context: &Context<'_>, origin: &Path, name: &str) -> Option<String> {
     let workspace = context.workspace();
@@ -1120,6 +1184,15 @@ fn value_symbol(
                         untyped: None,
                     });
                     evaluated = value.parse().ok();
+                } else if let Some((ty, bytes)) =
+                    evaluate_string_constant(context, origin, &substituted, 0)
+                {
+                    named_type = ty;
+                    literal = Some(super::value::Literal {
+                        value: super::value::quote_bytes(&bytes),
+                        declaration: own.then(|| expression.clone()),
+                        untyped: Some("string"),
+                    });
                 }
             }
             let mut literal = literal?;

@@ -1,5 +1,7 @@
 //! Type syntax consumed on demand without constructing a recursive type tree.
-use crate::syntax::ast::types::{SignatureName, SignatureNameKind, TypeReference, TypeSyntax};
+use crate::syntax::ast::types::{
+    SignatureName, SignatureNameKind, TypeNodeKind, TypeReference, TypeSyntax,
+};
 use crate::syntax::parser::expression::Parser;
 use crate::syntax::parser::signature::ParameterContext;
 use crate::syntax::token::TokenKind;
@@ -45,11 +47,30 @@ fn parse(source: &str, end: End) -> TypeSyntax {
         interface_members: parser.interface_members,
         expressions: parser.nodes,
         diagnostics: parser.diagnostics,
+        type_nodes: parser.type_nodes,
     }
 }
 
 impl Parser<'_> {
     pub(in crate::syntax::parser) fn function_type_signature(&mut self, depth: usize) -> usize {
+        // Function types cannot have type parameters, but go/parser still consumes
+        // and reports them before parsing the parameter list. Consuming the list
+        // keeps trailing conversions/calls and function-literal bodies recoverable
+        // (e.g. `(func [P any]())(nil)` and `func [P any]() {}`).
+        if self
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::LBrack)
+        {
+            let start = self
+                .tokens
+                .peek()
+                .expect("peeked type parameter list")
+                .span
+                .start;
+            let (_, end) = self.parameter_list(ParameterContext::TypeParameters, depth);
+            self.error(start..end, "function type must have no type parameters");
+        }
         let (parameters, end) = self.parameter_list(ParameterContext::Inputs, depth);
         let (results, end) = self.result_parameters(depth, end);
         for (parameters, kind) in [
@@ -93,12 +114,18 @@ impl Parser<'_> {
         let end = match (token.kind, spelling) {
             (TokenKind::Mul, _) => {
                 self.tokens.next();
-                self.type_syntax(depth + 1).end
+                let node = self.begin_type_node(TypeNodeKind::Pointer, start);
+                let end = self.type_syntax(depth + 1).end;
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::LParen, _) => {
                 self.tokens.next();
+                let node = self.begin_type_node(TypeNodeKind::Parenthesized, start);
                 let inner = self.type_syntax(depth + 1);
-                self.close(TokenKind::RParen, "expected ')' in type", inner.end)
+                let end = self.close(TokenKind::RParen, "expected ')' in type", inner.end);
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::LBrack, _) => {
                 self.tokens.next();
@@ -109,46 +136,79 @@ impl Parser<'_> {
                         "inferred array length is not allowed in a named field",
                     );
                 }
-                if !inferred_length
-                    && !self
+                let slice = !inferred_length
+                    && self
                         .tokens
                         .peek()
-                        .is_some_and(|t| t.kind == TokenKind::RBrack)
-                {
-                    self.expression(1, depth + 1);
+                        .is_some_and(|t| t.kind == TokenKind::RBrack);
+                let node = self.begin_type_node(
+                    if slice {
+                        TypeNodeKind::Slice
+                    } else {
+                        TypeNodeKind::Array
+                    },
+                    start,
+                );
+                if !inferred_length && !slice {
+                    self.expression_without_type_nodes(1, depth + 1);
                 }
                 self.close(
                     TokenKind::RBrack,
                     "expected ']' in array type",
                     token.span.end,
                 );
-                self.type_syntax(depth + 1).end
+                let end = self.type_syntax(depth + 1).end;
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::Map, _) => {
                 self.tokens.next();
+                let node = self.begin_type_node(TypeNodeKind::Map, start);
                 self.expect_kind(TokenKind::LBrack, "expected '[' after map");
                 let key = self.type_syntax(depth + 1);
                 self.close(TokenKind::RBrack, "expected ']' after map key", key.end);
-                self.type_syntax(depth + 1).end
+                let end = self.type_syntax(depth + 1).end;
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::Chan, _) | (TokenKind::Arrow, _) => {
                 self.tokens.next();
-                if spelling == "<-" {
+                let kind = if spelling == "<-" {
                     if !self.eat_spelling("chan") {
                         self.error(token.span.clone(), "expected chan after '<-' in type");
                     }
+                    TypeNodeKind::RecvChan
+                } else if self.eat_spelling("<-") {
+                    TypeNodeKind::SendChan
                 } else {
-                    self.eat_spelling("<-");
-                }
-                self.type_syntax(depth + 1).end
+                    TypeNodeKind::Chan
+                };
+                let node = self.begin_type_node(kind, start);
+                let end = self.type_syntax(depth + 1).end;
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::Struct | TokenKind::Interface, _) => {
                 self.tokens.next();
-                self.aggregate_type(token.kind == TokenKind::Interface, depth + 1)
+                let interface = token.kind == TokenKind::Interface;
+                let node = self.begin_type_node(
+                    if interface {
+                        TypeNodeKind::Interface
+                    } else {
+                        TypeNodeKind::Struct
+                    },
+                    start,
+                );
+                let end = self.aggregate_type(interface, depth + 1);
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::Func, _) => {
                 self.tokens.next();
-                self.function_type_signature(depth + 1)
+                let node = self.begin_type_node(TypeNodeKind::Function, start);
+                let end = self.function_type_signature(depth + 1);
+                self.end_type_node(node, end);
+                end
             }
             (TokenKind::Ident, _) => {
                 self.tokens.next();
@@ -173,8 +233,9 @@ impl Parser<'_> {
                         // Keep the final component distinct from the package alias.
                         self.type_references.push(TypeReference {
                             qualifier: qualifier.clone(),
-                            name: name.span,
+                            name: name.span.clone(),
                         });
+                        self.record_type_node(TypeNodeKind::Qualified, start..end);
                     } else {
                         self.error(end..end, "expected qualified type name");
                     }
@@ -184,6 +245,7 @@ impl Parser<'_> {
                         qualifier: None,
                         name,
                     });
+                    self.record_type_node(TypeNodeKind::Name, token.span.clone());
                 }
                 if self
                     .tokens
@@ -191,6 +253,7 @@ impl Parser<'_> {
                     .is_some_and(|t| t.kind == TokenKind::LBrack)
                 {
                     self.tokens.next();
+                    let node = self.begin_type_node(TypeNodeKind::Instantiation, start);
                     let mut count = 0;
                     while self.tokens.peek().is_some_and(|t| {
                         !matches!(
@@ -209,6 +272,7 @@ impl Parser<'_> {
                         self.error(end..end, "expected type argument");
                     }
                     end = self.close(TokenKind::RBrack, "expected ']' after type arguments", end);
+                    self.end_type_node(node, end);
                 }
                 end
             }

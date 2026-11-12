@@ -24,6 +24,7 @@ impl Workspace {
             base: 0,
             depth,
             name_index: None,
+            scoped_bindings: None,
             iota: None,
         }
         .scoped_range_binding(binding)?
@@ -93,6 +94,7 @@ impl<'workspace> Inference<'workspace, '_> {
             base: span.start,
             depth: self.depth + 1,
             name_index: None,
+            scoped_bindings: None,
             iota: None,
         };
         let mut arena = TypeArena::new(self.workspace);

@@ -4,10 +4,32 @@ use crate::syntax::parser::statement::block::BodyParser;
 use crate::syntax::token::TokenKind;
 
 impl BodyParser<'_> {
-    fn header_statement(&mut self, depth: usize) -> StmtId {
+    /// Clauses admit only Go SimpleStmt (plus an optional range clause in the
+    /// first `for` header), never declarations, labels, blocks or control flow.
+    fn header_statement(&mut self, _depth: usize) -> StmtId {
         let old = self.parser.restricted_header;
         self.parser.restricted_header = true;
-        let result = self.statement(depth);
+        let result = if self.range_header
+            && self
+                .parser
+                .tokens
+                .peek()
+                .is_some_and(|token| token.kind == TokenKind::Range)
+        {
+            let keyword = self.parser.tokens.next().expect("range keyword");
+            let value = self.parser.expression(1, 0);
+            let end = self.parser.nodes[value.0].span.end;
+            self.add(
+                StmtKind::RangeClause {
+                    left: Vec::new(),
+                    operator: None,
+                    value,
+                },
+                keyword.span.start..end,
+            )
+        } else {
+            self.simple_statement()
+        };
         self.parser.restricted_header = old;
         result
     }
@@ -248,6 +270,9 @@ impl BodyParser<'_> {
                     .error(token.span.clone(), "expected ':' after case");
             }
             let (statements, end) = self.case_body(depth, token.span.end);
+            // The clause span covers the whole clause region up to the next
+            // clause keyword or the switch closing brace; the query scope layer
+            // uses it to keep clause locals visible in trailing trivia.
             let end = self
                 .parser
                 .tokens

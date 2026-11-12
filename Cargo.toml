@@ -15,7 +15,7 @@ resolver = "3"
 
 [dependencies]
 tower-lsp = "0.20.0"
-tokio = { version = "1", features = ["io-std", "io-util", "rt"] }
+tokio = { version = "1", features = ["io-std", "io-util", "rt", "time"] }
 serde = "1"
 tower = { version = "0.4", features = ["limit"] }
 futures = "0.3"

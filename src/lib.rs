@@ -20,6 +20,7 @@ mod workspace;
 pub fn run() -> std::io::Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .max_blocking_threads(2)
+        .enable_time()
         .build()?;
     let code = runtime.block_on(server::serve(tokio::io::stdin(), tokio::io::stdout()));
     // Tokio's stdin can have a pending blocking read after the LSP exit. The

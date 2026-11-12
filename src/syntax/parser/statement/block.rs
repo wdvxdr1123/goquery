@@ -186,19 +186,6 @@ impl BodyParser<'_> {
                 token.span.start..end,
             );
         }
-        if self.range_header && token.kind == TokenKind::Range {
-            self.parser.tokens.next();
-            let value = self.parser.expression(1, 0);
-            let end = self.parser.nodes[value.0].span.end;
-            return self.add(
-                StmtKind::RangeClause {
-                    left: Vec::new(),
-                    operator: None,
-                    value,
-                },
-                token.span.start..end,
-            );
-        }
         if token.kind == TokenKind::Ident
             && self
                 .parser
@@ -224,7 +211,22 @@ impl BodyParser<'_> {
             } else {
                 Some(self.statement(depth + 1))
             };
-            let end = statement.map_or(token.span.end, |id| self.statements[id.0].span.end);
+            // Like go/ast, a label covers its implicit/explicit empty statement:
+            // `L: ;` ends after the semicolon and `L:` before `}` ends at the
+            // closing brace (implicit empty statements end at their token).
+            let end = statement.map_or_else(
+                || {
+                    self.parser
+                        .tokens
+                        .peek()
+                        .map_or(token.span.end, |next| match next.kind {
+                            TokenKind::Semicolon => next.span.end,
+                            TokenKind::RBrace => next.span.start,
+                            _ => token.span.end,
+                        })
+                },
+                |id| self.statements[id.0].span.end,
+            );
             return self.add(
                 StmtKind::Label {
                     name: token.span.clone(),

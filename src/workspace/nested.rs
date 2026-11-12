@@ -200,6 +200,7 @@ impl Workspace {
             return None;
         }
         let mut stub = crate::index::index_source(source);
+        stub.stamp = crate::index::DiskStamp::of(file);
         if self.cgo_disabled && stub.imports.iter().any(|import| import.path == "C") {
             return None;
         }

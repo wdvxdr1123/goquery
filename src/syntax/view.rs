@@ -8,8 +8,12 @@
 //! declarations come from `stub`; no second lexer or grammar lives here.
 //!
 //! The index is query-local and source-free: callers keep the source snapshot.
-//! Bounds: 8 MiB source, 600,000 tokens, 262,144 collected nodes. Larger inputs
-//! return `None`, and consumers degrade to an empty result.
+//! Server bounds: 8 MiB source, 600,000 tokens, 262,144 collected nodes. Larger
+//! inputs return `None`, and consumers degrade to an empty result. Corpus
+//! differentials may call `parse_with_token_budget` with an explicit larger
+//! token budget for a few oversized generated files; the server always uses
+//! `parse`.
+use crate::syntax::ast::declarations::{ImportName, SymbolKind};
 use crate::syntax::ast::expression::ExprKind;
 use crate::syntax::ast::statement::{BlockTree, StmtKind};
 use crate::syntax::lexer::Lexer;
@@ -79,6 +83,9 @@ pub struct CommentSpan {
 #[non_exhaustive]
 pub struct ImportEntry {
     pub span: Range<usize>,
+    /// Written local name; `ImportName::Package` when the name is omitted.
+    pub name: ImportName,
+    /// Decoded UTF-8 import path.
     pub path: String,
 }
 
@@ -95,8 +102,19 @@ pub struct SyntaxIndex {
 }
 
 impl SyntaxIndex {
-    /// Build the index for one Go source snapshot.
+    /// Build the index for one Go source snapshot with the server token budget.
     pub fn parse(source: &str) -> Option<SyntaxIndex> {
+        Self::parse_bounded(source, MAX_TOKENS)
+    }
+
+    /// Build the index with an explicit token budget. The server always uses
+    /// `parse`; bounded corpus differentials use this for generated files that
+    /// exceed the default budget while keeping the source-size and node caps.
+    pub fn parse_with_token_budget(source: &str, max_tokens: usize) -> Option<SyntaxIndex> {
+        Self::parse_bounded(source, max_tokens)
+    }
+
+    fn parse_bounded(source: &str, max_tokens: usize) -> Option<SyntaxIndex> {
         if source.len() > MAX_SOURCE_BYTES {
             return None;
         }
@@ -119,7 +137,7 @@ impl SyntaxIndex {
                 comment_same_line.push(same_line);
                 separated = false;
             } else {
-                if tokens.len() >= MAX_TOKENS {
+                if tokens.len() >= max_tokens {
                     return None;
                 }
                 separated = true;
@@ -313,10 +331,11 @@ impl Scan<'_, '_> {
             }
             match self.tokens[index].kind {
                 TokenKind::Import | TokenKind::Const | TokenKind::Var | TokenKind::Type => {
+                    let keyword = self.tokens[index].kind;
                     let next = index + 1;
                     if self.kind_at(next) == TokenKind::LParen {
                         if let Some((open, close)) = self.group(next) {
-                            let kind = if self.tokens[index].kind == TokenKind::Import {
+                            let kind = if keyword == TokenKind::Import {
                                 FoldGroupKind::Imports
                             } else {
                                 FoldGroupKind::Decl
@@ -325,16 +344,22 @@ impl Scan<'_, '_> {
                                 self.index.groups.push(FoldGroup { open, close, kind });
                             }
                         }
-                        if self.tokens[index].kind == TokenKind::Import {
-                            self.import_specs(next);
+                        if keyword == TokenKind::Import {
+                            self.import_specs(index);
+                        } else if keyword == TokenKind::Type {
+                            self.type_declaration(index, braces == 0);
                         }
-                        index = self.skip_group(next);
+                        // Keep scanning inside the group: spec initializers may
+                        // contain function literals with their own local
+                        // declaration groups, and grouped type specs still need
+                        // their parameter lists and array lengths.
+                        index += 1;
                         continue;
                     }
-                    if self.tokens[index].kind == TokenKind::Import {
+                    if keyword == TokenKind::Import {
                         self.import_specs(index);
                     }
-                    if self.tokens[index].kind == TokenKind::Type {
+                    if keyword == TokenKind::Type {
                         self.type_declaration(index, braces == 0);
                     }
                     index += 1;
@@ -359,7 +384,16 @@ impl Scan<'_, '_> {
                 continue;
             }
             let spec_start = index;
+            let mut name = ImportName::Package;
             if matches!(self.kind_at(index), TokenKind::Ident | TokenKind::Period) {
+                let token = &self.tokens[index];
+                name = if token.kind == TokenKind::Period {
+                    ImportName::Dot
+                } else if &self.source[token.span.clone()] == "_" {
+                    ImportName::Blank
+                } else {
+                    ImportName::Alias(self.source[token.span.clone()].to_owned())
+                };
                 index += 1;
             }
             if self.kind_at(index) == TokenKind::String {
@@ -368,7 +402,7 @@ impl Scan<'_, '_> {
                 let path = crate::syntax::decode_import_path(&self.source[path_span.clone()])
                     .unwrap_or_default();
                 if !self.exhausted() {
-                    self.index.imports.push(ImportEntry { span, path });
+                    self.index.imports.push(ImportEntry { span, name, path });
                 }
                 index += 1;
             } else {
@@ -402,13 +436,14 @@ impl Scan<'_, '_> {
                 index += 1;
                 continue;
             }
-            let name = index;
             index += 1;
             if self.kind_at(index) == TokenKind::LBrack && self.type_parameter_list(index) {
                 self.emit_group(index);
+                if package_level {
+                    self.type_parameter_expressions(index);
+                }
                 index = self.skip_group(index);
             }
-            let _ = package_level;
             if self.kind_at(index) == TokenKind::Assign {
                 index += 1;
             }
@@ -416,11 +451,7 @@ impl Scan<'_, '_> {
                 break;
             }
             let type_start = self.span_at(index).start;
-            let type_end = if grouped {
-                self.span_at(content_end).start
-            } else {
-                self.span_at(content_end.saturating_sub(1)).end
-            };
+            let (type_end, terminator) = self.spec_end(index, content_end);
             if package_level && type_start < type_end {
                 // Package-level type declarations are parsed here; local ones
                 // already contribute their array-length expressions through
@@ -431,20 +462,51 @@ impl Scan<'_, '_> {
                     self.expression_nodes(&expressions, type_start);
                 }
             }
-            // Advance past the spec's terminating depth-zero semicolon.
-            let _ = name;
-            index = self.token_index(type_end);
-            while index < content_end && self.kind_at(index) != TokenKind::Semicolon {
-                index = if matches!(
-                    self.kind_at(index),
-                    TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace
-                ) {
-                    self.skip_group(index)
-                } else {
-                    index + 1
-                };
+            // Advance past this spec's terminating depth-zero semicolon.
+            index = terminator.max(index + 1);
+        }
+    }
+
+    /// End offset and next token index of one spec's type, bounded by `content_end`.
+    fn spec_end(&self, from: usize, content_end: usize) -> (usize, usize) {
+        let mut index = from;
+        while index < content_end {
+            match self.kind_at(index) {
+                TokenKind::Semicolon => return (self.span_at(index).start, index),
+                TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => {
+                    index = self.skip_group(index);
+                }
+                _ => index += 1,
             }
         }
+        let end = if content_end < self.tokens.len() {
+            self.span_at(content_end).start
+        } else {
+            self.source.len()
+        };
+        (end, content_end)
+    }
+
+    /// Parse array-length expressions inside a package-level type parameter list
+    /// by reusing the named-signature grammar; the type parser has no
+    /// type-parameter entry point and body arenas only cover local declarations.
+    fn type_parameter_expressions(&mut self, open_index: usize) {
+        let Some(close_index) = self.partner_of(open_index) else {
+            return;
+        };
+        let open = self.span_at(open_index);
+        let close = self.span_at(close_index);
+        const PREFIX: &str = "func Generic";
+        let Some(base) = open.start.checked_sub(PREFIX.len()) else {
+            return;
+        };
+        let header = format!("{PREFIX}{}()", &self.source[open.start..close.end]);
+        let signature = crate::syntax::parse_signature(&header);
+        if !signature.diagnostics().is_empty() {
+            return;
+        }
+        let expressions = signature.expressions();
+        self.expression_nodes(expressions, base);
     }
 
     fn group(&self, open_index: usize) -> Option<(Range<usize>, Range<usize>)> {
@@ -482,7 +544,10 @@ impl Scan<'_, '_> {
     fn function_group(&mut self, keyword: usize) {
         let mut index = keyword + 1;
         if self.kind_at(index) == TokenKind::Ident {
-            if self.kind_at(index + 1) == TokenKind::LBrack && self.type_parameter_list(index + 1) {
+            // A function name can only be followed by a type-parameter list or
+            // the input parameter list; `[` here is unambiguous (the array-type
+            // ambiguity only exists after a type name).
+            if self.kind_at(index + 1) == TokenKind::LBrack {
                 let next = self.skip_group(index + 1);
                 self.emit_group(index + 1);
                 index = next;
@@ -498,9 +563,7 @@ impl Scan<'_, '_> {
             let receiver = self.kind_at(after) == TokenKind::Ident && {
                 let name = after;
                 let mut params = name + 1;
-                let type_params =
-                    self.kind_at(params) == TokenKind::LBrack && self.type_parameter_list(params);
-                if type_params {
+                if self.kind_at(params) == TokenKind::LBrack {
                     params = self.skip_group(params);
                 }
                 self.kind_at(params) == TokenKind::LParen
@@ -509,7 +572,7 @@ impl Scan<'_, '_> {
                 self.emit_group(index);
                 let name = after;
                 let mut params = name + 1;
-                if self.kind_at(params) == TokenKind::LBrack && self.type_parameter_list(params) {
+                if self.kind_at(params) == TokenKind::LBrack {
                     self.emit_group(params);
                     params = self.skip_group(params);
                 }
@@ -582,10 +645,26 @@ impl Scan<'_, '_> {
         crate::syntax::type_parameter_end(&self.source[span.start..]).is_some()
     }
 
-    /// Function bodies and package-level initializers.
+    /// Function bodies, package-level initializers and function/method headers.
     fn bodies(&mut self) {
         let stub = crate::syntax::stub(self.source);
         for symbol in &stub.symbols {
+            // Header types carry array-length expressions and function literals
+            // exactly like bodies; parse the header through the signature grammar
+            // so receiver/type-parameter/parameter/result folds are comparable.
+            if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+                let end = symbol
+                    .body
+                    .as_ref()
+                    .map_or(symbol.range.end, |body| body.start);
+                if symbol.range.start < end {
+                    let signature =
+                        crate::syntax::parse_signature(&self.source[symbol.range.start..end]);
+                    if signature.diagnostics().is_empty() {
+                        self.expression_nodes(signature.expressions(), symbol.range.start);
+                    }
+                }
+            }
             if let Some(body) = &symbol.body {
                 self.parse_body(body.clone());
             }

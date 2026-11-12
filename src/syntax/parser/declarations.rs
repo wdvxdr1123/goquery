@@ -48,45 +48,78 @@ impl Parser<'_> {
 
     fn imports(&mut self) {
         let grouped = self.eat(TokenKind::LParen);
+        if !grouped {
+            self.import_spec();
+            return;
+        }
         loop {
-            if self.eat(TokenKind::Semicolon) {
-                if grouped {
-                    continue;
-                } else {
-                    break;
-                }
-            }
-            if grouped && self.eat(TokenKind::RParen) {
+            while self.eat(TokenKind::Semicolon) {}
+            if self.eat(TokenKind::RParen) {
                 break;
             }
-            let Some(first) = self.tokens.next() else {
+            let Some(before) = self.tokens.peek().map(|token| token.span.start) else {
                 break;
             };
-            let (name, path) = if first.kind == TokenKind::String {
-                (ImportName::Package, Some(first))
-            } else {
-                let name = match first.kind {
-                    TokenKind::Period => ImportName::Dot,
-                    TokenKind::Ident if self.spelling(&first) == "_" => ImportName::Blank,
-                    _ => ImportName::Alias(self.spelling(&first).to_owned()),
-                };
-                (name, self.tokens.next())
-            };
-            if let Some(path) = path
-                .filter(|p| p.kind == TokenKind::String)
-                .and_then(|path| literal::import_path(self.spelling(&path)))
-            {
-                self.result.imports.push(Import { name, path });
-            }
-            if !grouped {
-                break;
+            self.import_spec();
+            // Malformed specs must not consume the group terminator or the rest
+            // of the file: advance only past a token that failed to form a spec.
+            if self.tokens.peek().map(|token| token.span.start) == Some(before) {
+                self.tokens.next();
             }
         }
     }
 
+    /// Consumes one import spec (grouped or ungrouped). Malformed specs stop
+    /// before a `)`/`;` so grouped recovery can continue at the next spec instead
+    /// of swallowing subsequent declarations.
+    fn import_spec(&mut self) {
+        let Some(first) = self.tokens.peek().cloned() else {
+            return;
+        };
+        let name = match first.kind {
+            TokenKind::String => {
+                self.tokens.next();
+                if let Some(path) = literal::import_path(self.spelling(&first)) {
+                    self.result.imports.push(Import {
+                        name: ImportName::Package,
+                        path,
+                    });
+                }
+                return;
+            }
+            TokenKind::Period => {
+                self.tokens.next();
+                ImportName::Dot
+            }
+            TokenKind::Ident => {
+                let name = if self.spelling(&first) == "_" {
+                    ImportName::Blank
+                } else {
+                    ImportName::Alias(self.spelling(&first).to_owned())
+                };
+                self.tokens.next();
+                name
+            }
+            _ => return,
+        };
+        let Some(path) = self
+            .tokens
+            .peek()
+            .filter(|token| token.kind == TokenKind::String)
+            .cloned()
+        else {
+            return;
+        };
+        self.tokens.next();
+        if let Some(path) = literal::import_path(self.spelling(&path)) {
+            self.result.imports.push(Import { name, path });
+        }
+    }
+
     fn function(&mut self, keyword: Token) {
+        let receiver_list = self.eat(TokenKind::LParen);
         let mut receiver = None;
-        if self.eat(TokenKind::LParen) {
+        if receiver_list {
             let mut bracket_depth = 0usize;
             let mut parentheses = 1usize;
             for token in self.tokens.by_ref() {
@@ -110,6 +143,13 @@ impl Parser<'_> {
         let Some(name) = self.tokens.next().filter(|t| t.kind == TokenKind::Ident) else {
             return;
         };
+        // A function name is followed by a type parameter list or the input
+        // parameter list; an array/slice type cannot appear in that position, so
+        // `[` proves genericity without the declaration ambiguity heuristic.
+        let generic = self
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::LBrack);
         let mut end = name.span.end;
         let mut body = None;
         let mut type_body = false;
@@ -131,16 +171,16 @@ impl Parser<'_> {
                 _ => type_body = matches!(self.spelling(&token), "struct" | "interface"),
             }
         }
-        let kind = if receiver.is_some() {
+        // The receiver list presence, not a parsed receiver name, makes a method.
+        let kind = if receiver_list {
             SymbolKind::Method
         } else {
             SymbolKind::Function
         };
-        let generic = super::aggregate::type_parameter_end(&self.source[name.span.end..end]);
         self.result.symbols.push(Symbol {
             name: self.spelling(&name).to_owned(),
             kind,
-            generic: generic.is_some(),
+            generic,
             alias: false,
             leaf: false,
             constructor: TypeConstructor::Unknown,

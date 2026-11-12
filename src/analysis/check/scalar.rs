@@ -68,7 +68,20 @@ impl Inference<'_, '_> {
                     if self.locals.switch_case(binding).is_some() {
                         return self.switch_operand(arena, binding);
                     }
+                    if let Some(scoped) = self.cached_scoped_binding(binding) {
+                        return Some(Operand {
+                            mode: Mode::Variable,
+                            ty: arena.parse(scoped.scope, &scoped.text)?,
+                            value: None,
+                        });
+                    }
                     if let Some(value) = self.local_binding(arena, binding) {
+                        if let Some(operand) = &value
+                            && operand.mode == Mode::Variable
+                        {
+                            let ty = operand.ty;
+                            self.memoize_scoped_binding(arena, binding, ty);
+                        }
                         return value;
                     }
                     if binding.declaration == DeclarationKind::Constant {

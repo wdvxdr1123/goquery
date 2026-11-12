@@ -253,16 +253,7 @@ fn native_selector_kind(
             }
             _ => return None,
         };
-        let workspace = resolver.workspace();
-        let file = resolver.file();
-        native_selector_kind_at(
-            workspace,
-            file,
-            analysis,
-            source,
-            span,
-            &source[name.span.clone()],
-        )
+        native_selector_kind_at(resolver, analysis, source, span, &source[name.span.clone()])
     })();
     if let Some(key) = key {
         resolver.store_selector_kind(key, value);
@@ -271,13 +262,14 @@ fn native_selector_kind(
 }
 
 fn native_selector_kind_at(
-    workspace: &Workspace,
-    file: &Path,
+    resolver: &Resolver<'_>,
     analysis: &SourceAnalysis,
     source: &str,
     span: Range<usize>,
     field: &str,
 ) -> Option<ObjectKind> {
+    let workspace = resolver.workspace();
+    let file = resolver.file();
     if span.len() > 16 * 1024 {
         return None;
     }
@@ -302,7 +294,8 @@ fn native_selector_kind_at(
         &analysis.locals,
         &parsed.nodes,
         span.start,
-    );
+    )
+    .with_scoped_bindings(resolver.scoped_bindings());
     let mut arena = TypeArena::new(workspace);
     let input = receiver_operand(&inference, &mut arena, &parsed.nodes, *operand, 0);
     let Some(input) = input else {
@@ -638,7 +631,7 @@ fn native_range_operand(
     if !parsed.diagnostics.is_empty() {
         return None;
     }
-    let nested = Inference::new(
+    let mut nested = Inference::new(
         inference.workspace,
         inference.file,
         inference.source,
@@ -646,6 +639,9 @@ fn native_range_operand(
         &parsed.nodes,
         span.start,
     );
+    if let Some(cache) = inference.shared_scoped_bindings() {
+        nested = nested.with_scoped_bindings(cache);
+    }
     let container = receiver_operand(&nested, arena, &parsed.nodes, parsed.root, depth + 1)?;
     let ty = arena.range_slot(
         container,
@@ -711,7 +707,7 @@ pub(super) fn receiver_operand(
                     if text.len() <= 16 * 1024 {
                         let parsed = crate::syntax::parse_expression(text);
                         if parsed.diagnostics.is_empty() {
-                            let nested = Inference::new(
+                            let mut nested = Inference::new(
                                 inference.workspace,
                                 inference.file,
                                 inference.source,
@@ -719,6 +715,9 @@ pub(super) fn receiver_operand(
                                 &parsed.nodes,
                                 span.start,
                             );
+                            if let Some(cache) = inference.shared_scoped_bindings() {
+                                nested = nested.with_scoped_bindings(cache);
+                            }
                             return receiver_operand(
                                 &nested,
                                 arena,

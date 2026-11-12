@@ -1,7 +1,7 @@
 //! Identity resolution shared by references, fallback navigation and highlighting.
 mod members;
 use super::{Binding, Locals, ObjectKind};
-use crate::analysis::check::{Inference, NativeTypeCache, Selection};
+use crate::analysis::check::{CachedBinding, Inference, NativeTypeCache, Selection};
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::resolve::NameIndex;
@@ -40,6 +40,10 @@ pub(crate) struct Resolver<'a> {
     /// member resolution. Interior mutability lets the read-only classification
     /// fallbacks share the same results within one request.
     binding_types: RefCell<HashMap<(usize, usize), Option<String>>>,
+    /// Native (scoped) lexical binding types, shared by every receiver walk in
+    /// one candidate file. A binding whose type needs a large declaration
+    /// expansion would otherwise be re-inferred by each independent arena.
+    scoped_bindings: RefCell<HashMap<(usize, usize), CachedBinding<'a>>>,
     inferred_members: RefCell<HashMap<(usize, usize), Option<Identity<'a>>>>,
     /// Range element types are inferred from the written range expression, which
     /// is independent of the member occurrence; a single query-local memo keeps
@@ -75,6 +79,12 @@ impl<'a> Resolver<'a> {
         self.file
     }
 
+    /// Request-local native binding-type memo, shared with classification
+    /// fallbacks so repeated receiver inference over one file is computed once.
+    pub(crate) fn scoped_bindings(&self) -> &RefCell<HashMap<(usize, usize), CachedBinding<'a>>> {
+        &self.scoped_bindings
+    }
+
     pub(crate) fn new(workspace: &'a Workspace, file: &'a Path) -> Self {
         let mut package = HashMap::new();
         for (path, symbol) in workspace.file_symbol_iter(file) {
@@ -94,6 +104,7 @@ impl<'a> Resolver<'a> {
             methods: HashMap::new(),
             members: HashMap::new(),
             binding_types: RefCell::new(HashMap::new()),
+            scoped_bindings: RefCell::new(HashMap::new()),
             inferred_members: RefCell::new(HashMap::new()),
             range_types: RefCell::new(HashMap::new()),
             field_chains: RefCell::new(HashMap::new()),
@@ -121,6 +132,7 @@ impl<'a> Resolver<'a> {
             methods: HashMap::new(),
             members: HashMap::new(),
             binding_types: RefCell::new(HashMap::new()),
+            scoped_bindings: RefCell::new(HashMap::new()),
             inferred_members: RefCell::new(HashMap::new()),
             range_types: RefCell::new(HashMap::new()),
             field_chains: RefCell::new(HashMap::new()),
@@ -171,6 +183,7 @@ impl<'a> Resolver<'a> {
             return value.clone();
         }
         let value = Inference::new(self.workspace, self.file, source, &analysis.locals, &[], 0)
+            .with_scoped_bindings(&self.scoped_bindings)
             .native_range_slot(span.clone(), result, count)
             .map(|ty| ty.text);
         if self.range_types.borrow().len() < 4_096 {
@@ -766,7 +779,8 @@ impl<'a> Resolver<'a> {
             &parsed.nodes,
             span.start,
         )
-        .with_name_index(self.index);
+        .with_name_index(self.index)
+        .with_scoped_bindings(&self.scoped_bindings);
         let identity = if self.members_enabled {
             inference
                 .selection(parsed.root)

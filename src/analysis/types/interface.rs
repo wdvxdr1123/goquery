@@ -306,10 +306,16 @@ impl<'a> TypeArena<'a> {
         &self,
         _origin: &Path,
         methods: Range<usize>,
+        builtin_any: bool,
         consumer: DisplayScope<'_>,
         out: &mut String,
         depth: usize,
     ) -> Option<()> {
+        // The universe alias keeps its source spelling in types.TypeString.
+        if builtin_any && methods.is_empty() {
+            out.push_str("any");
+            return Some(());
+        }
         out.push_str("interface{");
         for method in &self.methods[methods] {
             if !crate::syntax::is_exported_name(&method.name)

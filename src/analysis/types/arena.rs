@@ -253,8 +253,12 @@ impl<'a> TypeArena<'a> {
             }
             Ty::Error(_) => out.push_str("error"),
             Ty::Interface {
-                origin, methods, ..
-            } => self.write_interface(origin, methods.clone(), consumer, out, depth)?,
+                origin,
+                methods,
+                builtin_any,
+            } => {
+                self.write_interface(origin, methods.clone(), *builtin_any, consumer, out, depth)?
+            }
             Ty::Signature {
                 parameters,
                 results,

@@ -71,6 +71,21 @@ as the semantic reference, for editors and AI-assisted development.
   semantic entry points; document features admit through `analysis::query::Context`.
 - Workspace updates enter through typed events; mutable storage belongs to
   `workspace`. Analysis must not hold locks across await points.
+- External changes enter through dynamic `workspace/didChangeWatchedFiles`
+  registration (only when the client advertises it) and the typed watched-files
+  event: one bounded batch, one dependency/SDK discovery pass, module-plan
+  refresh for `go.mod`/`go.work` updates, and diagnostic republishes for affected
+  open documents (changed package first, then direct importers). When the client
+  supplies no file events (agent/shell edits), a bounded disk poller
+  (`pollIntervalMs` / `GOQUERY_POLL_MS`, default 1000 ms) detects
+  modified/new/deleted workspace files and manifests and applies the same typed
+  batch. After a detection it temporarily polls at 100 ms for 3 s to catch
+  multi-file agent bursts. On workspaces with at most 512 poll-scope files
+  (`GOQUERY_ONDEMAND_MAX_FILES`, 0 disables), the first semantic request after
+  300 ms of idle time also polls on demand; larger trees keep the background
+  schedule so a full scan is not paid per query. It reloads clean open buffers
+  from disk only, never dirty editor buffers, and keeps its walk and changed-path
+  list bounded. Never invoke Go for change detection.
 - Do not retain closed-file sources, ASTs or type graphs between requests. Read a
   closed source once with a bounded handle; open buffers override disk contents.
   Document excluded files as detached orphan packages with bounded sibling

@@ -13,7 +13,8 @@ pub use ast::{AggregateMember, Import, ImportName, MemberKind, MemberName};
 pub use ast::{BlockTree, LocalTypeParameters, Statement, StmtId, StmtKind};
 pub use ast::{Diagnostic, Expr, ExprId, ExprKind, ExpressionTree, Stub, Symbol, SymbolKind};
 pub use ast::{
-    InterfaceMember, SignatureName, SignatureNameKind, TypeField, TypeReference, TypeSyntax,
+    InterfaceMember, SignatureName, SignatureNameKind, TypeField, TypeNode, TypeNodeKind,
+    TypeReference, TypeSyntax,
 };
 pub use ast::{Parameter, Signature};
 pub use ast::{TypeConstructor, TypeInfo, TypeTarget};

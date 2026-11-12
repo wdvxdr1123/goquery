@@ -33,7 +33,24 @@ impl Workspace {
             ["documentSymbol"]["hierarchicalDocumentSymbolSupport"]
             .as_bool()
             .unwrap_or(false);
+        self.watched_files_dynamic =
+            params["capabilities"]["workspace"]["didChangeWatchedFiles"]["dynamicRegistration"]
+                .as_bool()
+                .unwrap_or(false);
         let options = &params["initializationOptions"];
+        self.poll_interval_ms = match options
+            .get("pollIntervalMs")
+            .filter(|value| !value.is_null())
+        {
+            Some(value) => value.as_u64().ok_or((
+                crate::error::INVALID_PARAMS,
+                "pollIntervalMs must be a non-negative integer".into(),
+            ))?,
+            None => std::env::var("GOQUERY_POLL_MS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(1000),
+        };
         // One local probe fills both defaults; it is not cached across requests.
         let go_env = if needs_go_env(options) {
             goenv::probe()
@@ -92,6 +109,7 @@ impl Workspace {
         }
         self.sdk_root = sdk::discover(options, &go_env)
             .map_err(|error| (crate::error::INVALID_PARAMS, error))?;
+        self.started_at = Some(crate::index::DiskStamp::now_nanos());
         let roots = params["workspaceFolders"]
             .as_array()
             .map(|folders| {

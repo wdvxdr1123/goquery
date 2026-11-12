@@ -41,6 +41,10 @@ pub(super) struct Parser<'a> {
     pub(super) signature_names: Vec<crate::syntax::ast::types::SignatureName>,
     pub(super) fields: Vec<crate::syntax::ast::types::TypeField>,
     pub(super) interface_members: Vec<crate::syntax::ast::types::InterfaceMember>,
+    pub(super) type_nodes: Vec<crate::syntax::ast::types::TypeNode>,
+    /// Array lengths are expressions; nested type syntax there is not part of
+    /// the enclosing type's flat shape.
+    pub(super) record_type_nodes: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -54,6 +58,8 @@ impl<'a> Parser<'a> {
             signature_names: Vec::new(),
             fields: Vec::new(),
             interface_members: Vec::new(),
+            type_nodes: Vec::new(),
+            record_type_nodes: true,
             restricted_header: false,
         }
     }
@@ -64,6 +70,56 @@ impl Parser<'_> {
         let id = ExprId(self.nodes.len());
         self.nodes.push(Expr { kind, span });
         id
+    }
+
+    /// Reserve a flat type-shape node; the span is completed after recursion so
+    /// the summary stays a single source of truth with the type grammar.
+    pub(super) fn begin_type_node(
+        &mut self,
+        kind: crate::syntax::ast::types::TypeNodeKind,
+        start: usize,
+    ) -> Option<usize> {
+        if !self.record_type_nodes
+            || self.type_nodes.len() >= crate::syntax::ast::types::MAX_TYPE_NODES
+        {
+            return None;
+        }
+        self.type_nodes.push(crate::syntax::ast::types::TypeNode {
+            kind,
+            span: start..start,
+        });
+        Some(self.type_nodes.len() - 1)
+    }
+
+    pub(super) fn end_type_node(&mut self, node: Option<usize>, end: usize) {
+        if let Some(node) = node
+            && let Some(node) = self.type_nodes.get_mut(node)
+        {
+            node.span.end = end;
+        }
+    }
+
+    /// Record a bare or qualified type name recovered outside `type_syntax`.
+    pub(super) fn record_type_node(
+        &mut self,
+        kind: crate::syntax::ast::types::TypeNodeKind,
+        span: Range<usize>,
+    ) {
+        if self.record_type_nodes
+            && self.type_nodes.len() < crate::syntax::ast::types::MAX_TYPE_NODES
+        {
+            self.type_nodes
+                .push(crate::syntax::ast::types::TypeNode { kind, span });
+        }
+    }
+
+    /// Parses an expression that is not part of the enclosing type's shape.
+    pub(super) fn expression_without_type_nodes(&mut self, minimum: u8, depth: usize) -> ExprId {
+        let saved = self.record_type_nodes;
+        self.record_type_nodes = false;
+        let result = self.expression(minimum, depth);
+        self.record_type_nodes = saved;
+        result
     }
 
     pub(super) fn error(&mut self, span: Range<usize>, message: &'static str) {
@@ -109,17 +165,27 @@ impl Parser<'_> {
             return self.add(ExprKind::Missing, end..end);
         };
         let spelling = &self.source[token.span.clone()];
-        let expression = if matches!(
-            token.kind,
-            TokenKind::Add
-                | TokenKind::Sub
-                | TokenKind::Not
-                | TokenKind::Xor
-                | TokenKind::Mul
-                | TokenKind::And
-                | TokenKind::Arrow
-                | TokenKind::Tilde
-        ) {
+        // `<-chan T` is a channel type, never a receive expression: go/parser
+        // resolves the same spelling as a type in expression positions such as
+        // conversions and `make` arguments.
+        let receive_type = token.kind == TokenKind::Arrow
+            && self
+                .tokens
+                .clone()
+                .nth(1)
+                .is_some_and(|next| next.kind == TokenKind::Chan);
+        let expression = if !receive_type
+            && matches!(
+                token.kind,
+                TokenKind::Add
+                    | TokenKind::Sub
+                    | TokenKind::Not
+                    | TokenKind::Xor
+                    | TokenKind::Mul
+                    | TokenKind::And
+                    | TokenKind::Arrow
+                    | TokenKind::Tilde
+            ) {
             self.tokens.next();
             let operand = self.expression(6, depth + 1);
             let span = token.span.start..self.nodes[operand.0].span.end;
@@ -137,7 +203,8 @@ impl Parser<'_> {
                 | TokenKind::Struct
                 | TokenKind::Interface
                 | TokenKind::Chan
-                | TokenKind::Func => {
+                | TokenKind::Func
+                | TokenKind::Arrow => {
                     let signature = self.type_syntax(depth + 1);
                     if spelling == "func"
                         && self

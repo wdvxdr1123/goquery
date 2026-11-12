@@ -2,7 +2,7 @@
 use super::Workspace;
 use super::goenv::GoEnv;
 use serde_json::Value;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
@@ -171,7 +171,7 @@ impl Workspace {
         Some(self.sdk_source_root()?.join("builtin/builtin.go"))
     }
 
-    fn sdk_source_root(&self) -> Option<&Path> {
+    pub(super) fn sdk_source_root(&self) -> Option<&Path> {
         self.modules
             .iter()
             .find_map(|(root, module)| (module == "std").then_some(root.as_path()))
@@ -313,6 +313,173 @@ impl Workspace {
         self.rebuild_package_names();
     }
 
+    /// Reconcile standard-library packages after a plan transition. SDK discovery
+    /// is module-plan independent and the imported package set only changes when
+    /// newly walked roots/files contribute imports, so packages that remain
+    /// import-reachable are retained, missing ones are read once, and packages
+    /// that are no longer referenced are pruned. Falls back to the caller's full
+    /// reload when the caller cannot prove the SDK identity stable.
+    ///
+    /// Returns `(retained files, loaded files, pruned files)` for tracing/tests.
+    pub(super) fn load_sdk_incremental(
+        &mut self,
+        previous: HashSet<PathBuf>,
+    ) -> (usize, usize, usize) {
+        let Some(root) = self.sdk_source_root().map(Path::to_path_buf) else {
+            let stale: Vec<PathBuf> = self
+                .files
+                .keys()
+                .filter(|file| {
+                    file.parent()
+                        .is_some_and(|parent| previous.contains(parent))
+                        && !self.nested_files.contains(*file)
+                        && !self.roots.iter().any(|root| file.starts_with(root))
+                })
+                .cloned()
+                .collect();
+            let pruned = stale.len();
+            for file in stale {
+                self.files.remove(&file);
+            }
+            self.sdk_packages.clear();
+            self.rebuild_package_names();
+            return (0, 0, pruned);
+        };
+        self.modules.insert(root.clone(), "std".into());
+        let mut directories: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        for file in self.files.keys() {
+            if let Some(directory) = file.parent() {
+                directories
+                    .entry(directory.to_path_buf())
+                    .or_default()
+                    .push(file.clone());
+            }
+        }
+        let mut pending = VecDeque::new();
+        for (file, stub) in &self.files {
+            if self.detached.contains(file) {
+                continue;
+            }
+            // Stale SDK stubs must not seed reachability; files of an explicit
+            // root (a checkout mounted as workspace) always do.
+            let stale = file
+                .parent()
+                .is_some_and(|parent| previous.contains(parent))
+                && !self.roots.iter().any(|root| file.starts_with(root));
+            if stale {
+                continue;
+            }
+            pending.extend(
+                stub.imports
+                    .iter()
+                    .filter_map(|import| self.sdk_dependency(&root, file, &import.path)),
+            );
+        }
+        let mut seen = HashSet::new();
+        let mut reachable = HashSet::new();
+        let mut loaded = 0usize;
+        while let Some(directory) = pending.pop_front() {
+            if !seen.insert(directory.clone()) {
+                continue;
+            }
+            if reachable.len() >= 1024 {
+                eprintln!("standard-library dependency limit exceeded (1024)");
+                break;
+            }
+            if !directory.is_dir() {
+                continue;
+            }
+            reachable.insert(directory.clone());
+            if let Some(files) = directories.get(&directory) {
+                // A package already covered by indexed files is not re-read. Only
+                // previously loaded SDK stubs contribute transitive imports.
+                if !previous.contains(&directory) {
+                    continue;
+                }
+                let mut next = Vec::new();
+                for file in files {
+                    if self.detached.contains(file) || self.nested_files.contains(file) {
+                        continue;
+                    }
+                    if let Some(stub) = self.files.get(file) {
+                        next.extend(
+                            stub.imports.iter().filter_map(|import| {
+                                self.sdk_dependency(&root, file, &import.path)
+                            }),
+                        );
+                    }
+                }
+                pending.extend(next);
+                continue;
+            }
+            if previous.contains(&directory) {
+                // Loaded before with no indexable source: keep the empty package.
+                continue;
+            }
+            if directory
+                .ancestors()
+                .take_while(|path| *path != root)
+                .any(|path| {
+                    path.join("go.mod").is_file()
+                        && !(path == root.join("cmd")
+                            && self.modules.get(path).is_some_and(|module| module == "cmd"))
+                })
+            {
+                continue;
+            }
+            let Ok(entries) = fs::read_dir(&directory) else {
+                continue;
+            };
+            // `discoverable` admits production files in a known SDK directory.
+            self.sdk_packages.insert(directory);
+            let mut next = Vec::new();
+            for entry in entries.filter_map(Result::ok) {
+                let file = entry.path();
+                if !entry.file_type().is_ok_and(|kind| kind.is_file())
+                    || file.extension().is_none_or(|extension| extension != "go")
+                {
+                    continue;
+                }
+                if let Some(stub) = self.indexed_file(&file) {
+                    next.extend(
+                        stub.imports
+                            .iter()
+                            .filter_map(|import| self.sdk_dependency(&root, &file, &import.path)),
+                    );
+                    self.files.insert(file, stub);
+                    loaded += 1;
+                }
+            }
+            pending.extend(next);
+        }
+        let stale: Vec<PathBuf> = self
+            .files
+            .keys()
+            .filter(|file| {
+                file.parent()
+                    .is_some_and(|parent| previous.contains(parent) && !reachable.contains(parent))
+                    && !self.nested_files.contains(*file)
+                    && !self.roots.iter().any(|root| file.starts_with(root))
+            })
+            .cloned()
+            .collect();
+        let pruned = stale.len();
+        for file in stale {
+            self.files.remove(&file);
+        }
+        let retained = self
+            .files
+            .keys()
+            .filter(|file| {
+                file.parent()
+                    .is_some_and(|parent| previous.contains(parent) && reachable.contains(parent))
+            })
+            .count();
+        self.sdk_packages = reachable;
+        self.rebuild_package_names();
+        (retained, loaded, pruned)
+    }
+
     /// Effective view target of an orphaned file, mirroring gopls' dynamic
     /// preferred-port views. Returns None when the host target already matches
     /// or the file is not detached, so ordinary lookups keep their behavior.
@@ -438,6 +605,7 @@ impl Workspace {
             return None;
         }
         let mut stub = crate::index::index_source(source);
+        stub.stamp = crate::index::DiskStamp::of(file);
         if self.cgo_disabled && stub.imports.iter().any(|import| import.path == "C") {
             return None;
         }

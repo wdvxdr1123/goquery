@@ -57,6 +57,9 @@ impl BodyParser<'_> {
                     .error(token.span.clone(), "expected ':' after communication case");
             }
             let (statements, end) = self.case_body(depth + 1, token.span.end);
+            // The clause span covers the whole clause region up to the next
+            // clause keyword or the select closing brace; the query scope layer
+            // uses it to keep clause locals visible in trailing trivia.
             let end = self
                 .parser
                 .tokens

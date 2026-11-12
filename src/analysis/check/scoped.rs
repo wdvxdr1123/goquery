@@ -8,6 +8,7 @@ use crate::syntax::{ExprId, ExprKind};
 use crate::workspace::Workspace;
 use std::path::Path;
 
+#[derive(Clone)]
 pub(crate) struct ScopedType<'a> {
     pub(crate) scope: &'a Path,
     pub(crate) text: String,

@@ -93,8 +93,10 @@ impl Parser<'_> {
         {
             self.type_references.push(TypeReference {
                 qualifier: None,
-                name,
+                name: name.clone(),
             });
+            // A bare embedded type name does not pass through `type_syntax`.
+            self.record_type_node(crate::syntax::ast::types::TypeNodeKind::Name, name);
         }
         if field.variadic {
             self.error(first.span, "struct field cannot be variadic");

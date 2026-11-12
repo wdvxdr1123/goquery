@@ -35,6 +35,7 @@
 | `usePlaceholders` | bool | 客户端支持 snippet 时，在函数/方法补全中插入参数占位符。默认 `false`。 |
 | `completeFunctionCalls` | bool | 函数/方法补全时插入调用语法。默认 `true`。 |
 | `completionDocumentation` | bool | 给补全项附加文档。默认 `true`。 |
+| `pollIntervalMs` | integer | 直接磁盘轮询间隔（毫秒，`0` 关闭）。默认取 `GOQUERY_POLL_MS`，未设置时为 `1000`；限制在 100–60000 ms。检测到直接改动后会在 3 秒内临时改为 100 ms 轮询，以捕获 agent 连续写入的多个文件。无需编辑器事件即可发现改动，包括干净的打开缓冲、新文件与 manifest 变化；有未保存修改的编辑器缓冲仍以编辑器为准。 |
 
 模块缓存没有初始化选项。它依次从 `go env GOMODCACHE`、`GOMODCACHE`、第一个 `GOPATH` 条目
 （`<GOPATH>/pkg/mod`）、`~/go/pkg/mod` 发现。初始化时最多执行一次 `go env` 探测，带
@@ -49,4 +50,7 @@
 | --- | --- |
 | `GOQUERY_TRACE_QUERIES` | 向 stderr 输出引用/调用候选与文件计数。 |
 | `GOQUERY_TRACE_MODULES` | 输出模块图规划日志。 |
+| `GOQUERY_TRACE_EDITS` | 向 stderr 输出每次工作区变更、受影响文档数与耗时（毫秒），用于诊断 agent/编辑器改动后的反馈延迟。 |
+| `GOQUERY_POLL_MS` | 未设置 `pollIntervalMs` 时的默认直接磁盘轮询间隔（毫秒，默认 `1000`；`0` 关闭）。取值限制在 100–60000 ms。 |
+| `GOQUERY_ONDEMAND_MAX_FILES` | 允许请求触发按需轮询的工作区文件数上限（默认 `512`；`0` 关闭）。仅当语义请求前已有 300 ms 空闲时触发一次。更大的树扫描代价过高，应改用更低的 `pollIntervalMs`/`GOQUERY_POLL_MS` 加快后台反馈。 |
 | `GOQUERY_DISABLE_DIAG` | 禁用推送诊断。 |

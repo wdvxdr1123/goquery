@@ -73,6 +73,7 @@ impl Workspace {
                 base: 0,
                 depth: depth + 1,
                 name_index: None,
+                scoped_bindings: None,
                 iota: None,
             }
             .scoped_switch_binding(binding)?
@@ -87,6 +88,7 @@ impl Workspace {
             base: 0,
             depth: depth + 1,
             name_index: None,
+            scoped_bindings: None,
             iota: None,
         };
         if let Some(value) = inference.scoped_binding(binding) {
@@ -154,6 +156,7 @@ impl Workspace {
         let inferred = Inference {
             workspace: self,
             name_index: None,
+            scoped_bindings: None,
             file,
             source,
             locals,
@@ -244,10 +247,25 @@ pub(crate) enum Selection<'a> {
     Member(MemberDeclaration<'a>),
 }
 
+#[derive(Clone)]
+/// Memoized native lexical binding type. `Unknown` records a represented
+/// failure together with the inference depth that proved it: budgets shrink
+/// with depth, so a failure may only be reused at equal or greater depth.
+pub(crate) enum CachedBinding<'a> {
+    Type(ScopedType<'a>),
+    Unknown(usize),
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Inference<'workspace, 'query> {
     workspace: &'workspace Workspace,
     name_index: Option<&'query NameIndex<'workspace>>,
+    /// Request-local memo shared by the resolver's inference instances.
+    scoped_bindings: Option<
+        &'query std::cell::RefCell<
+            std::collections::HashMap<(usize, usize), CachedBinding<'workspace>>,
+        >,
+    >,
     file: &'query Path,
     source: &'query str,
     locals: &'query Locals,
@@ -336,6 +354,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
         Self {
             workspace,
             name_index: None,
+            scoped_bindings: None,
             file,
             source,
             locals,
@@ -347,6 +366,27 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
     }
     pub(crate) fn with_name_index(mut self, index: Option<&'query NameIndex<'workspace>>) -> Self {
         self.name_index = index;
+        self
+    }
+    /// Shared request-local binding memo, propagated into nested inferences
+    /// created for receiver/range expressions inside classification.
+    pub(super) fn shared_scoped_bindings(
+        &self,
+    ) -> Option<
+        &'query std::cell::RefCell<
+            std::collections::HashMap<(usize, usize), CachedBinding<'workspace>>,
+        >,
+    > {
+        self.scoped_bindings
+    }
+
+    pub(crate) fn with_scoped_bindings(
+        mut self,
+        cache: &'query std::cell::RefCell<
+            std::collections::HashMap<(usize, usize), CachedBinding<'workspace>>,
+        >,
+    ) -> Self {
+        self.scoped_bindings = Some(cache);
         self
     }
     fn next(&self) -> Self {

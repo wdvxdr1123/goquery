@@ -13,7 +13,13 @@ pub(super) struct Literal {
 
 impl Literal {
     /// Text after `=`; a differing canonical value becomes an inline comment.
+    ///
+    /// gopls renders string constants from their evaluated value alone: the
+    /// source expression carries little information and strings can be long.
     pub(super) fn assigned(&self) -> String {
+        if self.untyped == Some("string") {
+            return self.value.clone();
+        }
         match &self.declaration {
             Some(declaration) if declaration != &self.value => {
                 format!("{declaration} // {}", self.value)
@@ -93,6 +99,76 @@ pub(super) fn literal(text: &str) -> Option<Literal> {
             declaration: None,
             untyped: Some("complex"),
         }),
+        _ => None,
+    }
+}
+
+/// Evaluate a constant string expression.
+///
+/// Handles string literals, parenthesized expressions and `+` concatenation;
+/// named constants (including package-qualified ones) are delegated to
+/// `lookup`, which resolves their declaration and recursively evaluates it.
+/// Returns the operand type spelling when one operand is typed, plus the
+/// decoded byte string. Concatenation keeps Go's byte semantics; the caller
+/// quotes the result with [`quote_bytes`].
+pub(super) fn string_expression(
+    text: &str,
+    depth: usize,
+    lookup: &mut impl FnMut(&str, usize) -> Option<(Option<String>, Vec<u8>)>,
+) -> Option<(Option<String>, Vec<u8>)> {
+    if depth >= 16 || text.len() > 16 * 1024 {
+        return None;
+    }
+    let parsed = crate::syntax::parse_expression(text);
+    if !parsed.diagnostics.is_empty() {
+        return None;
+    }
+    let expression = parsed.nodes.get(parsed.root.0)?;
+    match &expression.kind {
+        ExprKind::Literal => {
+            let token = crate::syntax::Lexer::new(&text[expression.span.clone()]).next()?;
+            if token.kind != TokenKind::String {
+                return None;
+            }
+            Some((
+                None,
+                crate::syntax::decode_string_literal(&text[token.span])?,
+            ))
+        }
+        ExprKind::Parenthesized { expression: inner } => {
+            let inner = parsed.nodes.get(inner.0)?;
+            string_expression(text.get(inner.span.clone())?, depth + 1, lookup)
+        }
+        ExprKind::Binary {
+            left,
+            operator,
+            right,
+        } => {
+            if text.get(operator.clone())? != "+" {
+                return None;
+            }
+            let left = parsed.nodes.get(left.0)?;
+            let right = parsed.nodes.get(right.0)?;
+            let (left_type, mut bytes) =
+                string_expression(text.get(left.span.clone())?, depth + 1, lookup)?;
+            let (right_type, right_bytes) =
+                string_expression(text.get(right.span.clone())?, depth + 1, lookup)?;
+            bytes.extend_from_slice(&right_bytes);
+            Some((left_type.or(right_type), bytes))
+        }
+        ExprKind::Name => lookup(text.get(expression.span.clone())?, depth + 1),
+        ExprKind::Selector { operand, field } => {
+            let operand = parsed.nodes.get(operand.0)?;
+            if !matches!(operand.kind, ExprKind::Name) {
+                return None;
+            }
+            let name = format!(
+                "{}.{}",
+                text.get(operand.span.clone())?,
+                text.get(field.clone())?
+            );
+            lookup(&name, depth + 1)
+        }
         _ => None,
     }
 }

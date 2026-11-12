@@ -7,6 +7,8 @@ use crate::syntax::{ExprId, ExprKind};
 use crate::workspace::Workspace;
 use std::path::Path;
 
+const MAX_SCOPED_BINDINGS: usize = 4_096;
+
 pub(crate) fn binding_detail(
     workspace: &Workspace,
     file: &Path,
@@ -140,15 +142,84 @@ impl<'workspace> Inference<'workspace, '_> {
         self.local_binding(arena, binding)
     }
 
+    /// Memoized successful native type of a lexical binding, when the resolver
+    /// shares one request-local map. Only `Type` entries are returned; a
+    /// represented failure must keep its caller-specific fallback handling.
+    pub(super) fn cached_scoped_binding(
+        &self,
+        binding: &Binding,
+    ) -> Option<ScopedType<'workspace>> {
+        let cache = self.scoped_bindings?;
+        let key = (binding.selection.start, binding.selection.end);
+        match cache.borrow().get(&key) {
+            Some(super::CachedBinding::Type(scoped)) => Some(scoped.clone()),
+            _ => None,
+        }
+    }
+
+    /// Record the rendered type of a variable operand so a later inference
+    /// instance can reparse it instead of re-walking the initializer.
+    pub(super) fn memoize_scoped_binding(
+        &self,
+        arena: &mut TypeArena<'_>,
+        binding: &Binding,
+        ty: crate::analysis::types::TypeId,
+    ) {
+        let Some(cache) = self.scoped_bindings else {
+            return;
+        };
+        if cache.borrow().len() >= MAX_SCOPED_BINDINGS {
+            return;
+        }
+        let Some(text) = arena.render_resolved(ty, self.file) else {
+            return;
+        };
+        if let Some(scoped) = self.scoped(text) {
+            cache.borrow_mut().insert(
+                (binding.selection.start, binding.selection.end),
+                super::CachedBinding::Type(scoped),
+            );
+        }
+    }
+
     pub(super) fn scoped_binding(
         &self,
         binding: &Binding,
     ) -> Option<Option<ScopedType<'workspace>>> {
+        let key = (binding.selection.start, binding.selection.end);
+        if let Some(cache) = self.scoped_bindings
+            && let Some(entry) = cache.borrow().get(&key)
+        {
+            match entry {
+                super::CachedBinding::Type(scoped) => return Some(Some(scoped.clone())),
+                // A represented failure at no greater depth stays a failure:
+                // inference budgets only tighten as depth grows.
+                super::CachedBinding::Unknown(depth) if self.depth >= *depth => {
+                    return Some(None);
+                }
+                super::CachedBinding::Unknown(_) => {}
+            }
+        }
         let mut arena = TypeArena::new(self.workspace);
-        self.local_binding(&mut arena, binding).map(|value| {
+        let value = self.local_binding(&mut arena, binding).map(|value| {
             let value = value?;
             self.scoped_native_type(&mut arena, value.ty, self.file, binding.selection.start)
-        })
+        });
+        if let Some(cache) = self.scoped_bindings
+            && cache.borrow().len() < MAX_SCOPED_BINDINGS
+        {
+            let entry = match &value {
+                Some(Some(scoped)) => Some(super::CachedBinding::Type(scoped.clone())),
+                // Only a represented failure may be memoized; outer `None`
+                // marks an unrepresented type and must keep its fallbacks.
+                Some(None) => Some(super::CachedBinding::Unknown(self.depth)),
+                None => None,
+            };
+            if let Some(entry) = entry {
+                cache.borrow_mut().insert(key, entry);
+            }
+        }
+        value
     }
 
     pub(super) fn tuple_operand(

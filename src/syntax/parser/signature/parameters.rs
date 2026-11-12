@@ -97,6 +97,11 @@ impl Parser<'_> {
                                 qualifier: None,
                                 name: name.clone(),
                             });
+                        // `type_syntax` is bypassed for a bare unnamed type name.
+                        self.record_type_node(
+                            crate::syntax::ast::types::TypeNodeKind::Name,
+                            name.clone(),
+                        );
                     }
                 }
             }
