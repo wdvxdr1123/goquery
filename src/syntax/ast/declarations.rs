@@ -28,7 +28,7 @@ pub enum TypeConstructor {
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub struct Symbol {
+pub struct Symbol<Span = Range<usize>> {
     pub name: String,
     pub kind: SymbolKind,
     /// Declaration-header facts, extracted once with the syntax stub.
@@ -36,12 +36,32 @@ pub struct Symbol {
     pub alias: bool,
     pub leaf: bool,
     pub constructor: TypeConstructor,
-    pub selection: Range<usize>,
-    pub range: Range<usize>,
+    pub selection: Span,
+    pub range: Span,
     pub receiver: Option<String>,
     /// Opaque body span; consumers can parse this region on demand.
     pub body: Option<Range<usize>>,
     pub type_info: Option<Box<TypeInfo>>,
+}
+
+impl<Span> Symbol<Span> {
+    /// Indexed declarations keep positions separately and can elide these
+    /// syntax spans without duplicating the shared declaration metadata.
+    pub(crate) fn map_spans<Mapped>(self, mut map: impl FnMut(Span) -> Mapped) -> Symbol<Mapped> {
+        Symbol {
+            name: self.name,
+            kind: self.kind,
+            generic: self.generic,
+            alias: self.alias,
+            leaf: self.leaf,
+            constructor: self.constructor,
+            selection: map(self.selection),
+            range: map(self.range),
+            receiver: self.receiver,
+            body: self.body,
+            type_info: self.type_info,
+        }
+    }
 }
 
 /// Declaration metadata only; aggregate members are not retained as syntax trees.

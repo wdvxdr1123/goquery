@@ -206,7 +206,18 @@ impl Workspace {
                     ));
                 }
                 let previous = self.files.get(&file).map(declaration_snapshot);
-                self.open.insert(file.clone(), source.to_owned());
+                // Full-sync edits usually have similar sizes. Reuse an overlay
+                // allocation instead of replacing it on every keystroke, but
+                // release it when a large deletion leaves more than 2x slack.
+                if let Some(buffer) = self.open.get_mut(&file)
+                    && buffer.capacity() >= source.len()
+                    && buffer.capacity() <= source.len().saturating_mul(2)
+                {
+                    buffer.clear();
+                    buffer.push_str(source);
+                } else {
+                    self.open.insert(file.clone(), source.to_owned());
+                }
                 let disk_stamp = index::DiskStamp::of(&file);
                 let state = self.open_state.entry(file.clone()).or_default();
                 if !dirty {
@@ -657,8 +668,12 @@ impl Workspace {
         if !self.build_target.matches_filename(name) {
             return None;
         }
-        let source = self.source(file)?;
-        self.indexed_file_from(file, &source)
+        if let Some(source) = self.open_source(file) {
+            self.indexed_file_from(file, source)
+        } else {
+            let source = Self::read_source(file)?;
+            self.indexed_file_from(file, &source)
+        }
     }
 
     fn indexed_file_from(&self, file: &Path, source: &str) -> Option<IndexedFile> {

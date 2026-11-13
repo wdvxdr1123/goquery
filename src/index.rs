@@ -13,7 +13,7 @@ pub const MAX_FILE_BYTES: u64 = 15 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct IndexedSymbol {
-    syntax: crate::syntax::Symbol,
+    syntax: crate::syntax::Symbol<()>,
     declaration: [u32; 2],
     pub start: usize,
     pub end: usize,
@@ -26,7 +26,7 @@ pub struct IndexedSymbol {
 }
 
 impl std::ops::Deref for IndexedSymbol {
-    type Target = crate::syntax::Symbol;
+    type Target = crate::syntax::Symbol<()>;
 
     fn deref(&self) -> &Self::Target {
         &self.syntax
@@ -178,7 +178,7 @@ pub fn index_source(source: &str) -> IndexedFile {
                 let range = map.range(syntax.range.start, syntax.range.end);
                 let digest = symbol_digest(source, &syntax);
                 IndexedSymbol {
-                    syntax,
+                    syntax: syntax.map_spans(|_| ()),
                     declaration,
                     start,
                     end,
