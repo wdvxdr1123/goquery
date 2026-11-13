@@ -9,7 +9,6 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tower_lsp::LanguageServer;
 use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
@@ -20,38 +19,6 @@ use tower_lsp::lsp_types::request::{
 };
 
 const WATCHED_FILES_REGISTRATION_ID: &str = "goquery-watched-files";
-/// After the poller observes a direct edit, agents usually write several related
-/// files in quick succession. Poll faster for this window so the trailing files
-/// of the burst are noticed without waiting another full base interval.
-const POLL_BURST_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
-const POLL_BURST_WINDOW: std::time::Duration = std::time::Duration::from_secs(3);
-/// Minimum spacing between on-demand polls triggered by semantic requests.
-/// This lets an agent's immediate follow-up query observe its direct disk write
-/// without waiting for the background interval, while a burst of requests still
-/// shares one workspace scan.
-const POLL_ON_DEMAND_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
-/// Only the first semantic request after this much idle time pays for an
-/// on-demand disk scan. Interactive request bursts (typing, repeated hover) keep
-/// using the background poll instead of scanning the whole workspace per query.
-const POLL_ON_DEMAND_IDLE: std::time::Duration = std::time::Duration::from_millis(300);
-/// A full on-demand scan costs tens of ms on large trees. Restrict it to
-/// workspaces whose poll-scope file count is small enough for the first-request
-/// freshness to outweigh the scan; larger trees use the background interval
-/// (set `pollIntervalMs` lower for faster feedback) and burst acceleration.
-const POLL_ON_DEMAND_MAX_FILES: usize = 512;
-/// Delay before the next poll: the base interval normally, and the short burst
-/// interval while a just-detected multi-file edit is still settling.
-fn poll_delay(
-    interval: std::time::Duration,
-    now: std::time::Instant,
-    burst_until: Option<std::time::Instant>,
-) -> std::time::Duration {
-    if burst_until.is_some_and(|until| now < until) {
-        interval.min(POLL_BURST_INTERVAL)
-    } else {
-        interval
-    }
-}
 
 pub(super) struct Backend {
     client: tower_lsp::Client,
@@ -63,20 +30,6 @@ pub(super) struct Backend {
     /// Guarded by an async mutex so background registration and folder-change
     /// re-registration run in order without holding the request concurrency slot.
     watched_files_registered: Arc<AsyncMutex<bool>>,
-    /// Start of the backend; on-demand poll throttling uses elapsed millis.
-    started: std::time::Instant,
-    /// Milliseconds epoch of the last request-triggered poll. Kept separate from
-    /// the background poller so a background tick cannot suppress the on-demand
-    /// scan that follows an agent's direct write.
-    last_ondemand_poll: AtomicU64,
-    /// Milliseconds epoch of the last semantic request; the first request after
-    /// an idle gap is allowed to poll on demand.
-    last_semantic_request: AtomicU64,
-    /// Configured poll interval; 0 (or not initialized) disables polling.
-    poll_millis: AtomicU64,
-    /// Poll-scope file count above which request-triggered polls are skipped.
-    /// Override with GOQUERY_ONDEMAND_MAX_FILES (0 disables on-demand polling).
-    on_demand_max_files: usize,
 }
 
 type DiagnosticUpdate = (url::Url, Vec<lsp::Diagnostic>, Option<i32>);
@@ -165,129 +118,63 @@ impl Backend {
             status,
             diagnostics_enabled: std::env::var_os("GOQUERY_DISABLE_DIAG").is_none(),
             watched_files_registered: Arc::new(AsyncMutex::new(false)),
-            started: std::time::Instant::now(),
-            last_ondemand_poll: AtomicU64::new(0),
-            last_semantic_request: AtomicU64::new(0),
-            poll_millis: AtomicU64::new(0),
-            on_demand_max_files: std::env::var("GOQUERY_ONDEMAND_MAX_FILES")
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(POLL_ON_DEMAND_MAX_FILES),
         }
     }
 
-    /// Apply the disk poller's batch and publish diagnostics for affected open
-    /// documents, without any client notification. Runs on the current-thread
-    /// runtime; the workspace lock is released before client notifications.
-    fn start_disk_poller(&self) {
-        let millis = match self.workspace.lock() {
-            Ok(workspace) => workspace.poll_interval_ms,
+    /// Reconcile only after a filesystem notification. Notify retains one permit;
+    /// the callback retains one dirty flag, so bursts cannot build a path queue.
+    fn start_file_watcher(&self) {
+        let signal = match self.workspace.lock() {
+            Ok(mut workspace) => {
+                if !workspace.file_watch_enabled() {
+                    return;
+                }
+                workspace.refresh_file_watch(false);
+                workspace.file_watch_signal()
+            }
             Err(_) => return,
         };
-        self.poll_millis.store(millis, Ordering::Relaxed);
-        if millis == 0 {
-            return;
-        }
-        let interval = std::time::Duration::from_millis(millis.clamp(100, 60_000));
         let workspace = Arc::clone(&self.workspace);
         let client = self.client.clone();
         let diagnostics_enabled = self.diagnostics_enabled;
         tokio::spawn(async move {
-            let mut burst_until: Option<std::time::Instant> = None;
             loop {
-                let delay = poll_delay(interval, std::time::Instant::now(), burst_until);
-                tokio::time::sleep(delay).await;
-                let changed = match workspace.lock() {
-                    Ok(mut workspace) => workspace.poll_disk_changes(),
-                    Err(_) => break,
-                };
-                if changed.is_empty() {
-                    continue;
-                }
-                burst_until = Some(std::time::Instant::now() + POLL_BURST_WINDOW);
+                signal.notified().await;
+                // One debounce per event burst; idle workspaces have no timer.
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 let updates = match workspace.lock() {
                     Ok(mut workspace) => {
-                        let confirm = changed.clone();
-                        let affected = match workspace.apply(WorkspaceEvent::PolledFiles(changed)) {
-                            Ok(outcome) => outcome.diagnostics,
-                            Err((_, message)) => {
-                                eprintln!("workspace poll: {message}");
-                                Vec::new()
-                            }
+                        if !workspace.take_file_changes() {
+                            continue;
+                        }
+                        let changed = workspace.disk_changes();
+                        let affected = if changed.is_empty() {
+                            Vec::new()
+                        } else {
+                            let confirm = changed.clone();
+                            let affected =
+                                match workspace.apply(WorkspaceEvent::DiskChanges(changed)) {
+                                    Ok(outcome) => outcome.diagnostics,
+                                    Err((_, message)) => {
+                                        eprintln!("file reconciliation: {message}");
+                                        Vec::new()
+                                    }
+                                };
+                            workspace.confirm_disk_paths(&confirm);
+                            affected
                         };
-                        let updates = if diagnostics_enabled {
+                        workspace.refresh_file_watch(true);
+                        if diagnostics_enabled {
                             diagnostics_values(&mut workspace, &affected, true)
                         } else {
                             Vec::new()
-                        };
-                        workspace.confirm_disk_paths(&confirm);
-                        updates
+                        }
                     }
                     Err(_) => break,
                 };
                 for (uri, diagnostics, version) in updates {
                     let _ = client.publish_diagnostics(uri, diagnostics, version).await;
                 }
-            }
-        });
-    }
-
-    /// Poll the disk before a semantic request when the last poll is older than
-    /// the on-demand throttle. Agents commonly edit on disk and immediately ask
-    /// a query about a dependent file; this makes that first query observe the
-    /// edit instead of waiting up to a full background interval.
-    fn poll_disk_on_demand(&self) {
-        if self.poll_millis.load(Ordering::Relaxed) == 0 {
-            return;
-        }
-        let now = self.started.elapsed().as_millis() as u64;
-        let previous = self.last_semantic_request.swap(now, Ordering::Relaxed);
-        if now.saturating_sub(previous) < POLL_ON_DEMAND_IDLE.as_millis() as u64 {
-            return;
-        }
-        let scope_files = match self.workspace.lock() {
-            Ok(workspace) => workspace.poll_scope_file_count(),
-            Err(_) => return,
-        };
-        if scope_files > self.on_demand_max_files {
-            return;
-        }
-        let last = self.last_ondemand_poll.load(Ordering::Relaxed);
-        if now.saturating_sub(last) < POLL_ON_DEMAND_MIN_INTERVAL.as_millis() as u64 {
-            return;
-        }
-        self.last_ondemand_poll.store(now, Ordering::Relaxed);
-        let updates = match self.workspace.lock() {
-            Ok(mut workspace) => {
-                let changed = workspace.poll_disk_changes();
-                if changed.is_empty() {
-                    return;
-                }
-                let confirm = changed.clone();
-                let affected = match workspace.apply(WorkspaceEvent::PolledFiles(changed)) {
-                    Ok(outcome) => outcome.diagnostics,
-                    Err((_, message)) => {
-                        eprintln!("workspace poll: {message}");
-                        Vec::new()
-                    }
-                };
-                let updates = if self.diagnostics_enabled {
-                    diagnostics_values(&mut workspace, &affected, true)
-                } else {
-                    Vec::new()
-                };
-                workspace.confirm_disk_paths(&confirm);
-                updates
-            }
-            Err(_) => return,
-        };
-        if updates.is_empty() {
-            return;
-        }
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            for (uri, diagnostics, version) in updates {
-                let _ = client.publish_diagnostics(uri, diagnostics, version).await;
             }
         });
     }
@@ -354,7 +241,6 @@ impl Backend {
         let params = encode(params)?;
         let file = crate::workspace::path(&params["textDocument"]["uri"])
             .ok_or_else(|| Error::invalid_params("expected file URI"))?;
-        self.poll_disk_on_demand();
         decode(self.with_workspace(|workspace| {
             features::execute(
                 workspace,
@@ -372,7 +258,6 @@ impl Backend {
         query: for<'a> fn(&'a Value) -> Query<'a>,
     ) -> Result<R> {
         let params = encode(params)?;
-        self.poll_disk_on_demand();
         decode(self.with_workspace(|workspace| features::execute(workspace, query(&params)))?)
     }
 
@@ -382,7 +267,9 @@ impl Backend {
         let Ok(mut workspace) = self.workspace.lock() else {
             return Vec::new();
         };
-        match workspace.apply(event) {
+        let outcome = workspace.apply(event);
+        workspace.refresh_file_watch(false);
+        match outcome {
             Ok(outcome) => outcome.diagnostics,
             Err((_, message)) => {
                 eprintln!("workspace notification: {message}");
@@ -422,7 +309,6 @@ impl Backend {
     }
 
     pub(super) async fn embedding_supertypes(&self, params: Value) -> Result<Value> {
-        self.poll_disk_on_demand();
         self.with_workspace(|workspace| {
             features::execute(
                 workspace,
@@ -432,7 +318,6 @@ impl Backend {
     }
 
     pub(super) async fn embedding_subtypes(&self, params: Value) -> Result<Value> {
-        self.poll_disk_on_demand();
         self.with_workspace(|workspace| {
             features::execute(
                 workspace,
@@ -453,15 +338,13 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: lsp::InitializedParams) {
-        // External (agent/shell) edits only reach the server when the client
-        // forwards watched-file events, which requires dynamic registration.
-        // Regardless of that capability, poll the disk so direct edits that
-        // never produce editor notifications are still noticed.
-        self.start_disk_poller();
+        // File watching observes direct edits independently of dynamic
+        // client registration, without scheduled or request-triggered scans.
+        self.start_file_watcher();
         if !self.watched_files_dynamic() {
             eprintln!(
                 "file watching: client does not support dynamic registration; external edits are \
-                 noticed by disk polling (pollIntervalMs / GOQUERY_POLL_MS)"
+                 handled by file watching (fileWatch); disk polling is disabled"
             );
             return;
         }
@@ -535,9 +418,11 @@ impl LanguageServer for Backend {
             .iter()
             .filter_map(|folder| folder.uri.to_file_path().ok())
             .collect();
-        if let Err(error) =
-            self.with_workspace(|workspace| workspace.apply_folder_changes(added, removed))
-        {
+        if let Err(error) = self.with_workspace(|workspace| {
+            workspace.apply_folder_changes(added, removed)?;
+            workspace.refresh_file_watch(false);
+            Ok(())
+        }) {
             eprintln!("workspace folders: {}", error.message);
             return;
         }

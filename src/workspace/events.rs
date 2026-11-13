@@ -157,7 +157,7 @@ fn stub_declarations_fingerprint(stub: &IndexedFile) -> u64 {
 
 pub(crate) enum WorkspaceEvent<'a> {
     /// `dirty` distinguishes editor edits from the initial `didOpen` snapshot;
-    /// the disk poller never overwrites a dirty buffer.
+    /// external disk reconciliation never overwrites a dirty buffer.
     SetBuffer {
         file: PathBuf,
         source: &'a str,
@@ -166,8 +166,8 @@ pub(crate) enum WorkspaceEvent<'a> {
     Close(PathBuf),
     Save(PathBuf),
     WatchedFiles(Vec<PathBuf>),
-    /// Internal poller batch: same application as watched files.
-    PolledFiles(Vec<PathBuf>),
+    /// Native event reconciliation: same application as client watched files.
+    DiskChanges(Vec<PathBuf>),
 }
 
 /// Compact mutation label for `GOQUERY_TRACE_EDITS`; built only when enabled.
@@ -177,7 +177,7 @@ fn event_description(event: &WorkspaceEvent<'_>) -> String {
         WorkspaceEvent::Close(file) => format!("close {}", file.display()),
         WorkspaceEvent::Save(file) => format!("save {}", file.display()),
         WorkspaceEvent::WatchedFiles(files) => format!("watched {} path(s)", files.len()),
-        WorkspaceEvent::PolledFiles(files) => format!("polled {} path(s)", files.len()),
+        WorkspaceEvent::DiskChanges(files) => format!("disk changes {} path(s)", files.len()),
     }
 }
 
@@ -326,7 +326,7 @@ impl Workspace {
                     )
                 }
             }
-            WorkspaceEvent::WatchedFiles(files) | WorkspaceEvent::PolledFiles(files) => {
+            WorkspaceEvent::WatchedFiles(files) | WorkspaceEvent::DiskChanges(files) => {
                 if files.len() > MAX_WATCHED_FILES {
                     // A whole-tree batch cannot be applied partially without
                     // leaving stale files, so rebuild the bounded workspace

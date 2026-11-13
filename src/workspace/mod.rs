@@ -2,14 +2,15 @@
 mod configuration;
 mod dependencies;
 mod discovery;
+mod disk_changes;
 mod events;
+mod file_events;
 mod goenv;
 mod graph;
 mod location;
 mod modules;
 mod nested;
 mod packages;
-mod poll;
 mod sdk;
 mod source;
 mod state;

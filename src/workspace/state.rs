@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// State for an editor-owned document: whether the buffer was modified since it
 /// last matched disk, plus the disk identity observed at that point. The disk
-/// poller only reloads a buffer from disk while it is clean (an agent/shell edit
+/// reconciliation only reloads a buffer from disk while it is clean (an agent/shell edit
 /// arrived without editor events).
 #[derive(Default)]
 pub(super) struct OpenState {
@@ -44,19 +44,24 @@ pub struct Workspace {
     pub(crate) modules: HashMap<PathBuf, String>,
     pub(crate) package_names: PackageNames,
     pub(super) open: HashMap<PathBuf, String>,
-    /// Dirty/stamp bookkeeping for open buffers; used by the disk poller.
+    /// Dirty/stamp bookkeeping for event-triggered disk reconciliation.
     pub(super) open_state: HashMap<PathBuf, OpenState>,
     /// Disk identities of go.mod/go.work manifests seen at the last module scan.
     pub(super) manifest_stamps: HashMap<PathBuf, DiskStamp>,
-    /// First poll only records existing manifests as the baseline.
+    /// First reconciliation records existing manifests as the baseline.
     pub(super) manifest_baseline: bool,
-    /// Server start used by the poller: only files modified after it are
+    /// Server start: only files modified after it are
     /// candidates for newly becoming part of the build, so pre-existing
-    /// build-constraint-excluded files are not reparsed on every poll.
+    /// build-constraint-excluded files are not reparsed on every reconciliation.
     pub(super) started_at: Option<u64>,
     /// Disk identities of recently checked non-indexable Go files (e.g. a tag
-    /// change was checked and still excluded); bounded in the poller.
+    /// change was checked and still excluded); bounded in reconciliation.
     pub(super) unindexed_stamps: HashMap<PathBuf, DiskStamp>,
+    pub(super) file_watch_enabled: bool,
+    pub(super) file_watch_limits: super::file_events::WatchLimits,
+    pub(super) file_watch_excludes: std::sync::Arc<super::file_events::WatchExcludes>,
+    pub(super) watch_signal: std::sync::Arc<tokio::sync::Notify>,
+    pub(super) file_watch: Option<super::file_events::FileWatch>,
     pub(super) roots: Vec<PathBuf>,
     pub(super) folders: Vec<PathBuf>,
     pub(super) main_modules: std::collections::HashSet<PathBuf>,
@@ -90,8 +95,6 @@ pub struct Workspace {
     pub(super) nested_bytes: usize,
     pub(crate) completion_config: crate::features::CompletionConfig,
     pub(crate) semantic_config: crate::features::SemanticConfig,
-    /// Direct-disk poll interval in milliseconds; 0 disables polling.
-    pub(crate) poll_interval_ms: u64,
     /// Client announced hierarchicalDocumentSymbolSupport at initialization.
     pub(crate) hierarchical_document_symbols: bool,
     /// Client supports dynamic registration of `workspace/didChangeWatchedFiles`.

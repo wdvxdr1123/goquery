@@ -29,15 +29,14 @@
   SDK discovery pass, refreshes the module plan for manifest events, and
   republishes diagnostics for open documents in the changed package and its
   direct importers. When the client/agent produces no editor events at all, a
-  bounded disk poller (`initializationOptions.pollIntervalMs`, else
-  `GOQUERY_POLL_MS`, default 1000 ms) detects direct edits, new files and
-  manifest changes; after one detection it polls every 100 ms for 3 s so a
-  multi-file agent burst is not spread across full intervals. In workspaces of at
-  most 512 poll-scope files (configurable with `GOQUERY_ONDEMAND_MAX_FILES`), the
-  first semantic request after ~300 ms of idle time also polls on demand, so an
-  agent's immediate post-write query sees the edit without waiting for the base
-  interval; larger trees keep the background schedule to avoid a full-tree scan
-  per query. Clean open buffers are reloaded from disk while dirty editor buffers
+  file watcher (default `fileWatch: true`) triggers bounded disk reconciliation
+  after a 100 ms burst debounce. There is no idle scan timer, request-triggered
+  poll or polling fallback. Errors are logged. Registration budgets can be raised
+  or removed with `fileWatchMaxRoots`, `fileWatchMaxDirectories` and
+  `fileWatchMaxEntries` (0 removes a limit). `fileWatchExcludeDirectories` filters
+  relative directory prefixes using regexes without changing initial indexing
+  or editor events. `fileWatch: false` disables server watching. Clean buffers
+  reload from disk while dirty editor buffers
   stay authoritative. Affected diagnostics are pushed without a stale
   document version for externally reloaded documents. **Saves** use the wider
   scope, and `didChange` widens to the changed package plus direct importers
@@ -75,7 +74,7 @@
 - Requests are handled sequentially; cancellation of an in-flight synchronous
   query is incomplete; documents synchronize in full, not incrementally.
 - Clients without `workspace/didChangeWatchedFiles` dynamic registration rely on
-  disk polling for external (agent/shell) edits; disabling polling limits those
+  the server file watcher for external edits; disabling/unavailable watching limits those
   buffers to refreshing when opened, changed or saved. Diagnostic pushes after
   one mutation are capped at 64 open documents (changed package first, then
   direct importers).

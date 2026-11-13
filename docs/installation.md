@@ -47,11 +47,10 @@ on Windows, or to a project's `.zed/settings.json` to scope it to one workspace:
   process is `goquery`.
 - Zed supports dynamic `workspace/didChangeWatchedFiles` registration, which
   goquery uses to notice external (agent/shell) edits and refresh diagnostics
-  for affected open documents. Even without editor file events, a bounded disk
-  poller notices direct edits (default 1000 ms; set
-  `initializationOptions.pollIntervalMs` to e.g. `300`, or
-  `GOQUERY_POLL_MS` in the environment that launches Zed, for faster agent
-  feedback; `0` disables). Clean open buffers are reloaded from disk; buffers
+  for affected open documents. The server file watcher also notices direct edits
+  without editor events; there is no polling fallback. `initializationOptions.fileWatch: false`
+  disables it. Configure budgets and regex directory exclusions with `fileWatchMax*`
+  and `fileWatchExcludeDirectories`. Clean buffers reload from disk; buffers
   with unsaved `didChange` edits stay authoritative.
 - Zed merges its gopls defaults (`usePlaceholders`, `hints`, `codelenses`,
   `semanticTokens`) into `initialization_options`. goquery ignores the keys it

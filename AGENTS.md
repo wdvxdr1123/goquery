@@ -76,16 +76,24 @@ as the semantic reference, for editors and AI-assisted development.
   event: one bounded batch, one dependency/SDK discovery pass, module-plan
   refresh for `go.mod`/`go.work` updates, and diagnostic republishes for affected
   open documents (changed package first, then direct importers). When the client
-  supplies no file events (agent/shell edits), a bounded disk poller
-  (`pollIntervalMs` / `GOQUERY_POLL_MS`, default 1000 ms) detects
-  modified/new/deleted workspace files and manifests and applies the same typed
-  batch. After a detection it temporarily polls at 100 ms for 3 s to catch
-  multi-file agent bursts. On workspaces with at most 512 poll-scope files
-  (`GOQUERY_ONDEMAND_MAX_FILES`, 0 disables), the first semantic request after
-  300 ms of idle time also polls on demand; larger trees keep the background
-  schedule so a full scan is not paid per query. It reloads clean open buffers
-  from disk only, never dirty editor buffers, and keeps its walk and changed-path
-  list bounded. Never invoke Go for change detection.
+  supplies no file events (agent/shell edits), file watching (`fileWatch`, default
+  true) wakes a task with one coalesced pending flag and a 100 ms burst debounce.
+  There is no periodic/request-triggered disk polling or polling fallback.
+  Registration/errors are logged; correcting config/system limits and restarting
+  retries registration. Explicit rescan/overflow events trigger one reconciliation.
+  Windows/macOS FSEvents watch merged roots recursively; other platforms discover
+  nonrecursive directory watches. Default registration budgets are 128 roots,
+  4096 directories and 20000 entries, configured by `fileWatchMaxRoots`,
+  `fileWatchMaxDirectories`, `fileWatchMaxEntries` (0 removes the application limit).
+  Directory/entry budgets apply only to nonrecursive backends; OS limits remain.
+  `fileWatchExcludeDirectories` regexes match relative directory ancestor prefixes
+  with / separators. Excluded subtrees skip file events, directory registration
+  and reconciliation; initial indexing and editor events are unchanged. Regex
+  input is bounded to 128 patterns and 65536 UTF-8 bytes, with 1 MiB compilation
+  and lazy DFA budgets each. Invalid regex/config input fails initialization.
+  Old poll options/environment switches are ignored. Reconciliation reloads only
+  clean buffers, with a 20000-entry walk and 4096 changed-path budget; new files
+  beyond the walk budget may remain undiscovered. Never invoke Go for detection.
 - Do not retain closed-file sources, ASTs or type graphs between requests. Read a
   closed source once with a bounded handle; open buffers override disk contents.
   Document excluded files as detached orphan packages with bounded sibling

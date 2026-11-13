@@ -38,19 +38,20 @@ impl Workspace {
                 .as_bool()
                 .unwrap_or(false);
         let options = &params["initializationOptions"];
-        self.poll_interval_ms = match options
-            .get("pollIntervalMs")
-            .filter(|value| !value.is_null())
-        {
-            Some(value) => value.as_u64().ok_or((
+        self.file_watch_enabled = match options.get("fileWatch").filter(|value| !value.is_null()) {
+            Some(value) => value.as_bool().ok_or((
                 crate::error::INVALID_PARAMS,
-                "pollIntervalMs must be a non-negative integer".into(),
+                "fileWatch must be a boolean".into(),
             ))?,
-            None => std::env::var("GOQUERY_POLL_MS")
-                .ok()
-                .and_then(|value| value.parse::<u64>().ok())
-                .unwrap_or(1000),
+            None => true,
         };
+        let defaults = super::file_events::WatchLimits::default();
+        self.file_watch_limits = super::file_events::WatchLimits {
+            roots: watch_limit(options, "fileWatchMaxRoots", defaults.roots)?,
+            directories: watch_limit(options, "fileWatchMaxDirectories", defaults.directories)?,
+            entries: watch_limit(options, "fileWatchMaxEntries", defaults.entries)?,
+        };
+        self.file_watch_excludes = std::sync::Arc::new(watch_excludes(options)?);
         // One local probe fills both defaults; it is not cached across requests.
         let go_env = if needs_go_env(options) {
             goenv::probe()
@@ -134,4 +135,61 @@ fn needs_go_env(options: &Value) -> bool {
     let explicit_goroot = options.get("goroot").is_some_and(|value| !value.is_null());
     let explicit_gomodcache = std::env::var_os("GOMODCACHE").is_some_and(|value| !value.is_empty());
     !explicit_goroot || !explicit_gomodcache
+}
+
+fn watch_limit(options: &Value, key: &str, default: usize) -> Result<usize, (i32, String)> {
+    let Some(value) = options.get(key).filter(|value| !value.is_null()) else {
+        return Ok(default);
+    };
+    value
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| {
+            (
+                crate::error::INVALID_PARAMS,
+                format!("{key} must be a non-negative integer fitting this platform's usize"),
+            )
+        })
+}
+
+fn watch_excludes(options: &Value) -> Result<super::file_events::WatchExcludes, (i32, String)> {
+    let invalid = |message: String| {
+        (
+            crate::error::INVALID_PARAMS,
+            format!("fileWatchExcludeDirectories: {message}"),
+        )
+    };
+    let Some(value) = options
+        .get("fileWatchExcludeDirectories")
+        .filter(|value| !value.is_null())
+    else {
+        return Ok(super::file_events::WatchExcludes::default());
+    };
+    let values = value
+        .as_array()
+        .ok_or_else(|| invalid("must be an array of regex strings".into()))?;
+    if values.len() > 128 {
+        return Err(invalid("at most 128 patterns are supported".into()));
+    }
+    let mut patterns = Vec::with_capacity(values.len());
+    let mut bytes = 0usize;
+    for value in values {
+        let pattern = value
+            .as_str()
+            .ok_or_else(|| invalid("every pattern must be a string".into()))?;
+        bytes = bytes.saturating_add(pattern.len());
+        if bytes > 65536 {
+            return Err(invalid("patterns exceed 65536 bytes".into()));
+        }
+        patterns.push(pattern);
+    }
+    if patterns.is_empty() {
+        return Ok(super::file_events::WatchExcludes::default());
+    }
+    let compiled = regex::RegexSetBuilder::new(patterns)
+        .size_limit(1 << 20)
+        .dfa_size_limit(1 << 20)
+        .build()
+        .map_err(|error| invalid(error.to_string()))?;
+    Ok(super::file_events::WatchExcludes(Some(compiled)))
 }

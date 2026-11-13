@@ -2919,285 +2919,525 @@ fn watched_file_changes_refresh_cross_package_state() {
         std::thread::sleep(Duration::from_millis(10));
     }
 
-    // Direct-disk edits without any editor notification: the disk poller picks
+    // Direct-disk edits without any editor notification: file watching picks
     // them up and reloads clean open buffers, so downstream semantics and
     // diagnostics refresh without didChange/didSave/didChangeWatchedFiles.
-    let poll_root = std::env::temp_dir().join(format!("goquery-poll-files-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&poll_root);
-    copy_tree(&base.join("tests/fixtures/watched-files"), &poll_root);
-    let mut polled = Server::new(
+    {
+        let file_watch = true;
+        let poll_root = std::env::temp_dir().join(format!(
+            "goquery-poll-files-{}-{file_watch}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&poll_root);
+        copy_tree(&base.join("tests/fixtures/watched-files"), &poll_root);
+        let mut polled = Server::new(
+            Command::new(env!("CARGO_BIN_EXE_goquery"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .env("GOWORK", "off")
+                .env(
+                    "GOMODCACHE",
+                    std::env::temp_dir().join("goquery-poll-modcache"),
+                )
+                .env_remove("GOQUERY_DISABLE_DIAG")
+                .spawn()
+                .expect("spawn polling server"),
+        );
+        let poll_root_uri = url::Url::from_directory_path(&poll_root)
+            .expect("polling root URI")
+            .to_string();
+        let reply = polled.request(
+            "initialize",
+            serde_json::json!({
+                "processId": std::process::id(),
+                "rootUri": poll_root_uri,
+                "workspaceFolders": [{"uri": poll_root_uri, "name": "polled"}],
+                "capabilities": {"textDocument": {}},
+                "initializationOptions": {"goroot": "", "fileWatch": file_watch,
+                    "fileWatchExcludeDirectories": ["(^|/)generated$", "^cache-[0-9]+$"]},
+            }),
+        );
+        assert!(reply.get("result").is_some(), "{reply}");
+        polled.notify("initialized", serde_json::json!({}));
+        let poll_main_path = poll_root.join("main.go");
+        let poll_other_path = poll_root.join("other/other.go");
+        let poll_lib_path = poll_root.join("lib/lib.go");
+        let poll_main = std::fs::read_to_string(&poll_main_path).expect("poll main source");
+        let poll_other = std::fs::read_to_string(&poll_other_path).expect("poll other source");
+        let poll_lib = std::fs::read_to_string(&poll_lib_path).expect("poll lib source");
+        let poll_main_uri = url::Url::from_file_path(&poll_main_path)
+            .expect("poll main URI")
+            .to_string();
+        let poll_other_uri = url::Url::from_file_path(&poll_other_path)
+            .expect("poll other URI")
+            .to_string();
+        let poll_lib_uri = url::Url::from_file_path(&poll_lib_path)
+            .expect("poll lib URI")
+            .to_string();
+        for (uri, source) in [
+            (&poll_main_uri, &poll_main),
+            (&poll_other_uri, &poll_other),
+            (&poll_lib_uri, &poll_lib),
+        ] {
+            polled.notify(
+                "textDocument/didOpen",
+                serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": "go",
+                        "version": 1,
+                        "text": source,
+                    },
+                }),
+            );
+        }
+        let poll_barrier = polled.request(
+            "textDocument/documentSymbol",
+            serde_json::json!({"textDocument": {"uri": poll_lib_uri}}),
+        );
+        assert!(poll_barrier.get("result").is_some(), "{poll_barrier}");
+
+        let poll_renamed = poll_lib.replace(
+            "// Value returns the current value.\nfunc Value() int {",
+            "// Renamed returns the current value.\nfunc Renamed() int {",
+        );
+        std::fs::write(&poll_lib_path, &poll_renamed).expect("direct library write");
+        let items = polled.wait_diagnostic_containing(&poll_other_uri, "undefined: lib.Value");
+        assert!(
+            items.iter().any(|item| item["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("undefined: lib.Value"))),
+            "{items:?}"
+        );
+
+        let poll_changed_other = poll_other.replace("lib.Value()", "lib.Renamed()");
+        polled.notify(
+            "textDocument/didChange",
+            serde_json::json!({
+                "textDocument": {"uri": poll_other_uri, "version": 2},
+                "contentChanges": [{"text": poll_changed_other}],
+            }),
+        );
+        let offset = poll_changed_other.find("Renamed").expect("poll rename use");
+        let reply = polled.request(
+            "textDocument/definition",
+            serde_json::json!({
+                "textDocument": {"uri": poll_other_uri},
+                "position": position(&poll_changed_other, offset),
+            }),
+        );
+        let result = reply["result"].as_array().cloned().unwrap_or_default();
+        assert_eq!(
+            result.first().and_then(|item| item["uri"].as_str()),
+            Some(poll_lib_uri.as_str()),
+            "{reply}"
+        );
+        let hover_offset = poll_renamed
+            .find("func Renamed")
+            .expect("poll renamed declaration")
+            + "func ".len();
+        let reply = polled.request(
+            "textDocument/hover",
+            serde_json::json!({
+                "textDocument": {"uri": poll_lib_uri},
+                "position": position(&poll_renamed, hover_offset),
+            }),
+        );
+        let value = reply["result"]["contents"]["value"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(value.contains("func Renamed() int"), "{reply}");
+
+        // New files created directly on disk are discovered by the structural walk.
+        let poll_extra_path = poll_root.join("lib/extra.go");
+        std::fs::write(
+            &poll_extra_path,
+            "package lib\n\nfunc Extra() int {\n\treturn 4\n}\n",
+        )
+        .expect("write direct new file");
+        std::thread::sleep(Duration::from_millis(500));
+        let poll_extra_uri = url::Url::from_file_path(&poll_extra_path)
+            .expect("poll extra URI")
+            .to_string();
+        let poll_changed_main = poll_main.replace("lib.Value()", "lib.Extra()");
+        polled.notify(
+            "textDocument/didChange",
+            serde_json::json!({
+                "textDocument": {"uri": poll_main_uri, "version": 2},
+                "contentChanges": [{"text": poll_changed_main}],
+            }),
+        );
+        let extra_offset = poll_changed_main.find("Extra").expect("poll extra use");
+        let reply = polled.request(
+            "textDocument/definition",
+            serde_json::json!({
+                "textDocument": {"uri": poll_main_uri},
+                "position": position(&poll_changed_main, extra_offset),
+            }),
+        );
+        let result = reply["result"].as_array().cloned().unwrap_or_default();
+        assert_eq!(
+            result.first().and_then(|item| item["uri"].as_str()),
+            Some(poll_extra_uri.as_str()),
+            "{reply}"
+        );
+        // Deleted indexed files no longer occur in the directory walk. The poller
+        // must still remove their declarations through its missing-path check.
+        let reply = polled.request("workspace/symbol", serde_json::json!({"query": "Extra"}));
+        assert!(
+            reply["result"].as_array().is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item["location"]["uri"] == poll_extra_uri)
+            }),
+            "new symbol not indexed: {reply}"
+        );
+        std::fs::remove_file(&poll_extra_path).expect("delete direct new file");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let reply = polled.request("workspace/symbol", serde_json::json!({"query": "Extra"}));
+            if reply.get("result").is_some_and(|result| {
+                result.is_null()
+                    || result.as_array().is_some_and(|items| {
+                        items
+                            .iter()
+                            .all(|item| item["location"]["uri"] != poll_extra_uri)
+                    })
+            }) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "deleted symbol still indexed: {reply}"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        // Fresh listings must discover new directories and directory renames too.
+        let old_directory = poll_root.join("direct/nested");
+        let new_directory = poll_root.join("direct/moved");
+        std::fs::create_dir_all(&old_directory).expect("create polled directory");
+        std::fs::write(
+            old_directory.join("leaf.go"),
+            "package leaf\nfunc PollDirectoryLeaf() {}\n",
+        )
+        .expect("write polled directory source");
+        let old_uri = url::Url::from_file_path(old_directory.join("leaf.go"))
+            .expect("old leaf URI")
+            .to_string();
+        for renamed in [false, true] {
+            if renamed {
+                std::fs::rename(&old_directory, &new_directory).expect("rename polled directory");
+            }
+            let directory = if renamed {
+                &new_directory
+            } else {
+                &old_directory
+            };
+            let uri = url::Url::from_file_path(directory.join("leaf.go"))
+                .expect("leaf URI")
+                .to_string();
+            // A directory event must register and scan the newly created subtree.
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let reply = polled.request(
+                    "workspace/symbol",
+                    serde_json::json!({"query": "PollDirectoryLeaf"}),
+                );
+                if reply["result"].as_array().is_some_and(|items| {
+                    items.iter().any(|item| item["location"]["uri"] == uri)
+                        && (!renamed || items.iter().all(|item| item["location"]["uri"] != old_uri))
+                }) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "directory change not indexed: {reply}"
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+        let appeared_path = poll_root.join("direct/appeared.go");
+        std::fs::write(&appeared_path, "package direct\nfunc PollAppeared() {}\n")
+            .expect("add Go source to existing directory");
+        let appeared_uri = url::Url::from_file_path(&appeared_path)
+            .expect("appeared URI")
+            .to_string();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let reply = polled.request(
+                "workspace/symbol",
+                serde_json::json!({"query": "PollAppeared"}),
+            );
+            if reply["result"].as_array().is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item["location"]["uri"] == appeared_uri)
+            }) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "new Go source not indexed: {reply}"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        // Regexes match directory prefixes, including nested paths, but not a
+        // similarly named file or a nonmatching sibling. A regular event must
+        // not pull excluded new files into reconciliation either.
+        let excluded_generated = poll_root.join("direct/generated/deep/skip.go");
+        let excluded_cache = poll_root.join("cache-42/skip.go");
+        for (path, name) in [
+            (&excluded_generated, "ExcludedGenerated"),
+            (&excluded_cache, "ExcludedCache"),
+        ] {
+            std::fs::create_dir_all(path.parent().unwrap()).expect("create excluded directory");
+            std::fs::write(path, format!("package skipped\nfunc {name}() {{}}\n"))
+                .expect("write excluded source");
+        }
+        std::fs::create_dir_all(poll_root.join("cache-alpha")).expect("create included directory");
+        std::fs::write(
+            poll_root.join("cache-alpha/keep.go"),
+            "package keep\nfunc IncludedAlpha() {}\n",
+        )
+        .expect("write included source");
+        std::fs::write(
+            poll_root.join("generated.go"),
+            "package main\nfunc IncludedFilename() {}\n",
+        )
+        .expect("write similarly named file");
+        std::fs::write(
+            &appeared_path,
+            "package direct\nfunc PollAppearedAfterExcludes() {}\n",
+        )
+        .expect("trigger regular event");
+        for name in [
+            "IncludedAlpha",
+            "IncludedFilename",
+            "PollAppearedAfterExcludes",
+        ] {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let reply = polled.request("workspace/symbol", serde_json::json!({"query": name}));
+                if reply["result"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item["name"] == name))
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "included path did not refresh: {reply}"
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+        for name in ["ExcludedGenerated", "ExcludedCache"] {
+            let reply = polled.request("workspace/symbol", serde_json::json!({"query": name}));
+            assert!(
+                !reply["result"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item["name"] == name)),
+                "excluded new source was indexed: {reply}"
+            );
+        }
+        let excluded_uri = url::Url::from_file_path(&excluded_generated)
+            .expect("excluded URI")
+            .to_string();
+        polled.notify("textDocument/didOpen", serde_json::json!({"textDocument": {"uri": excluded_uri, "languageId": "go", "version": 1, "text": "package skipped\nfunc EditorExcluded() {}\n"}}));
+        let reply = polled.request(
+            "textDocument/documentSymbol",
+            serde_json::json!({"textDocument": {"uri": excluded_uri}}),
+        );
+        assert!(
+            reply["result"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["name"] == "EditorExcluded")),
+            "editor buffer was excluded: {reply}"
+        );
+
+        let reply = polled.request("shutdown", Value::Null);
+        assert!(reply.get("result").is_some(), "{reply}");
+        polled.notify("exit", Value::Null);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if polled
+                .child
+                .try_wait()
+                .expect("wait polling server")
+                .is_some()
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "polling server did not exit");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = std::fs::remove_dir_all(&poll_root);
+    }
+
+    // File watch budgets: an explicit low limit logs an actionable error and
+    // never falls back to polling. Raised/unlimited budgets cover both roots.
+    let limits_root =
+        std::env::temp_dir().join(format!("goquery-watch-limits-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&limits_root);
+
+    // Invalid regex input must fail initialization rather than silently leave
+    // the directory watched or exclude everything.
+    let mut invalid_exclude = Server::new(
         Command::new(env!("CARGO_BIN_EXE_goquery"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .env("GOWORK", "off")
-            .env(
-                "GOMODCACHE",
-                std::env::temp_dir().join("goquery-poll-modcache"),
-            )
-            .env_remove("GOQUERY_DISABLE_DIAG")
             .spawn()
-            .expect("spawn polling server"),
+            .expect("spawn invalid-exclude server"),
     );
-    let poll_root_uri = url::Url::from_directory_path(&poll_root)
-        .expect("polling root URI")
-        .to_string();
-    let reply = polled.request(
-        "initialize",
-        serde_json::json!({
-            "processId": std::process::id(),
-            "rootUri": poll_root_uri,
-            "workspaceFolders": [{"uri": poll_root_uri, "name": "polled"}],
-            "capabilities": {"textDocument": {}},
-            "initializationOptions": {"goroot": "", "pollIntervalMs": 100},
-        }),
+    let reply = invalid_exclude.request("initialize", serde_json::json!({
+        "capabilities": {}, "initializationOptions": {"goroot": "", "fileWatchExcludeDirectories": ["["]},
+    }));
+    assert_eq!(reply["error"]["code"], -32602, "{reply}");
+    assert!(
+        reply["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("fileWatchExcludeDirectories")),
+        "{reply}"
     );
-    assert!(reply.get("result").is_some(), "{reply}");
-    polled.notify("initialized", serde_json::json!({}));
-    let poll_main_path = poll_root.join("main.go");
-    let poll_other_path = poll_root.join("other/other.go");
-    let poll_lib_path = poll_root.join("lib/lib.go");
-    let poll_main = std::fs::read_to_string(&poll_main_path).expect("poll main source");
-    let poll_other = std::fs::read_to_string(&poll_other_path).expect("poll other source");
-    let poll_lib = std::fs::read_to_string(&poll_lib_path).expect("poll lib source");
-    let poll_main_uri = url::Url::from_file_path(&poll_main_path)
-        .expect("poll main URI")
-        .to_string();
-    let poll_other_uri = url::Url::from_file_path(&poll_other_path)
-        .expect("poll other URI")
-        .to_string();
-    let poll_lib_uri = url::Url::from_file_path(&poll_lib_path)
-        .expect("poll lib URI")
-        .to_string();
-    for (uri, source) in [
-        (&poll_main_uri, &poll_main),
-        (&poll_other_uri, &poll_other),
-        (&poll_lib_uri, &poll_lib),
-    ] {
-        polled.notify(
-            "textDocument/didOpen",
+    invalid_exclude.notify("exit", Value::Null);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while invalid_exclude
+        .child
+        .try_wait()
+        .expect("wait invalid-exclude server")
+        .is_none()
+    {
+        assert!(
+            Instant::now() < deadline,
+            "invalid-exclude server did not exit"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let folders: Vec<_> = ["first", "second"].into_iter().map(|name| {
+        let directory = limits_root.join(name);
+        std::fs::create_dir_all(&directory).expect("create limit module");
+        std::fs::write(directory.join("go.mod"), format!("module example.test/{name}\n\ngo 1.27.3\n")).expect("write limit manifest");
+        serde_json::json!({"uri": url::Url::from_directory_path(directory).expect("limit root URI"), "name": name})
+    }).collect();
+    let mut cases = vec![
+        (1, 0, 0, Some("fileWatchMaxRoots")),
+        (2, 16, 32, None),
+        (0, 0, 0, None),
+    ];
+    if !cfg!(any(windows, target_os = "macos")) {
+        cases.extend([
+            (0, 1, 0, Some("fileWatchMaxDirectories")),
+            (0, 0, 1, Some("fileWatchMaxEntries")),
+        ]);
+    }
+    for (case, (roots, directories, entries, exceeded)) in cases.into_iter().enumerate() {
+        for name in ["first", "second"] {
+            std::fs::write(
+                limits_root.join(name).join("file.go"),
+                "package budget\nfunc BeforeBudgetEdit() {}\n",
+            )
+            .expect("write initial budget source");
+        }
+        let mut budgeted = Server::new(
+            Command::new(env!("CARGO_BIN_EXE_goquery"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("GOWORK", "off")
+                .env("GOQUERY_POLL_MS", "100")
+                .env("GOMODCACHE", limits_root.join("modcache"))
+                .spawn()
+                .expect("spawn watch budget server"),
+        );
+        let reply = budgeted.request(
+            "initialize",
             serde_json::json!({
-                "textDocument": {
-                    "uri": uri,
-                    "languageId": "go",
-                    "version": 1,
-                    "text": source,
+                "workspaceFolders": folders,
+                "capabilities": {},
+                "initializationOptions": {
+                    "goroot": "", "fileWatch": true,
+                    "pollIntervalMs": 100,
+                    "fileWatchMaxRoots": roots,
+                    "fileWatchMaxDirectories": directories,
+                    "fileWatchMaxEntries": entries,
                 },
             }),
         );
-    }
-    let poll_barrier = polled.request(
-        "textDocument/documentSymbol",
-        serde_json::json!({"textDocument": {"uri": poll_lib_uri}}),
-    );
-    assert!(poll_barrier.get("result").is_some(), "{poll_barrier}");
-
-    let poll_renamed = poll_lib.replace(
-        "// Value returns the current value.\nfunc Value() int {",
-        "// Renamed returns the current value.\nfunc Renamed() int {",
-    );
-    std::fs::write(&poll_lib_path, &poll_renamed).expect("direct library write");
-    let items = polled.wait_diagnostic_containing(&poll_other_uri, "undefined: lib.Value");
-    assert!(
-        items.iter().any(|item| item["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("undefined: lib.Value"))),
-        "{items:?}"
-    );
-
-    let poll_changed_other = poll_other.replace("lib.Value()", "lib.Renamed()");
-    polled.notify(
-        "textDocument/didChange",
-        serde_json::json!({
-            "textDocument": {"uri": poll_other_uri, "version": 2},
-            "contentChanges": [{"text": poll_changed_other}],
-        }),
-    );
-    let offset = poll_changed_other.find("Renamed").expect("poll rename use");
-    let reply = polled.request(
-        "textDocument/definition",
-        serde_json::json!({
-            "textDocument": {"uri": poll_other_uri},
-            "position": position(&poll_changed_other, offset),
-        }),
-    );
-    let result = reply["result"].as_array().cloned().unwrap_or_default();
-    assert_eq!(
-        result.first().and_then(|item| item["uri"].as_str()),
-        Some(poll_lib_uri.as_str()),
-        "{reply}"
-    );
-    let hover_offset = poll_renamed
-        .find("func Renamed")
-        .expect("poll renamed declaration")
-        + "func ".len();
-    let reply = polled.request(
-        "textDocument/hover",
-        serde_json::json!({
-            "textDocument": {"uri": poll_lib_uri},
-            "position": position(&poll_renamed, hover_offset),
-        }),
-    );
-    let value = reply["result"]["contents"]["value"]
-        .as_str()
-        .unwrap_or_default();
-    assert!(value.contains("func Renamed() int"), "{reply}");
-
-    // New files created directly on disk are discovered by the structural walk.
-    let poll_extra_path = poll_root.join("lib/extra.go");
-    std::fs::write(
-        &poll_extra_path,
-        "package lib\n\nfunc Extra() int {\n\treturn 4\n}\n",
-    )
-    .expect("write direct new file");
-    std::thread::sleep(Duration::from_millis(500));
-    let poll_extra_uri = url::Url::from_file_path(&poll_extra_path)
-        .expect("poll extra URI")
-        .to_string();
-    let poll_changed_main = poll_main.replace("lib.Value()", "lib.Extra()");
-    polled.notify(
-        "textDocument/didChange",
-        serde_json::json!({
-            "textDocument": {"uri": poll_main_uri, "version": 2},
-            "contentChanges": [{"text": poll_changed_main}],
-        }),
-    );
-    let extra_offset = poll_changed_main.find("Extra").expect("poll extra use");
-    let reply = polled.request(
-        "textDocument/definition",
-        serde_json::json!({
-            "textDocument": {"uri": poll_main_uri},
-            "position": position(&poll_changed_main, extra_offset),
-        }),
-    );
-    let result = reply["result"].as_array().cloned().unwrap_or_default();
-    assert_eq!(
-        result.first().and_then(|item| item["uri"].as_str()),
-        Some(poll_extra_uri.as_str()),
-        "{reply}"
-    );
-    let reply = polled.request("shutdown", Value::Null);
-    assert!(reply.get("result").is_some(), "{reply}");
-    polled.notify("exit", Value::Null);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if polled
+        assert!(reply.get("result").is_some(), "{reply}");
+        budgeted.notify("initialized", serde_json::json!({}));
+        // Complete initial reconciliation before testing a fresh event. Legacy
+        // polling settings above must not enable periodic or on-demand scans.
+        let reply = budgeted.request(
+            "workspace/symbol",
+            serde_json::json!({"query": "BeforeBudgetEdit"}),
+        );
+        assert_eq!(reply["result"].as_array().map(Vec::len), Some(2), "{reply}");
+        std::thread::sleep(Duration::from_millis(250));
+        let symbol = format!("AfterBudgetEdit{case}");
+        std::fs::write(
+            limits_root.join("second/file.go"),
+            format!("package budget\nfunc {symbol}() {{}}\n"),
+        )
+        .expect("edit budget source");
+        if exceeded.is_some() {
+            std::thread::sleep(Duration::from_millis(1200));
+            let reply = budgeted.request("workspace/symbol", serde_json::json!({"query": symbol}));
+            assert!(
+                !reply["result"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item["name"] == symbol)),
+                "unexpected polling fallback: {reply}"
+            );
+        } else {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let reply =
+                    budgeted.request("workspace/symbol", serde_json::json!({"query": symbol}));
+                if reply["result"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item["name"] == symbol))
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "watch budget case {case} did not refresh: {reply}"
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+        let reply = budgeted.request("shutdown", Value::Null);
+        assert!(reply.get("result").is_some(), "{reply}");
+        budgeted.notify("exit", Value::Null);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while budgeted
             .child
             .try_wait()
-            .expect("wait polling server")
-            .is_some()
+            .expect("wait budget server")
+            .is_none()
         {
-            break;
+            assert!(
+                Instant::now() < deadline,
+                "watch budget server did not exit"
+            );
+            std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(Instant::now() < deadline, "polling server did not exit");
-        std::thread::sleep(Duration::from_millis(10));
+        let mut log = String::new();
+        std::io::Read::read_to_string(
+            &mut budgeted.child.stderr.take().expect("budget stderr"),
+            &mut log,
+        )
+        .expect("read budget log");
+        if let Some(key) = exceeded {
+            assert!(log.contains(&format!("{key}=1 exceeded")), "{log}");
+        } else {
+            assert!(!log.contains("file watching unavailable"), "{log}");
+        }
     }
-    let _ = std::fs::remove_dir_all(&poll_root);
+    let _ = std::fs::remove_dir_all(&limits_root);
 
-    // On-demand polling: an agent writes directly and immediately asks a query
-    // about a dependent file. The background interval is effectively disabled
-    // (60 s), so only the request-triggered poll can make the answer fresh.
-    let ondemand_root =
-        std::env::temp_dir().join(format!("goquery-ondemand-files-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&ondemand_root);
-    copy_tree(&base.join("tests/fixtures/watched-files"), &ondemand_root);
-    let mut ondemand = Server::new(
-        Command::new(env!("CARGO_BIN_EXE_goquery"))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .env("GOWORK", "off")
-            .env(
-                "GOMODCACHE",
-                std::env::temp_dir().join("goquery-ondemand-modcache"),
-            )
-            .env_remove("GOQUERY_DISABLE_DIAG")
-            .spawn()
-            .expect("spawn on-demand server"),
-    );
-    let ondemand_root_uri = url::Url::from_directory_path(&ondemand_root)
-        .expect("on-demand root URI")
-        .to_string();
-    let reply = ondemand.request(
-        "initialize",
-        serde_json::json!({
-            "processId": std::process::id(),
-            "rootUri": ondemand_root_uri,
-            "workspaceFolders": [{"uri": ondemand_root_uri, "name": "ondemand"}],
-            "capabilities": {"textDocument": {}},
-            "initializationOptions": {"goroot": "", "pollIntervalMs": 60000},
-        }),
-    );
-    assert!(reply.get("result").is_some(), "{reply}");
-    ondemand.notify("initialized", serde_json::json!({}));
-    std::thread::sleep(Duration::from_millis(500));
-    let ondemand_lib_path = ondemand_root.join("lib/lib.go");
-    let ondemand_other_path = ondemand_root.join("other/other.go");
-    let ondemand_other = std::fs::read_to_string(&ondemand_other_path).expect("ondemand source");
-    let ondemand_lib = std::fs::read_to_string(&ondemand_lib_path).expect("ondemand lib source");
-    let ondemand_other_uri = url::Url::from_file_path(&ondemand_other_path)
-        .expect("ondemand other URI")
-        .to_string();
-    let ondemand_lib_uri = url::Url::from_file_path(&ondemand_lib_path)
-        .expect("ondemand lib URI")
-        .to_string();
-    ondemand.notify(
-        "textDocument/didOpen",
-        serde_json::json!({
-            "textDocument": {
-                "uri": ondemand_other_uri,
-                "languageId": "go",
-                "version": 1,
-                "text": ondemand_other,
-            },
-        }),
-    );
-    let ondemand_renamed = ondemand_lib.replace(
-        "// Value returns the current value.\nfunc Value() int {",
-        "// Renamed returns the current value.\nfunc Renamed() int {",
-    );
-    std::fs::write(&ondemand_lib_path, &ondemand_renamed).expect("ondemand direct write");
-    let ondemand_changed = ondemand_other.replace("lib.Value()", "lib.Renamed()");
-    ondemand.notify(
-        "textDocument/didChange",
-        serde_json::json!({
-            "textDocument": {"uri": ondemand_other_uri, "version": 2},
-            "contentChanges": [{"text": ondemand_changed}],
-        }),
-    );
-    let ondemand_offset = ondemand_changed
-        .find("Renamed")
-        .expect("ondemand renamed use");
-    let reply = ondemand.request(
-        "textDocument/definition",
-        serde_json::json!({
-            "textDocument": {"uri": ondemand_other_uri},
-            "position": position(&ondemand_changed, ondemand_offset),
-        }),
-    );
-    let result = reply["result"].as_array().cloned().unwrap_or_default();
-    assert_eq!(
-        result.first().and_then(|item| item["uri"].as_str()),
-        Some(ondemand_lib_uri.as_str()),
-        "on-demand poll did not refresh the direct write: {reply}"
-    );
-    let reply = ondemand.request("shutdown", Value::Null);
-    assert!(reply.get("result").is_some(), "{reply}");
-    ondemand.notify("exit", Value::Null);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if ondemand
-            .child
-            .try_wait()
-            .expect("wait on-demand server")
-            .is_some()
-        {
-            break;
-        }
-        assert!(Instant::now() < deadline, "on-demand server did not exit");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    let _ = std::fs::remove_dir_all(&ondemand_root);
     let _ = std::fs::remove_dir_all(&root);
 
     // Clients like Zed pipeline didOpen and document queries immediately after
@@ -3238,7 +3478,7 @@ fn watched_file_changes_refresh_cross_package_state() {
                 },
                 "textDocument": {},
             },
-            "initializationOptions": {"goroot": "", "pollIntervalMs": 0},
+            "initializationOptions": {"goroot": "", "fileWatch": false},
         }),
     );
     assert!(reply.get("result").is_some(), "{reply}");

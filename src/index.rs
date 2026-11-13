@@ -95,14 +95,18 @@ pub(crate) struct DiskStamp {
 impl DiskStamp {
     pub(crate) fn of(path: &std::path::Path) -> Option<Self> {
         let metadata = std::fs::metadata(path).ok()?;
-        Some(Self {
+        Some(Self::from_metadata(&metadata))
+    }
+
+    pub(crate) fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+        Self {
             modified: metadata
                 .modified()
                 .ok()
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|duration| duration.as_nanos() as u64),
             len: metadata.len(),
-        })
+        }
     }
 
     /// Current wall clock in the same units as [`Self::modified`].

@@ -43,9 +43,10 @@ Zed 没有直接替换 Go 语言服务器的设置：Go 绑定到名为 `gopls` 
 - Zed 的状态栏与日志仍显示 `gopls`；实际运行的进程是 `goquery`。
 - Zed 支持动态注册 `workspace/didChangeWatchedFiles`，goquery 借此发现外部
   （agent/shell）改动，并刷新受影响打开文档的诊断。即使编辑器不发送文件事件，
-  有界磁盘轮询也能发现直接改动（默认 1000 ms；如需更快的 agent 反馈，可设置
-  `initializationOptions.pollIntervalMs`，例如 `300`，或在启动 Zed 的环境中设置
-  `GOQUERY_POLL_MS`；`0` 表示关闭）。干净的打开缓冲区会从磁盘重新加载；
+  服务器文件监控也能发现直接改动，没有轮询回退。
+  `initializationOptions.fileWatch: false` 可关闭监控；使用 `fileWatchMax*`
+  调整预算，使用 `fileWatchExcludeDirectories` 配置正则排除目录。
+  干净的打开缓冲区会从磁盘重新加载；
   含未保存 `didChange` 修改的缓冲区仍以编辑器内容为准。
 - Zed 会把 gopls 默认值（`usePlaceholders`、`hints`、`codelenses`、`semanticTokens`）合并进
   `initialization_options`；goquery 忽略不认识的键。

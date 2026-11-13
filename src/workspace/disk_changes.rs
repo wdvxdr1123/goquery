@@ -1,7 +1,7 @@
-//! Bounded disk polling for direct (agent/shell) edits without editor events.
+//! Bounded disk reconciliation triggered by filesystem notifications.
 //!
 //! The LSP client may not send `didChangeWatchedFiles` (some agent harnesses and
-//! clients never register for it). The poller compares the disk identity stored
+//! clients never register for it). Reconciliation compares the disk identity stored
 //! with each indexed stub against the filesystem, detects new/deleted Go files
 //! and manifest edits by walking the workspace roots, and reports the changed
 //! paths; the backend applies them through the same typed event as watched
@@ -15,19 +15,19 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Paths reported by one poll; the backend applies them as one bounded batch.
-pub(super) const MAX_POLL_CHANGES: usize = 4096;
+/// Paths reported by one reconciliation; the backend applies them as one bounded batch.
+pub(super) const MAX_DISK_CHANGES: usize = 4096;
 /// Directory entries visited by one structural walk.
-const MAX_POLL_ENTRIES: usize = 20000;
-/// Recently checked non-indexable files remembered between polls.
+const MAX_DISK_ENTRIES: usize = 20000;
+/// Recently checked non-indexable files remembered between reconciliations.
 const MAX_UNINDEXED_STAMPS: usize = 2048;
 
 impl Workspace {
     /// Detect direct disk edits without any client notification. Returns changed,
     /// created and deleted paths (Go files and module manifests) in a bounded
-    /// batch; callers apply them as `PolledFiles`.
-    pub(crate) fn poll_disk_changes(&mut self) -> Vec<PathBuf> {
-        let poll_started = std::time::Instant::now();
+    /// batch; callers apply them as `DiskChanges`.
+    pub(crate) fn disk_changes(&mut self) -> Vec<PathBuf> {
+        let scan_started = std::time::Instant::now();
         let mut changed: Vec<PathBuf> = Vec::new();
         let mut seen: HashSet<PathBuf> = HashSet::new();
 
@@ -35,7 +35,7 @@ impl Workspace {
         // their disk identity moved.
         let mut reload: Vec<(PathBuf, DiskStamp)> = Vec::new();
         for (file, state) in &self.open_state {
-            if state.dirty {
+            if state.dirty || self.file_watch_excluded(file, false) {
                 continue;
             }
             let Some(stamp) = DiskStamp::of(file) else {
@@ -58,44 +58,37 @@ impl Workspace {
             }
         }
 
-        let indexed_started = std::time::Instant::now();
-        // Indexed stubs: compare the stored stamp. SDK and dependency mounts are
-        // read-only corpora; agents edit workspace and local-replace files.
-        let mut indexed: Vec<(PathBuf, Option<DiskStamp>)> = self
-            .files
-            .iter()
-            .filter(|(file, _)| self.poll_scope(file))
-            .map(|(file, stub)| (file.clone(), stub.stamp))
-            .collect();
-        indexed.sort_by(|left, right| left.0.cmp(&right.0));
-        for (file, stamp) in indexed {
-            if DiskStamp::of(&file) != stamp && seen.insert(file.clone()) {
-                changed.push(file);
-            }
-        }
-
-        let indexed_ms = indexed_started.elapsed().as_millis();
+        // Reuse metadata from the structural walk for indexed files too. On
+        // Windows directory entries retain enumeration metadata, so asking
+        // each path for metadata separately would add a file-system call per
+        // indexed Go file. Borrow index keys instead of cloning/sorting paths.
+        // One reconciliation retains at most MAX_DISK_ENTRIES borrowed keys.
+        let mut visited = HashSet::new();
         let walk_started = std::time::Instant::now();
         // Structural walk: new Go files and module manifests. Nested unselected
         // modules are recorded but not descended into, mirroring discovery.
-        let roots = self.roots.clone();
         let mut manifests: Vec<PathBuf> = Vec::new();
         let mut candidates: Vec<(PathBuf, DiskStamp)> = Vec::new();
         let manifest_log = std::cell::RefCell::new(Vec::new());
         let mut walked = 0usize;
-        for root in roots {
-            for entry in WalkDir::new(&root)
+        for root in &self.roots {
+            if self.file_watch_excluded(root, true) {
+                continue;
+            }
+            for entry in WalkDir::new(root)
                 .follow_links(false)
                 .into_iter()
                 .filter_entry(|entry| {
                     if entry.depth() == 0 || !entry.file_type().is_dir() {
                         return true;
                     }
-                    if discovery::ignored_directory(entry.file_name()) {
+                    if discovery::ignored_directory(entry.file_name())
+                        || self.file_watch_excluded(entry.path(), true)
+                    {
                         return false;
                     }
-                    if entry.path().join("go.mod").is_file()
-                        && !self.modules.contains_key(entry.path())
+                    if !self.modules.contains_key(entry.path())
+                        && entry.path().join("go.mod").is_file()
                     {
                         manifest_log.borrow_mut().push(entry.path().join("go.mod"));
                         return false;
@@ -105,13 +98,24 @@ impl Workspace {
                 .filter_map(Result::ok)
             {
                 walked += 1;
-                if walked > MAX_POLL_ENTRIES || changed.len() >= MAX_POLL_CHANGES {
+                if walked > MAX_DISK_ENTRIES || changed.len() >= MAX_DISK_CHANGES {
                     break;
                 }
                 if !entry.file_type().is_file() {
                     continue;
                 }
                 let path = entry.path();
+                if let Some((file, stub)) = self.files.get_key_value(path)
+                    && self.disk_change_scope(file)
+                    && let Ok(metadata) = entry.metadata()
+                {
+                    visited.insert(file);
+                    if Some(DiskStamp::from_metadata(&metadata)) != stub.stamp
+                        && seen.insert(file.clone())
+                    {
+                        changed.push(file.clone());
+                    }
+                }
                 let name = path.file_name().and_then(|name| name.to_str());
                 if name == Some("go.mod") || name == Some("go.work") {
                     manifests.push(path.to_path_buf());
@@ -120,16 +124,30 @@ impl Workspace {
                 if path.extension().is_some_and(|extension| extension == "go")
                     && !self.files.contains_key(path)
                     && self.discoverable(path)
-                    && let Some(stamp) = DiskStamp::of(path)
+                    && let Ok(metadata) = entry.metadata()
                 {
-                    candidates.push((path.to_path_buf(), stamp));
+                    candidates.push((path.to_path_buf(), DiskStamp::from_metadata(&metadata)));
                 }
             }
-            if walked > MAX_POLL_ENTRIES || changed.len() >= MAX_POLL_CHANGES {
+            if walked > MAX_DISK_ENTRIES || changed.len() >= MAX_DISK_CHANGES {
                 break;
             }
         }
         let walk_ms = walk_started.elapsed().as_millis();
+        let indexed_started = std::time::Instant::now();
+        // Missing entries may be deleted, outside the walk's discovery scope,
+        // or simply beyond its entry budget. Stat them rather than treating an
+        // incomplete walk as proof of deletion. SDK/cache mounts remain excluded.
+        for (file, stub) in &self.files {
+            if !visited.contains(file)
+                && self.disk_change_scope(file)
+                && DiskStamp::of(file) != stub.stamp
+                && seen.insert(file.clone())
+            {
+                changed.push(file.clone());
+            }
+        }
+        let indexed_ms = indexed_started.elapsed().as_millis();
         let manifest_started = std::time::Instant::now();
         manifests.extend(manifest_log.into_inner());
         let candidate_count = candidates.len();
@@ -158,11 +176,19 @@ impl Workspace {
                 self.unindexed_stamps.insert(path, stamp);
             }
         }
-        // The first poll records existing manifests as its baseline; later polls
+        // The first reconciliation records existing manifests as its baseline; later reconciliations
         // treat new, changed or disappeared manifests as module-plan candidates.
         if !self.manifest_baseline {
             for manifest in manifests {
                 if let Some(stamp) = DiskStamp::of(&manifest) {
+                    if self
+                        .started_at
+                        .zip(stamp.modified)
+                        .is_some_and(|(start, modified)| modified >= start)
+                        && seen.insert(manifest.clone())
+                    {
+                        changed.push(manifest.clone());
+                    }
                     self.manifest_stamps.insert(manifest, stamp);
                 }
             }
@@ -189,10 +215,10 @@ impl Workspace {
             }
         }
         let manifest_ms = manifest_started.elapsed().as_millis();
-        if self.trace.edits && poll_started.elapsed().as_millis() > 50 {
+        if self.trace.edits && scan_started.elapsed().as_millis() > 50 {
             eprintln!(
-                "disk poll cost: {} ms (indexed {} walk {} manifests {} candidates {} changed {})",
-                poll_started.elapsed().as_millis(),
+                "disk reconciliation cost: {} ms (indexed {} walk {} manifests {} candidates {} changed {})",
+                scan_started.elapsed().as_millis(),
                 indexed_ms,
                 walk_ms,
                 manifest_ms,
@@ -200,10 +226,10 @@ impl Workspace {
                 changed.len()
             );
         }
-        changed.truncate(MAX_POLL_CHANGES);
+        changed.truncate(MAX_DISK_CHANGES);
         if self.trace.edits && !changed.is_empty() {
             eprintln!(
-                "disk poll: {} changed path(s), first {:?}",
+                "disk reconciliation: {} changed path(s), first {:?}",
                 changed.len(),
                 changed.iter().take(5).collect::<Vec<_>>()
             );
@@ -237,20 +263,13 @@ impl Workspace {
         });
     }
 
-    /// Number of poll-scope (workspace) files currently indexed. On-demand
-    /// request polling is only affordable for small/medium workspaces; large
-    /// trees rely on the background interval and burst acceleration.
-    pub(crate) fn poll_scope_file_count(&self) -> usize {
-        self.files
-            .keys()
-            .filter(|file| self.poll_scope(file))
-            .count()
-    }
-
     /// Whether this indexed path belongs to the editable workspace rather than an
     /// SDK/dependency mount (which the agent corpus does not edit). A workspace
-    /// whose root is the SDK source itself still polls its own folder.
-    fn poll_scope(&self, file: &Path) -> bool {
+    /// whose root is the SDK source itself still reconciles its own folder.
+    fn disk_change_scope(&self, file: &Path) -> bool {
+        if self.file_watch_excluded(file, false) {
+            return false;
+        }
         let in_workspace_folder = self.folders.iter().any(|folder| file.starts_with(folder));
         if self
             .module_cache
