@@ -115,8 +115,7 @@ impl<'workspace> Inference<'workspace, '_> {
         }
         let start = symbol.declaration()?.start;
         let end = symbol
-            .body
-            .as_ref()
+            .body()
             .map(|body| body.start)
             .unwrap_or(symbol.declaration()?.end);
         let header = self.workspace.source_slice(file, start..end)?;

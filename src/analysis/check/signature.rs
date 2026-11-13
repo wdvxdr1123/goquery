@@ -149,10 +149,7 @@ impl<'workspace> Inference<'workspace, '_> {
             return None;
         }
         let declaration = symbol.declaration()?;
-        let end = symbol
-            .body
-            .as_ref()
-            .map_or(declaration.end, |body| body.start);
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
         let header = self.workspace.source_slice(file, declaration.start..end)?;
         let signature = crate::syntax::parse_signature(&header);
         signature
@@ -200,8 +197,7 @@ impl<'workspace> Inference<'workspace, '_> {
         }
         let start = symbol.declaration()?.start;
         let end = symbol
-            .body
-            .as_ref()
+            .body()
             .map_or(symbol.declaration()?.end, |body| body.start);
         let header = self.workspace.source_slice(file, start..end)?;
         let signature = crate::syntax::parse_signature(&header);

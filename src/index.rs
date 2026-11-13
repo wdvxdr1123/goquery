@@ -11,9 +11,12 @@ pub use crate::syntax::SymbolKind;
 
 pub const MAX_FILE_BYTES: u64 = 15 * 1024 * 1024;
 
+/// Shared declaration facts with elided syntax spans and compact body offsets.
+type CompactSymbol = crate::syntax::Symbol<(), [u32; 2]>;
+
 #[derive(Clone, Debug)]
 pub struct IndexedSymbol {
-    syntax: crate::syntax::Symbol<()>,
+    syntax: CompactSymbol,
     declaration: [u32; 2],
     pub start: usize,
     pub end: usize,
@@ -26,7 +29,7 @@ pub struct IndexedSymbol {
 }
 
 impl std::ops::Deref for IndexedSymbol {
-    type Target = crate::syntax::Symbol<()>;
+    type Target = CompactSymbol;
 
     fn deref(&self) -> &Self::Target {
         &self.syntax
@@ -34,6 +37,13 @@ impl std::ops::Deref for IndexedSymbol {
 }
 
 impl IndexedSymbol {
+    /// A 15 MiB source fits in compact offsets. Reconstruct function-body spans
+    /// only when queried; the sentinel represents an absent/unavailable body.
+    pub(crate) fn body(&self) -> Option<Range<usize>> {
+        let [start, end] = self.syntax.body;
+        (end != u32::MAX).then_some(start as usize..end as usize)
+    }
+
     /// Stub byte spans avoid rebuilding a whole-file UTF-16 map for type headers.
     /// Server source files are bounded below u32::MAX; oversized standalone stub
     /// inputs have no usable compact span rather than a wrapped byte offset.
@@ -133,7 +143,17 @@ impl IndexedFile {
 }
 
 pub fn index_source(source: &str) -> IndexedFile {
-    let parsed = crate::syntax::stub(source);
+    let mut parsed = crate::syntax::stub(source);
+    // These lists become immutable index metadata. Parser growth capacity is
+    // useful during extraction but need not remain live for every source file.
+    parsed.imports.shrink_to_fit();
+    for symbol in &mut parsed.symbols {
+        if let Some(info) = &mut symbol.type_info {
+            info.embedded.shrink_to_fit();
+            info.members.shrink_to_fit();
+            info.search_members.shrink_to_fit();
+        }
+    }
     let declaration_digest = declaration_digest(source, &parsed.symbols);
     let map = SourceMap::new(source);
     let mut import_paths = BloomFilter::new();
@@ -178,7 +198,18 @@ pub fn index_source(source: &str) -> IndexedFile {
                 let range = map.range(syntax.range.start, syntax.range.end);
                 let digest = symbol_digest(source, &syntax);
                 IndexedSymbol {
-                    syntax: syntax.map_spans(|_| ()),
+                    syntax: syntax.map_spans(
+                        |_| (),
+                        |body| {
+                            body.and_then(|span| {
+                                Some([
+                                    u32::try_from(span.start).ok()?,
+                                    u32::try_from(span.end).ok()?,
+                                ])
+                            })
+                            .unwrap_or([u32::MAX; 2])
+                        },
+                    ),
                     declaration,
                     start,
                     end,

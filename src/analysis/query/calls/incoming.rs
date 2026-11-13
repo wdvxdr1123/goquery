@@ -64,8 +64,7 @@ impl<'a, View> Context<'a, View> {
                     .iter()
                     .find(|symbol| {
                         symbol
-                            .body
-                            .as_ref()
+                            .body()
                             .is_some_and(|body| body.contains(&name.span.start))
                     })
                     .or_else(|| {

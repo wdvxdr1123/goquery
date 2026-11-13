@@ -186,7 +186,7 @@ impl Parser<'_> {
             constructor: TypeConstructor::Unknown,
             selection: name.span,
             range: keyword.span.start..end,
-            receiver,
+            receiver: receiver.map(String::into_boxed_str),
             body,
             type_info: None,
         });

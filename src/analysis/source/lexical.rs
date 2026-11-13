@@ -13,11 +13,7 @@ impl SourceAnalysis {
         let mut regions = Vec::new();
         let mut start = 0;
         if let Some(name) = name {
-            for body in stub
-                .symbols
-                .iter()
-                .filter_map(|symbol| symbol.body.as_ref())
-            {
+            for body in stub.symbols.iter().filter_map(|symbol| symbol.body()) {
                 // Indexed body ranges are opaque balanced blocks. Header tokens
                 // remain visible, including receiver names and type parameters.
                 if body.start >= start

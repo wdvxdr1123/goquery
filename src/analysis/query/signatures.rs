@@ -301,10 +301,7 @@ impl Context<'_> {
             return None;
         }
         let declaration = symbol.declaration()?;
-        let end = symbol
-            .body
-            .as_ref()
-            .map_or(declaration.end, |body| body.start);
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
         let header = workspace.source_slice(origin, declaration.start..end)?;
         if header.len() > super::budget::MAX_BYTES {
             return None;

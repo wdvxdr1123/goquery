@@ -34,8 +34,7 @@ fn in_function_header(context: &Context<'_>, offset: usize) -> bool {
         .is_some_and(|stub| {
             stub.symbols.iter().any(|symbol| {
                 symbol
-                    .body
-                    .as_ref()
+                    .body()
                     .zip(symbol.declaration())
                     .is_some_and(|(body, declaration)| {
                         declaration.start <= offset && offset < body.start
@@ -1465,7 +1464,7 @@ pub(super) fn header_binding(
 ) -> Result<Option<HoverContent>, (i32, String)> {
     let source = context.source();
     for symbol in &context.workspace().files[context.file()].symbols {
-        let Some(body) = &symbol.body else {
+        let Some(body) = symbol.body() else {
             continue;
         };
         let Some(declaration) = symbol.declaration() else {
@@ -2225,10 +2224,7 @@ pub(super) fn function_value_type(
     let source_text = declaration_source(context, file)?;
     let source = source_text.text();
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = source.get(declaration.start..end)?;
     if header.len() > MAX_SIGNATURE_BYTES {
         return None;

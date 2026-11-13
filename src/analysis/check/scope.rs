@@ -297,8 +297,7 @@ impl Inference<'_, '_> {
         }
         let stub = self.workspace.files.get(self.file)?;
         for symbol in &stub.symbols {
-            let (Some(declaration), Some(body)) = (symbol.declaration(), symbol.body.as_ref())
-            else {
+            let (Some(declaration), Some(body)) = (symbol.declaration(), symbol.body()) else {
                 continue;
             };
             if declaration.start > binding.selection.start

@@ -327,10 +327,7 @@ fn call_result_type(
             }
             let (path, symbol) = workspace.unqualified_symbol(file, name)?;
             let declaration = symbol.declaration()?;
-            let end = symbol
-                .body
-                .as_ref()
-                .map_or(declaration.end, |body| body.start);
+            let end = symbol.body().map_or(declaration.end, |body| body.start);
             let header = workspace.source_slice(path, declaration.start..end)?;
             signature_result(&header, result).map(|annotation| {
                 workspace
@@ -352,10 +349,7 @@ fn call_result_type(
                             continue;
                         }
                         let declaration = symbol.declaration()?;
-                        let end = symbol
-                            .body
-                            .as_ref()
-                            .map_or(declaration.end, |body| body.start);
+                        let end = symbol.body().map_or(declaration.end, |body| body.start);
                         let header = workspace.source_slice(path, declaration.start..end)?;
                         return signature_result(&header, result).map(|annotation| {
                             workspace
@@ -378,10 +372,7 @@ fn call_result_type(
             match workspace.receiver_member(file, &receiver_ty, name)? {
                 ReceiverMember::Method(path, symbol) => {
                     let declaration = symbol.declaration()?;
-                    let end = symbol
-                        .body
-                        .as_ref()
-                        .map_or(declaration.end, |body| body.start);
+                    let end = symbol.body().map_or(declaration.end, |body| body.start);
                     let header = workspace.source_slice(path, declaration.start..end)?;
                     signature_result(&header, result).map(|annotation| {
                         workspace

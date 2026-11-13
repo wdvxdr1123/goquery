@@ -52,8 +52,7 @@ impl Workspace {
     ) -> Option<(CallableSignature, bool)> {
         let start = location.map.offset(method.range.start)?;
         let end = method
-            .body
-            .as_ref()
+            .body()
             .map(|body| body.start)
             .or_else(|| location.map.offset(method.range.end))?;
         let header = location.source.get(start..end)?;

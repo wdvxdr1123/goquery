@@ -674,10 +674,7 @@ fn instantiated_generic(
     let source_text = render::declaration_source(context, path)?;
     let declaration_source = source_text.text();
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = declaration_source.get(declaration.start..end)?;
     if header.len() > MAX_GENERIC_HEADER {
         return None;
@@ -788,10 +785,7 @@ fn argument_type(
             }
             let source_text = render::declaration_source(context, path)?;
             let declaration = symbol.declaration()?;
-            let end = symbol
-                .body
-                .as_ref()
-                .map_or(declaration.end, |body| body.start);
+            let end = symbol.body().map_or(declaration.end, |body| body.start);
             let header = source_text.text().get(declaration.start..end)?;
             let signature = crate::syntax::parse_signature(header);
             let result = signature.results.first()?;

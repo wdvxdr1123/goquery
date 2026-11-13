@@ -320,7 +320,7 @@ fn cursor_scope<'a>(
         .symbols
         .iter()
         .find_map(|symbol| {
-            let body = symbol.body.as_ref()?;
+            let body = symbol.body()?;
             (body.contains(&offset) || offset == source.len() && body.end == offset)
                 .then(|| symbol.declaration().map(|span| (span.start, body.clone())))
                 .flatten()

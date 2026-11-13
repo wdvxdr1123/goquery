@@ -81,10 +81,7 @@ fn function(
     let workspace = context.workspace();
     let consumer = context.file();
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = source.get(declaration.start..end)?;
     if header.len() > MAX_DECLARATION_BYTES {
         return None;
@@ -635,10 +632,7 @@ fn method_line(
     let workspace = context.workspace();
     let consumer = context.file();
     let declaration = method.declaration()?;
-    let end = method
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = method.body().map_or(declaration.end, |body| body.start);
     let header = source.get(declaration.start..end)?;
     if header.len() > MAX_DECLARATION_BYTES {
         return None;

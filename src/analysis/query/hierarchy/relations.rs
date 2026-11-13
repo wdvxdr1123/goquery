@@ -139,8 +139,7 @@ impl<'a> Search<'a> {
                 let declaration = method.declaration()?;
                 let start = declaration.start;
                 let end = method
-                    .body
-                    .as_ref()
+                    .body()
                     .map(|body| body.start)
                     .unwrap_or(declaration.end);
                 let header = self.workspace.source_slice(file, start..end)?;
@@ -336,10 +335,7 @@ fn builtin_error_method(workspace: &Workspace, member: ReceiverMember<'_>) -> bo
             let Some(declaration) = method.declaration() else {
                 return false;
             };
-            let end = method
-                .body
-                .as_ref()
-                .map_or(declaration.end, |body| body.start);
+            let end = method.body().map_or(declaration.end, |body| body.start);
             let Some(header) = workspace.source_slice(file, declaration.start..end) else {
                 return false;
             };
@@ -432,7 +428,7 @@ impl<'a, View> Context<'a, View> {
                     continue;
                 }
                 if let Some(receiver) = &symbol.receiver {
-                    let owner = (path.parent(), stub.package.as_str(), receiver.as_str());
+                    let owner = (path.parent(), stub.package.as_str(), receiver.as_ref());
                     if mask_enabled
                         && let Some(bit) = required
                             .iter()
@@ -1162,10 +1158,7 @@ fn isolated_constructor(symbol: &Symbol) -> bool {
 
 fn method_shape(workspace: &Workspace, file: &Path, method: &Symbol) -> Option<MethodShape> {
     let declaration = method.declaration()?;
-    let end = method
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = method.body().map_or(declaration.end, |body| body.start);
     let header = workspace.source_slice(file, declaration.start..end)?;
     shape(&crate::syntax::parse_signature(&header))
 }

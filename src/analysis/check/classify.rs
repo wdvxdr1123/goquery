@@ -423,10 +423,7 @@ fn method_result_annotation(
     count: usize,
 ) -> Option<String> {
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = inference
         .workspace
         .source_slice(path, declaration.start..end)?;
@@ -515,10 +512,7 @@ fn call_result_type(
         return None;
     }
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = inference
         .workspace
         .source_slice(file, declaration.start..end)?;

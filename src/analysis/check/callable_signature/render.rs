@@ -27,8 +27,7 @@ impl Workspace {
         let map = SourceMap::new(&source);
         let start = map.offset(symbol.range.start)?;
         let end = symbol
-            .body
-            .as_ref()
+            .body()
             .map(|body| body.start)
             .or_else(|| map.offset(symbol.range.end))?;
         let header = source.get(start..end)?;

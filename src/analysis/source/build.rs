@@ -106,7 +106,7 @@ impl SourceAnalysis {
         let map = SourceMap::new(source);
         let mut literals = Vec::new();
         for symbol in &stub.symbols {
-            if let Some(body) = &symbol.body {
+            if let Some(body) = symbol.body() {
                 let Some(start) = map.offset(symbol.range.start) else {
                     continue;
                 };

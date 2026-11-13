@@ -60,7 +60,7 @@ impl Workspace {
         map: &SourceMap<'_>,
     ) -> Option<Target<'a>> {
         for symbol in &self.files[file].symbols {
-            if let Some(body) = &symbol.body {
+            if let Some(body) = symbol.body() {
                 let start = map.offset(symbol.range.start)?;
                 if start <= selection.start && selection.end <= body.start {
                     let header = source.get(start..body.start)?;

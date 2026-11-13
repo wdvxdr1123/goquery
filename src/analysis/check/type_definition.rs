@@ -52,7 +52,7 @@ pub(crate) fn declarations<'a>(
             let Some(declaration) = symbol.declaration() else {
                 continue;
             };
-            let Some(body) = &symbol.body else {
+            let Some(body) = symbol.body() else {
                 continue;
             };
             if declaration.start <= offset && offset <= body.start {
@@ -465,10 +465,7 @@ impl<'a> Inference<'a, '_> {
             return None;
         }
         let declaration = symbol.declaration()?;
-        let end = symbol
-            .body
-            .as_ref()
-            .map_or(declaration.end, |body| body.start);
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
         let header = self.workspace.source_slice(file, declaration.start..end)?;
         let parsed = crate::syntax::parse_signature(&header);
         let ty = arena.declaration_signature(file, &header, &parsed)?;

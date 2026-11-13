@@ -22,8 +22,7 @@ impl Context<'_> {
     ) -> Option<Presentation> {
         let start = location.map.offset(symbol.range.start)?;
         let end = symbol
-            .body
-            .as_ref()
+            .body()
             .map(|body| body.start)
             .or_else(|| location.map.offset(symbol.range.end))?;
         let header = location

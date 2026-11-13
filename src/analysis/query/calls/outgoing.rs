@@ -30,7 +30,7 @@ impl<'a, View> Context<'a, View> {
             };
             start..end
         } else {
-            let Some(body) = target.body.clone() else {
+            let Some(body) = target.body() else {
                 return Ok(finish(groups));
             };
             body

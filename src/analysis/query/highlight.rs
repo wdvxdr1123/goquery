@@ -1074,9 +1074,7 @@ impl<'a, 'q> Scanner<'a, 'q> {
                     self.initializer_keys(symbol);
                 }
                 SymbolKind::Function | SymbolKind::Method => {
-                    if let (Some(declaration), Some(body)) =
-                        (symbol.declaration(), symbol.body.clone())
-                    {
+                    if let (Some(declaration), Some(body)) = (symbol.declaration(), symbol.body()) {
                         self.function(declaration.start..body.start, body);
                     }
                 }
@@ -2513,10 +2511,7 @@ fn resolve_format_parameter(
 
 fn variadic_parameter_count(workspace: &Workspace, file: &Path, symbol: &Symbol) -> Option<usize> {
     let declaration = symbol.declaration()?;
-    let end = symbol
-        .body
-        .as_ref()
-        .map_or(declaration.end, |body| body.start);
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = workspace.source_slice(file, declaration.start..end)?;
     let signature = crate::syntax::parse_signature(&header);
     if !signature.diagnostics.is_empty()

@@ -191,11 +191,11 @@ impl<'a> Candidates<'a> {
                 else {
                     continue;
                 };
-                *inventory.masks.entry(receiver.as_str()).or_insert(0) |= 1u64 << bit;
+                *inventory.masks.entry(receiver.as_ref()).or_insert(0) |= 1u64 << bit;
                 if self.package_method_entries < 16_384 {
                     inventory
                         .methods
-                        .entry(receiver.as_str())
+                        .entry(receiver.as_ref())
                         .or_default()
                         .push((path, symbol));
                     self.package_method_entries += 1;

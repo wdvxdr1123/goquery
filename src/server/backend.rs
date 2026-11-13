@@ -671,14 +671,20 @@ impl LanguageServer for Backend {
         &self,
         params: lsp::SemanticTokensParams,
     ) -> Result<Option<lsp::SemanticTokensResult>> {
-        self.document(params, |_| DocumentQuery::SemanticTokens)
+        // We only return complete tokens. Decoding the untagged result enum
+        // first builds a second serde Content array for the entire token stream.
+        let tokens: Option<lsp::SemanticTokens> =
+            self.document(params, |_| DocumentQuery::SemanticTokens)?;
+        Ok(tokens.map(lsp::SemanticTokensResult::Tokens))
     }
 
     async fn semantic_tokens_range(
         &self,
         params: lsp::SemanticTokensRangeParams,
     ) -> Result<Option<lsp::SemanticTokensRangeResult>> {
-        self.document(params, |params| DocumentQuery::SemanticTokensRange(params))
+        let tokens: Option<lsp::SemanticTokens> =
+            self.document(params, |params| DocumentQuery::SemanticTokensRange(params))?;
+        Ok(tokens.map(lsp::SemanticTokensRangeResult::Tokens))
     }
 
     async fn symbol(

@@ -126,7 +126,7 @@ fn asm_location(
     go_file: &Path,
     symbol: &crate::index::IndexedSymbol,
 ) -> Option<Value> {
-    if symbol.body.is_some() || !symbol.is_function() {
+    if symbol.body().is_some() || !symbol.is_function() {
         return None;
     }
     let asm_file = go_file.with_extension("s");

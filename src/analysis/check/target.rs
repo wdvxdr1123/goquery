@@ -30,7 +30,7 @@ pub(crate) fn type_position(
             continue;
         }
         if symbol.is_callable() {
-            let end = symbol.body.as_ref().map_or(end, |body| body.start);
+            let end = symbol.body().map_or(end, |body| body.start);
             if offset <= end && end - start <= 16 * 1024 {
                 let parsed = crate::syntax::parse_signature(&source[start..end]);
                 if type_context_at(

@@ -285,7 +285,7 @@ impl<'a> TypeArena<'a> {
                             }
                         }
                         let span = method.declaration()?;
-                        let end = method.body.as_ref().map_or(span.end, |body| body.start);
+                        let end = method.body().map_or(span.end, |body| body.start);
                         let header = workspace.source_slice(file, span.start..end)?;
                         let parsed = crate::syntax::parse_signature(&header);
                         if !parsed.diagnostics.is_empty() || !parsed.type_parameters.is_empty() {
