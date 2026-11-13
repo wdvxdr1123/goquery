@@ -342,12 +342,11 @@ fn method_lines(
     let workspace = context.workspace();
     let consumer = context.file();
     let same_package = super::same_package(context, consumer, origin);
-    // Internal test files may declare helper methods on the production type;
-    // gopls' test variant method set includes them.
-    let lookup = if same_package { consumer } else { origin };
+    // Resolve the owner in its declaration scope, but select production/test
+    // methods from the actual query file's package view.
     let mut entries: Vec<(String, usize, String)> = Vec::new();
     let mut methods: Vec<(&std::path::PathBuf, &Symbol)> = workspace
-        .receiver_methods(lookup, &owner.name)
+        .scoped_receiver_methods(consumer, origin, &owner.name)
         .into_iter()
         .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
         .take(MAX_METHODS)
@@ -595,13 +594,8 @@ fn recurse_promoted(
         return;
     }
     let same_package = super::same_package(context, consumer, target_file);
-    let lookup = if same_package {
-        consumer
-    } else {
-        target_file.as_path()
-    };
     let mut methods: Vec<(&std::path::PathBuf, &Symbol)> = workspace
-        .receiver_methods(lookup, &target.name)
+        .scoped_receiver_methods(consumer, target_file, &target.name)
         .into_iter()
         .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
         .take(MAX_METHODS)
@@ -1273,26 +1267,35 @@ fn value_symbol(
                 };
                 format!("var {qualifier}{} {ty}", symbol.name)
             } else {
-                let ty = shape
-                    .value_text
-                    .and_then(|text| render::call_result_type(context, origin, text, 0, 1, true))
-                    .or_else(|| {
-                        shape
-                            .value_text
-                            .and_then(|text| render::conversion_type(context, origin, text))
-                    })
-                    .or_else(|| shape.value_text.and_then(render::function_literal_text))
-                    .or_else(|| {
-                        shape
-                            .value_text
-                            .and_then(|text| render::function_value_type(context, origin, text))
-                    })
-                    .or_else(|| {
-                        shape
-                            .value_text
-                            .and_then(super::value::default_type)
-                            .map(|text| render::normalize_type(&text))
-                    })?;
+                let inferred = shape.value_text.and_then(|text| {
+                    crate::analysis::check::inferred_array_literal(workspace, origin, text)
+                });
+                let ty = if let Some(inferred) = inferred {
+                    render::normalize_type(&inferred?.text)
+                } else {
+                    shape
+                        .value_text
+                        .and_then(|text| {
+                            render::call_result_type(context, origin, text, 0, 1, true)
+                        })
+                        .or_else(|| {
+                            shape
+                                .value_text
+                                .and_then(|text| render::conversion_type(context, origin, text))
+                        })
+                        .or_else(|| shape.value_text.and_then(render::function_literal_text))
+                        .or_else(|| {
+                            shape
+                                .value_text
+                                .and_then(|text| render::function_value_type(context, origin, text))
+                        })
+                        .or_else(|| {
+                            shape
+                                .value_text
+                                .and_then(super::value::default_type)
+                                .map(|text| render::normalize_type(&text))
+                        })?
+                };
                 format!("var {qualifier}{} {ty}", symbol.name)
             }
         }

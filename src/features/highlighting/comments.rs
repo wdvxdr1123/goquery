@@ -1,7 +1,7 @@
 //! gopls-style doc-link tokens inside comments.
 //!
-//! A `[Symbol]`, `[pkg.Symbol]` or `[Type.Method]` link that resolves to a
-//! package-scope object, an imported object, or a method of a named type is
+//! A `[Symbol]`, `[pkg.Symbol]` or `[Type.Member]` link that resolves to a
+//! package-scope object, imported object, field or method of a named type is
 //! emitted as object tokens separated by comment tokens. Everything else stays
 //! a plain comment token, matching `tokenVisitor.comment`.
 use crate::analysis::resolve;

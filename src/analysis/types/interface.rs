@@ -158,6 +158,24 @@ impl<'a> TypeArena<'a> {
         ))
     }
 
+    /// Check a metadata inventory against the complete typed method set,
+    /// including universe methods without indexed source declarations.
+    pub(crate) fn interface_methods_covered(
+        &mut self,
+        input: TypeId,
+        mut contains: impl FnMut(&Path, &str) -> bool,
+    ) -> Option<bool> {
+        let input = self.underlying(input)?;
+        let Ty::Interface { methods, .. } = &self.nodes[usize::from(input.0)] else {
+            return None;
+        };
+        Some(
+            self.methods[methods.clone()]
+                .iter()
+                .all(|method| contains(method.origin, &method.name)),
+        )
+    }
+
     /// Inference must not instantiate constrained named formals before their
     /// arguments have been inferred. Constructor metadata is sufficient here;
     /// assignment checks the concrete instantiated type afterward.

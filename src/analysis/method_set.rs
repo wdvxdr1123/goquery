@@ -84,11 +84,20 @@ impl Workspace {
     }
 
     pub(crate) fn receiver_methods(&self, file: &Path, name: &str) -> Vec<(&PathBuf, &Symbol)> {
+        self.scoped_receiver_methods(file, file, name)
+    }
+
+    pub(crate) fn scoped_receiver_methods(
+        &self,
+        file: &Path,
+        scope: &Path,
+        name: &str,
+    ) -> Vec<(&PathBuf, &Symbol)> {
         self.receiver_selection(
             file,
             name,
             Selection {
-                scope: None,
+                scope: Some(scope),
                 visibility: Visibility::Selectors,
                 complete_after: None,
                 methods: None,

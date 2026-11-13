@@ -1082,7 +1082,7 @@ fn qualified_member(
         };
         let lookup = path.as_path();
         if let Some((method_file, method)) = workspace
-            .receiver_methods(lookup, &symbol.name)
+            .scoped_receiver_methods(context.file(), lookup, &symbol.name)
             .into_iter()
             .find(|(_, method)| {
                 method.name == name && crate::syntax::is_exported_name(&method.name)

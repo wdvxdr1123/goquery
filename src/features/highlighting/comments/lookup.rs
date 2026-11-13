@@ -1,11 +1,14 @@
 //! Lookup of doc-link names in package scope and imports.
 //!
 //! Mirrors `tokenVisitor.comment`'s `lookupObjects`: an optional import
-//! qualifier, then either a package-scope name or `Type.Method`. Unresolved or
+//! qualifier, then either a package-scope name or `Type.Member`. Unresolved or
 //! unexported names produce no tokens, leaving the comment untouched.
 use super::{exported, style};
+use crate::analysis::method_set::ReceiverMember;
+use crate::index::IndexedSymbol;
+use crate::syntax::MemberKind;
 use crate::workspace::Workspace;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(super) struct Found {
     pub(super) name: String,
@@ -23,12 +26,9 @@ pub(super) fn lookup(workspace: &Workspace, file: &Path, name: &str) -> Vec<Foun
             return imported(workspace, file, parts[0], &parts[1..]);
         }
         // `T.M` resolves in the current package.
-        return current_method(workspace, file, parts[0], parts[1], parts.len() == 3);
+        return current_member(workspace, file, parts[0], parts[1], parts.len() == 3);
     }
-    let Some((_, symbol)) = workspace
-        .package_symbols(file)
-        .find(|(_, symbol)| symbol.name == parts[0] && symbol.receiver.is_none())
-    else {
+    let Some((_, symbol)) = package_object(workspace, file, parts[0]) else {
         return Vec::new();
     };
     if !exported(&symbol.name) {
@@ -56,8 +56,24 @@ fn import_path<'a>(workspace: &'a Workspace, file: &Path, alias: &str) -> Option
     })
 }
 
+/// Doc links use package scope, not names brought into a file by dot imports.
+fn package_object<'a>(
+    workspace: &'a Workspace,
+    file: &Path,
+    name: &str,
+) -> Option<(&'a PathBuf, &'a IndexedSymbol)> {
+    let mut candidates = workspace
+        .package_symbol_candidates(file, crate::bloom::Fingerprint::new(name.as_bytes()))
+        .filter(|(origin, symbol)| {
+            symbol.receiver.is_none()
+                && symbol.name == name
+                && workspace.selector_file_visible(file, origin)
+        });
+    let selected = candidates.next()?;
+    candidates.next().is_none().then_some(selected)
+}
+
 fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> Vec<Found> {
-    let symbols: Vec<_> = workspace.imported_symbols(file, alias);
     let mut objects = vec![Found {
         name: alias.to_owned(),
         kind: super::super::config::SemanticType::Namespace,
@@ -65,8 +81,8 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
     }];
     if rest.len() == 1 {
         let name = rest[0];
-        let Some((_, symbol)) = symbols
-            .iter()
+        let Some((_, symbol)) = workspace
+            .imported_symbol_iter(file, alias)
             .find(|(_, symbol)| symbol.name == name && symbol.receiver.is_none())
         else {
             return Vec::new();
@@ -85,17 +101,18 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
     if rest.len() != 2 {
         return Vec::new();
     }
-    let (receiver_name, method_name) = (rest[0], rest[1]);
-    let receiver = symbols.iter().find(|(_, symbol)| {
-        symbol.name == receiver_name && symbol.receiver.is_none() && symbol.is_type()
-    });
-    let Some((_, receiver)) = receiver else {
+    let (receiver_name, member_name) = (rest[0], rest[1]);
+    if !exported(receiver_name) || !exported(member_name) {
+        return Vec::new();
+    }
+    let Some((origin, receiver)) = workspace
+        .type_declaration(file, &format!("{alias}.{receiver_name}"))
+        .filter(|(origin, _)| workspace.selector_file_visible(file, origin))
+    else {
         return Vec::new();
     };
-    let method = symbols.iter().find(|(_, symbol)| {
-        symbol.name == method_name && symbol.receiver.as_deref() == Some(receiver_name)
-    });
-    let Some((_, method)) = method else {
+    let Some(member) = workspace.scoped_receiver_member(file, origin, &receiver.name, member_name)
+    else {
         return Vec::new();
     };
     let (kind, modifiers) = style(receiver);
@@ -104,35 +121,34 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
         kind,
         modifiers,
     });
-    let (kind, modifiers) = style(method);
+    let Some((kind, modifiers)) = member_style(member) else {
+        return Vec::new();
+    };
     objects.push(Found {
-        name: method_name.to_owned(),
+        name: member_name.to_owned(),
         kind,
         modifiers,
     });
     objects
 }
 
-fn current_method(
+fn current_member(
     workspace: &Workspace,
     file: &Path,
     receiver_name: &str,
-    method_name: &str,
+    member_name: &str,
     has_extra: bool,
 ) -> Vec<Found> {
-    if has_extra {
+    if has_extra || !exported(receiver_name) || !exported(member_name) {
         return Vec::new();
     }
-    let receiver = workspace.package_symbols(file).find(|(_, symbol)| {
-        symbol.name == receiver_name && symbol.receiver.is_none() && symbol.is_type()
-    });
-    let Some((_, receiver)) = receiver else {
+    let Some((origin, receiver)) =
+        package_object(workspace, file, receiver_name).filter(|(_, symbol)| symbol.is_type())
+    else {
         return Vec::new();
     };
-    let method = workspace.package_symbols(file).find(|(_, symbol)| {
-        symbol.name == method_name && symbol.receiver.as_deref() == Some(receiver_name)
-    });
-    let Some((_, method)) = method else {
+    let Some(member) = workspace.scoped_receiver_member(file, origin, &receiver.name, member_name)
+    else {
         return Vec::new();
     };
     let (kind, modifiers) = style(receiver);
@@ -141,11 +157,25 @@ fn current_method(
         kind,
         modifiers,
     }];
-    let (kind, modifiers) = style(method);
+    let Some((kind, modifiers)) = member_style(member) else {
+        return Vec::new();
+    };
     objects.push(Found {
-        name: method_name.to_owned(),
+        name: member_name.to_owned(),
         kind,
         modifiers,
     });
     objects
+}
+
+fn member_style(member: ReceiverMember<'_>) -> Option<(super::super::config::SemanticType, u64)> {
+    use super::super::config::{SIGNATURE, SemanticType};
+    match member {
+        ReceiverMember::Method(_, method) => Some(style(method)),
+        ReceiverMember::Declaration(member) => match member.kind {
+            MemberKind::Method => Some((SemanticType::Method, SIGNATURE)),
+            MemberKind::Field => Some((SemanticType::Property, 0)),
+            MemberKind::Interface => None,
+        },
+    }
 }

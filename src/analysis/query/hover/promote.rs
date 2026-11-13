@@ -1,9 +1,7 @@
 //! Promoted struct-field table for type declaration hover, following gopls'
 //! depth-first inventory with shadowing and ambiguity filtering.
-use super::render::declaration_source;
 use crate::analysis::query::Context;
 use crate::index::IndexedSymbol as Symbol;
-use crate::syntax::TokenKind;
 use crate::workspace::Workspace;
 use std::path::{Path, PathBuf};
 
@@ -15,12 +13,6 @@ struct Candidate {
     type_text: String,
     path: String,
     depth: usize,
-}
-
-struct Frame {
-    name: String,
-    annotation: String,
-    embedded: bool,
 }
 
 /// gopls' `// through` suffix for a method promoted from an embedded field.
@@ -186,7 +178,7 @@ fn collect(
     if depth >= MAX_DEPTH || out.len() > MAX_ROWS {
         return None;
     }
-    let frames = struct_frames(context, file, symbol)?;
+    let frames = super::size::struct_fields(context, file, symbol)?;
     for frame in frames {
         let path = if prefix.is_empty() {
             frame.name.clone()
@@ -261,37 +253,4 @@ fn embedded_target<'a>(
     let name = text.split('[').next()?.trim();
     let (path, symbol) = workspace.type_declaration(file, name)?;
     Some((path.clone(), symbol))
-}
-
-/// Struct field declarations of a named aggregate type in source order.
-fn struct_frames(context: &Context<'_>, file: &Path, symbol: &Symbol) -> Option<Vec<Frame>> {
-    let source_text = declaration_source(context, file)?;
-    let source = source_text.text();
-    let declaration = symbol.declaration()?;
-    let rest_base = source.len() - source.get(symbol.end..declaration.end)?.len();
-    let fields = super::size::struct_fields(context, file, symbol)?;
-    let mut frames = Vec::new();
-    let mut search = symbol.end;
-    for field in fields {
-        // Locate the field's name selection in declaration order.
-        let mut start = None;
-        for token in crate::syntax::Lexer::new(&source[search..declaration.end]) {
-            if token.kind == TokenKind::Ident
-                && field.name == source[search + token.span.start..search + token.span.end]
-            {
-                start = Some(search + token.span.start);
-                break;
-            }
-        }
-        let start = start?;
-        search = start + field.name.len();
-        let _ = rest_base;
-        let _ = start;
-        frames.push(Frame {
-            name: field.name,
-            annotation: field.annotation,
-            embedded: field.embedded,
-        });
-    }
-    Some(frames)
 }

@@ -71,6 +71,12 @@ impl Inference<'_, '_> {
         match &expression.kind {
             ExprKind::Composite {
                 literal_type: Some(literal),
+                ..
+            } if self.inferred_array_element(*literal).is_some() => self
+                .inferred_array_operand(arena, id)
+                .map(|(operand, _)| operand),
+            ExprKind::Composite {
+                literal_type: Some(literal),
                 elements,
             } if elements.is_empty() => {
                 let ty = self.type_target(arena, &self.expressions[literal.0].span)?;

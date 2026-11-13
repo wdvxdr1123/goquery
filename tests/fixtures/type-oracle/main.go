@@ -1613,3 +1613,18 @@ func BindingTyped(value *Item, channel <-chan *Item, table map[string]*Item) {
 
 type BindingBox[T any] struct{ Value T }
 func BindingComposite[T any]() { bindingBox := BindingBox[T]{}; bindingBoxCopy := bindingBox; bindingBoxField := bindingBoxCopy.Value; _ = bindingBoxField }
+
+// Array extent inference follows keyed positions, not the number of values.
+func InferredArrayExtents[T any](value T) {
+ const arrayStop = 4
+ arraySparse := [...]int{arrayStop: 1, 2, 1: 3}
+ arrayImported := [...]byte{time.Saturday: 1}
+ arrayEmpty := [...]int{}
+ arrayGeneric := [...]T{value, value}
+ arrayPointer := &[...]T{value}
+ arrayLength := len([...]int{2: 1})
+ arrayAnonymous := [...]struct{ Field int }{{Field: 1}}
+ type arrayCell struct{ Field int }
+ arrayLocal := [...]arrayCell{{Field: 1}}
+ _, _, _, _, _, _, _, _ = arraySparse, arrayImported, arrayEmpty, arrayGeneric, arrayPointer, arrayLength, arrayAnonymous, arrayLocal
+}

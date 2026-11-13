@@ -33,13 +33,16 @@ impl Workspace {
         };
         let origin = self.files.get_key_value(origin)?.0;
         let mut context = TypeContext::new(self);
-        let mut environment =
-            if !receiver.generic && owner_file == file && owner.start == receiver.start {
-                None
-            } else {
-                let input = context.implementation_input(file, receiver)?;
-                context.owner_environment(input, owner_file, owner, kind)?.1
-            };
+        // Member lookup has already proved the declaring owner and promotion
+        // path. A nongeneric owner has no formals to substitute, even when the
+        // member is promoted into a different or generic receiver. Its signature
+        // is interpreted in `origin`, so no embedding graph needs rebuilding.
+        let mut environment = if !owner.generic {
+            None
+        } else {
+            let input = context.implementation_input(file, receiver)?;
+            context.owner_environment(input, owner_file, owner, kind)?.1
+        };
         if matches!(kind, OwnerKind::Receiver) {
             environment = context.renamed_environment(environment, names)?;
         }

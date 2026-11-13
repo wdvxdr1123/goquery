@@ -23,11 +23,24 @@ impl Workspace {
             if !(owner.end <= selection.start && selection.end <= end) {
                 continue;
             }
-            let name = info
+            let direct = info
                 .members
                 .iter()
-                .find(|name| **name == source[selection.clone()]);
-            let Some(name) = name else {
+                .find(|name| **name == source[selection.clone()])
+                .map(|name| (name.as_str(), false));
+            // Struct embeddings declare an implicit field at the final type
+            // identifier. Interface embeddings only refer to another type.
+            let embedded = (!info.is_interface())
+                .then(|| {
+                    info.embedded.iter().find_map(|annotation| {
+                        let name = crate::analysis::scope::named_root(annotation)
+                            .rsplit('.')
+                            .next()?;
+                        (name == &source[selection.clone()]).then_some((name, true))
+                    })
+                })
+                .flatten();
+            let Some((name, embedded)) = direct.or(embedded) else {
                 continue;
             };
             let declaration = source.get(owner.end..end)?;
@@ -40,11 +53,12 @@ impl Workspace {
                 } else {
                     MemberKind::Field
                 },
-                embedded: false,
+                embedded,
             };
             let entries = crate::syntax::aggregate_members(declaration);
             let entry = member.entry(declaration, &entries)?;
-            if (owner.end + entry.selection.start..owner.end + entry.selection.end) == *selection {
+            let span = member.selection(declaration, entry)?;
+            if (owner.end + span.start..owner.end + span.end) == *selection {
                 return Some(member);
             }
         }

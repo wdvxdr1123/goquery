@@ -21,6 +21,22 @@ pub(crate) struct MemberData {
 }
 
 impl MemberDeclaration<'_> {
+    pub(crate) fn selection(
+        &self,
+        declaration: &str,
+        entry: &AggregateMember,
+    ) -> Option<std::ops::Range<usize>> {
+        if !self.embedded {
+            return Some(entry.selection.clone());
+        }
+        let annotation = declaration.get(entry.annotation.clone())?;
+        let token = crate::syntax::Lexer::new(annotation)
+            .take_while(|token| token.kind != TokenKind::LBrack)
+            .filter(|token| token.kind == TokenKind::Ident)
+            .last()?;
+        Some(entry.annotation.start + token.span.start..entry.annotation.start + token.span.end)
+    }
+
     pub(crate) fn same(&self, other: &Self) -> bool {
         self.file == other.file && self.owner.start == other.owner.start && self.name == other.name
     }
@@ -64,16 +80,7 @@ impl Workspace {
         let declaration = source.get(base..map.offset(member.owner.range.end)?)?;
         let entries = crate::syntax::aggregate_members(declaration);
         let entry = member.entry(declaration, &entries)?;
-        let selection = if member.embedded {
-            let annotation = declaration.get(entry.annotation.clone())?;
-            let token = crate::syntax::Lexer::new(annotation)
-                .take_while(|token| token.kind != TokenKind::LBrack)
-                .filter(|token| token.kind == TokenKind::Ident)
-                .last()?;
-            entry.annotation.start + token.span.start..entry.annotation.start + token.span.end
-        } else {
-            entry.selection.clone()
-        };
+        let selection = member.selection(declaration, entry)?;
         Some(MemberData {
             selection: map.range(base + selection.start, base + selection.end),
             annotation: (entry.annotation.len() <= 16 * 1024)

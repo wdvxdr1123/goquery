@@ -135,7 +135,7 @@ impl TypeArena<'_> {
         })
     }
 
-    pub(super) fn index_value(&mut self, index: Operand, int_bits: u32) -> Option<Option<u64>> {
+    pub(crate) fn index_value(&mut self, index: Operand, int_bits: u32) -> Option<Option<u64>> {
         let root = self.underlying(index.ty)?;
         if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
             if index.mode == Mode::Constant {

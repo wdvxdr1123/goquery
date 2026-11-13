@@ -7,7 +7,16 @@
 - Completion and signature help: gopls-derived scoring, scoped locals and
   parameters, snippets, documentation and variadic signatures.
 - Hover with Go types, signatures and doc comments rendered like gopls, including
-  the pkg.go.dev footer.
+  the pkg.go.dev footer. Method lists distinguish ordinary source, same-package
+  tests, same-directory external tests and unrelated importers; test helpers
+  remain in their test view rather than appearing in production hover lists.
+- Inferred array literal extents (`[...]T{...}`) follow constant keyed indices
+  and implicit successors, including imported constants and supported `iota`
+  groups. The same facts feed local inference and hover/array-length rendering.
+  Extent inference is bounded to 256 elements and 16 KiB of initializer text;
+  unavailable/invalid indices or exhausted budgets stay unknown, without
+  allocating storage proportional to a sparse index. General array-length
+  expressions and full composite-element checking remain incomplete.
 - Rename and prepare-rename with scope/shadowing checks and versioned workspace
   edits across identifiers, imports, fields, methods, receivers, labels and doc
   comments/links.
@@ -21,6 +30,9 @@
   failing the request.
 - Semantic tokens (full and range), folding ranges, code lenses (`//go:generate`,
   cgo regeneration) and document links (pkg.go.dev and comment/string URLs).
+  Semantic tokens split resolved field/method doc references such as
+  `[Type.Field]` and `[pkg.Type.Method]` using shared member identity, promotion,
+  ambiguity and visibility checks. Unresolved member references stay comments.
 - Workspace folders with dynamic refresh; open buffers override disk contents and
   closing restores the saved declarations.
 - External-edit freshness: when the client supports dynamic registration (Zed

@@ -185,6 +185,12 @@ impl<'a> TypeArena<'a> {
         self.push(Ty::Pointer(element))
     }
 
+    pub(crate) fn array(&mut self, element: TypeId, length: u64) -> Option<TypeId> {
+        let maximum = (1_u64 << (self.workspace.integer_bits()? - 1)) - 1;
+        (length <= maximum).then_some(())?;
+        self.push(Ty::Array { length, element })
+    }
+
     pub(crate) fn render(&self, id: TypeId, consumer: &Path) -> Option<String> {
         let mut output = String::new();
         self.write(id, consumer, &mut output, 0)?;

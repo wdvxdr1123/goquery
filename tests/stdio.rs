@@ -3282,8 +3282,30 @@ fn watched_file_changes_refresh_cross_package_state() {
     let _ = std::fs::remove_dir_all(&nested_root);
     std::fs::create_dir_all(nested_root.join("child/p")).unwrap();
     std::fs::create_dir_all(nested_root.join("child/dep")).unwrap();
+    std::fs::create_dir_all(nested_root.join("client")).unwrap();
+    std::fs::create_dir_all(nested_root.join("dotclient")).unwrap();
     for (path, source) in [
         ("go.mod", "module example.test/outer\n\ngo 1.27.3\n"),
+        (
+            "view.go",
+            "package outer\ntype ViewItem struct{}\nfunc (ViewItem) Prod() {}\ntype ViewWrapper struct {\n\tViewItem\n}\ntype ViewFields struct {\n\tField int\n}\n// Links [ViewFields.Field] and [ViewWrapper.Prod], but [ViewFields.Missing], [ViewItem.TestOnly], [TestViewOnly.Field] and [TestViewGlobal] are unavailable here.\nvar ProductionView ViewItem\nvar ProductionPromoted ViewWrapper\n",
+        ),
+        (
+            "view_test.go",
+            "package outer\nfunc (ViewItem) TestOnly() {}\nfunc (ViewItem) testPrivate() {}\ntype TestViewOnly struct { Field int }\nvar TestViewGlobal int\n// Links [ViewItem.TestOnly], [TestViewOnly.Field] and [TestViewGlobal].\nvar InternalView ViewItem\nvar InternalPromoted ViewWrapper\n",
+        ),
+        (
+            "external_view_test.go",
+            "package outer_test\nimport \"example.test/outer\"\n// Links [outer.ViewItem.TestOnly], [outer.TestViewOnly.Field] and [outer.TestViewGlobal].\nvar ExternalView outer.ViewItem\nvar ExternalPromoted outer.ViewWrapper\n",
+        ),
+        (
+            "client/view.go",
+            "package client\nimport \"example.test/outer\"\n// Links [outer.ViewFields.Field] and [outer.ViewWrapper.Prod], but [outer.ViewItem.TestOnly] is unavailable here.\nvar ImportedView outer.ViewItem\nvar ImportedPromoted outer.ViewWrapper\n",
+        ),
+        (
+            "dotclient/view.go",
+            "package dotclient\nimport . \"example.test/outer\"\n// Links [ViewFields.Field], [ViewItem.Prod] and [ViewFields].\nvar Imported ViewFields\nvar ImportedView ViewItem\nvar ImportedPromoted ViewWrapper\n",
+        ),
         (
             "generic.go",
             "package outer\nfunc Wrap[A, B any](f func() (A, B)) func() (A, B) { return f }\nvar Wrapped = Wrap(func() (int, string) { return 0, \"\" })\nvar Explicit = Wrap[int, string](func() (int, string) { return 0, \"\" })\n",
@@ -3295,7 +3317,7 @@ fn watched_file_changes_refresh_cross_package_state() {
         ),
         (
             "child/dep/types.go",
-            "package dep\ntype hidden struct { Inner int; Exported int }\nfunc (hidden) Hello() {}\ntype Inner struct { hidden }\n",
+            "package dep\ntype hidden struct { Inner int; Exported int }\nfunc (hidden) Hello() {}\ntype Inner struct { hidden }\ntype ArrayIndex int\nconst LastIndex ArrayIndex = 5\n",
         ),
         (
             "child/p/open.go",
@@ -3318,10 +3340,15 @@ fn watched_file_changes_refresh_cross_package_state() {
         "initialize",
         serde_json::json!({
             "rootUri": url::Url::from_directory_path(&nested_root).unwrap(),
-            "capabilities": {}, "initializationOptions": {"goroot": "", "fileWatch": false},
+            "capabilities": {"textDocument": {"semanticTokens": {
+                "requests": {"full": true}, "formats": ["relative"], "tokenModifiers": [],
+                "tokenTypes": ["namespace", "type", "function", "method", "variable", "property", "parameter", "keyword", "string", "number", "comment", "operator", "typeParameter"],
+            }}}, "initializationOptions": {"goroot": "", "fileWatch": false, "semanticTokens": true},
         }),
     );
     assert!(reply.get("result").is_some(), "{reply}");
+    let semantic_types =
+        reply["result"]["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"].clone();
     nested_server.notify("initialized", serde_json::json!({}));
     let generic_path = nested_root.join("generic.go");
     let generic_uri = url::Url::from_file_path(&generic_path).unwrap();
@@ -3437,6 +3464,228 @@ fn watched_file_changes_refresh_cross_package_state() {
             .is_some_and(|items| items.iter().any(|item| item["name"] == "Inner")),
         "nested view leaked into main symbols: {reply}"
     );
+    let relations = "package outer\ntype DataOnly interface { Data() any }\ntype WithError interface { error; DataOnly }\ntype PlainData struct{}\nfunc (PlainData) Data() any { return nil }\ntype ErrorData struct{}\nfunc (*ErrorData) Data() any { return nil }\nfunc (*ErrorData) Error() string { return \"\" }\ntype WrongData struct{}\nfunc (WrongData) Data() any { return nil }\nfunc (WrongData) Error() int { return 0 }\ntype Embedded struct { DataOnly }\ntype PointerEmbedded struct { *PlainData }\ntype GenericField[T any] struct{}\ntype GenericEmbedded struct { GenericField[int] }\nfunc useEmbedded(e Embedded) { _ = e.DataOnly }\n";
+    let relations_uri = url::Url::from_file_path(nested_root.join("relations.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": relations_uri, "languageId": "go", "version": 1, "text": relations,
+        }}),
+    );
+    let reply = nested_server.request("textDocument/implementation", serde_json::json!({
+        "textDocument": {"uri": relations_uri}, "position": position(relations, relations.find("WithError").unwrap()),
+    }));
+    let rows = reply["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("implementation result: {reply}"));
+    for (name, satisfies) in [
+        ("PlainData", false),
+        ("ErrorData", true),
+        ("WrongData", false),
+    ] {
+        let required = position(relations, relations.find(name).unwrap());
+        assert_eq!(
+            rows.iter().any(
+                |row| row["uri"] == relations_uri.as_str() && row["range"]["start"] == required
+            ),
+            satisfies,
+            "embedded universe method requirement was lost for {name}: {reply}"
+        );
+    }
+    for (needle, relative, count) in [
+        ("struct { DataOnly", "struct { ".len(), 2),
+        ("struct { *PlainData", "struct { *".len(), 1),
+        ("struct { GenericField[int]", "struct { ".len(), 1),
+    ] {
+        let reply = nested_server.request("textDocument/documentHighlight", serde_json::json!({
+            "textDocument": {"uri": relations_uri}, "position": position(relations, relations.find(needle).unwrap() + relative),
+        }));
+        let rows = reply["result"].as_array().expect("highlight result");
+        assert_eq!(
+            rows.len(),
+            count,
+            "implicit field identity was lost: {reply}"
+        );
+        assert!(
+            rows.iter().all(|row| row["kind"] == 2),
+            "embedded field should be read: {reply}"
+        );
+    }
+    for (needle, relative, expected) in [
+        ("struct { DataOnly", "struct { ".len(), "PlainData"),
+        ("struct { *PlainData", "struct { *".len(), "DataOnly"),
+    ] {
+        let reply = nested_server.request("textDocument/implementation", serde_json::json!({
+            "textDocument": {"uri": relations_uri}, "position": position(relations, relations.find(needle).unwrap() + relative),
+        }));
+        let expected = position(relations, relations.find(expected).unwrap());
+        assert!(
+            reply["result"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| {
+                    row["uri"] == relations_uri.as_str() && row["range"]["start"] == expected
+                })),
+            "implementation cursor should follow the embedded type: {reply}"
+        );
+    }
+    let arrays = "package p\nimport \"example.test/child/dep\"\nconst ( Slot = 2 + iota; NextSlot )\nvar Sparse = [...]int{dep.LastIndex: 10, 20, 1: 30}\nvar Grouped = [...]byte{NextSlot: 1}\nvar Empty = [...]int{}\nvar Fraction = [...]int{1.0: 1}\nvar Reverse = [...]int{7: 1, 2: 2, 3}\ntype SameLength [len(Sparse)]byte\nfunc locals() { const top = 5; values := [...]int{top: 1, 2}; _ = values; type item struct { N int }; local := [...]item{{}}; _ = local }\n";
+    let arrays_uri = url::Url::from_file_path(nested_root.join("child/p/arrays.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": arrays_uri, "languageId": "go", "version": 1, "text": arrays,
+        }}),
+    );
+    for (name, expected) in [
+        ("Sparse", "var Sparse [7]int"),
+        ("Grouped", "var Grouped [4]byte"),
+        ("Empty", "var Empty [0]int"),
+        ("Fraction", "var Fraction [2]int"),
+        ("Reverse", "var Reverse [8]int"),
+        ("SameLength", "type SameLength [7]byte"),
+        ("values", "var values [7]int"),
+        ("local :=", "var local [1]item"),
+    ] {
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": arrays_uri}, "position": position(arrays, arrays.find(name).unwrap()),
+        }));
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "array extent or lexical identity was lost: {reply}"
+        );
+    }
+    for (version, initializer) in [
+        "[...]int{1: 1, 1: 2}".to_owned(),
+        "[...]int{2: 1, 2, 3: 3}".to_owned(),
+        "[...]int{-1: 1}".to_owned(),
+        "[...]int{9223372036854775807: 1}".to_owned(),
+        "[...]int{len([]int{}): 1}".to_owned(),
+        format!("[...]int{{{}}}", vec!["1"; 257].join(",")),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let source = format!("{arrays}\nvar Broken = {initializer}\n");
+        nested_server.notify("textDocument/didChange", serde_json::json!({
+            "textDocument": {"uri": arrays_uri, "version": version + 2}, "contentChanges": [{"text": source}],
+        }));
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": arrays_uri}, "position": position(&source, source.find("Broken").unwrap()),
+        }));
+        assert!(
+            reply["result"].is_null(),
+            "invalid/unavailable extent fell back to a fabricated type: {reply}"
+        );
+    }
+    for (filename, test_methods, private_methods) in [
+        ("view.go", false, false),
+        ("view_test.go", true, true),
+        ("external_view_test.go", true, false),
+        ("client/view.go", false, false),
+        ("dotclient/view.go", false, false),
+    ] {
+        let path = nested_root.join(filename);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let uri = url::Url::from_file_path(path).unwrap();
+        nested_server.notify(
+            "textDocument/didOpen",
+            serde_json::json!({"textDocument": {
+                "uri": uri, "languageId": "go", "version": 1, "text": text,
+            }}),
+        );
+        for name in ["ViewItem", "ViewWrapper"] {
+            let reply = nested_server.request("textDocument/hover", serde_json::json!({
+                "textDocument": {"uri": uri}, "position": position(&text, text.rfind(name).unwrap()),
+            }));
+            let content = reply["result"]["contents"]["value"]
+                .as_str()
+                .unwrap_or_default();
+            assert!(
+                content.contains("Prod()"),
+                "production method missing: {reply}"
+            );
+            assert_eq!(
+                content.contains("TestOnly()"),
+                test_methods,
+                "wrong test view for {filename}/{name}: {reply}"
+            );
+            assert_eq!(
+                content.contains("testPrivate()"),
+                private_methods,
+                "wrong private visibility for {filename}/{name}: {reply}"
+            );
+        }
+    }
+    for (filename, needle, kind) in [
+        ("view.go", "ViewFields.Field", Some("property")),
+        ("view.go", "ViewWrapper.Prod", Some("method")),
+        ("view.go", "ViewFields.Missing", None),
+        ("view.go", "ViewItem.TestOnly", None),
+        ("view.go", "TestViewOnly.Field", None),
+        ("view.go", "TestViewGlobal", None),
+        ("dotclient/view.go", "ViewFields.Field", None),
+        ("dotclient/view.go", "ViewItem.Prod", None),
+        ("dotclient/view.go", "ViewFields", None),
+        ("client/view.go", "outer.ViewFields.Field", Some("property")),
+        ("client/view.go", "outer.ViewWrapper.Prod", Some("method")),
+        ("client/view.go", "outer.ViewItem.TestOnly", None),
+        ("view_test.go", "ViewItem.TestOnly", Some("method")),
+        ("view_test.go", "TestViewOnly.Field", Some("property")),
+        ("view_test.go", "TestViewGlobal", Some("variable")),
+        (
+            "external_view_test.go",
+            "outer.ViewItem.TestOnly",
+            Some("method"),
+        ),
+        (
+            "external_view_test.go",
+            "outer.TestViewOnly.Field",
+            Some("property"),
+        ),
+        (
+            "external_view_test.go",
+            "outer.TestViewGlobal",
+            Some("variable"),
+        ),
+    ] {
+        let path = nested_root.join(filename);
+        let source = std::fs::read_to_string(&path).unwrap();
+        let uri = url::Url::from_file_path(path).unwrap();
+        let reply = nested_server.request(
+            "textDocument/semanticTokens/full",
+            serde_json::json!({
+                "textDocument": {"uri": uri},
+            }),
+        );
+        let data = reply["result"]["data"]
+            .as_array()
+            .unwrap_or_else(|| panic!("missing semantic tokens: {reply}"));
+        let reference = format!("[{needle}]");
+        let offset =
+            source.find(&reference).unwrap() + 1 + needle.rfind('.').map_or(0, |offset| offset + 1);
+        let expected = position(&source, offset);
+        let mut line = 0;
+        let mut character = 0;
+        let mut found = None;
+        for token in data.chunks_exact(5) {
+            let delta_line = token[0].as_u64().unwrap();
+            line += delta_line;
+            character = if delta_line == 0 {
+                character + token[1].as_u64().unwrap()
+            } else {
+                token[1].as_u64().unwrap()
+            };
+            if expected == serde_json::json!({"line": line, "character": character}) {
+                found = semantic_types[token[3].as_u64().unwrap() as usize].as_str();
+            }
+        }
+        assert_eq!(
+            found, kind,
+            "wrong doc member token for {filename}/{needle}: {reply}"
+        );
+    }
     nested_server.request("shutdown", Value::Null);
     nested_server.notify("exit", Value::Null);
     let deadline = Instant::now() + Duration::from_secs(5);

@@ -6,6 +6,7 @@ mod call;
 mod callable;
 pub(crate) mod callable_signature;
 pub(crate) mod classify;
+mod composite;
 mod conversion;
 mod generics;
 mod globals;
@@ -32,6 +33,7 @@ use crate::syntax::{Expr, ExprId, ExprKind};
 use crate::text::SourceMap;
 use crate::workspace::Workspace;
 pub(crate) use binding::binding_detail;
+pub(crate) use composite::{inferred_array_header, inferred_array_literal};
 pub(crate) use iteration::interface_selector;
 use scope::AnnotationType;
 pub(crate) use scoped::ScopedType;
@@ -639,6 +641,11 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
                 literal_type: Some(ty),
                 ..
             } => {
+                if self.inferred_array_element(*ty).is_some() {
+                    let mut arena = TypeArena::new(self.workspace);
+                    let (operand, _) = self.inferred_array_operand(&mut arena, id)?;
+                    return arena.render_resolved(operand.ty, self.file);
+                }
                 let span = &self.expressions[ty.0].span;
                 let annotation = self.text(span);
                 if !type_names_in_scope(annotation, self.locals, self.base + span.start) {

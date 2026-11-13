@@ -1186,7 +1186,9 @@ fn initializer_expression_type(
         } => {
             let node = parsed.nodes.get(literal_type.0)?;
             let text = text.get(node.span.clone())?;
-            Some(normalize_type(text))
+            crate::analysis::check::inferred_array_header(text)
+                .is_none()
+                .then(|| normalize_type(text))
         }
         crate::syntax::ExprKind::Call { .. } => {
             call_result_type(context, context.file(), text, 0, 1, false)
@@ -2406,14 +2408,8 @@ fn array_literal_length(context: &Context<'_>, origin: &Path, name: &str) -> Opt
     let spec = source.get(declaration)?;
     let assign = crate::syntax::Lexer::new(spec).find(|token| token.kind == TokenKind::Assign)?;
     let value = spec.get(assign.span.end..)?.trim_start();
-    if let Some(rest) = value.strip_prefix("[...]") {
-        let brace = rest.find('{')?;
-        let close = matching_brace(rest, brace)?;
-        let elements: Vec<&str> = split_top_level(&rest[brace + 1..close], ',')
-            .into_iter()
-            .filter(|element| !element.trim().is_empty())
-            .collect();
-        return Some(elements.len());
+    if let Some(array) = crate::analysis::check::inferred_array_literal(workspace, file, value) {
+        return usize::try_from(array?.length).ok();
     }
     let length = value.strip_prefix('[')?.split(']').next()?.trim();
     (!length.is_empty() && length.bytes().all(|byte| byte.is_ascii_digit()))

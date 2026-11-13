@@ -77,7 +77,7 @@ impl Workspace {
         if production_file(candidate) {
             return true;
         }
-        if file.parent() != candidate.parent() {
+        if production_file(file) || file.parent() != candidate.parent() {
             return false;
         }
         let (Some(consumer), Some(target)) = (self.files.get(file), self.files.get(candidate))

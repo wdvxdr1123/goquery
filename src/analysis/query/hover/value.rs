@@ -203,7 +203,11 @@ pub(super) fn default_type(text: &str) -> Option<String> {
             ..
         } => {
             let span = &parsed.nodes.get(literal_type.0)?.span;
-            Some(text.get(span.clone())?.trim().to_owned())
+            let annotation = text.get(span.clone())?.trim();
+            // Extents require semantic constant/index checks, not a spelling.
+            crate::analysis::check::inferred_array_header(annotation)
+                .is_none()
+                .then(|| annotation.to_owned())
         }
         _ => None,
     }

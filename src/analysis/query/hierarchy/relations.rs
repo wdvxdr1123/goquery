@@ -194,7 +194,7 @@ impl<'a> Search<'a> {
         }
         let (concrete_file, concrete_owner) = (concrete.file, concrete.owner);
         let (interface_file, interface_owner) = (interface.file, interface.owner);
-        interface.members.iter().all(|(id, required)| {
+        let indexed_match = interface.members.iter().all(|(id, required)| {
             let concrete_member = concrete.members[id];
             // A cheap shape mismatch rejects before either side is rendered.
             if let (Some(left), Some(right)) = (self.shape(concrete_member), self.shape(*required))
@@ -209,7 +209,49 @@ impl<'a> Search<'a> {
                     self.signature(interface_file, interface_owner, *required)
                         .is_some_and(|right| signature::matches(&left, &right))
                 })
-        })
+        });
+        if !indexed_match {
+            return false;
+        }
+        // Indexed declarations cannot represent universe methods (notably
+        // embedded error.Error). Check completeness with the shared typed
+        // interface reader before accepting a metadata-only proof.
+        if interface
+            .owner
+            .type_info
+            .as_ref()
+            .is_some_and(|info| info.target.is_some() || !info.embedded.is_empty())
+        {
+            let mut arena = crate::analysis::types::TypeArena::new(self.workspace);
+            if let Some(required) = arena.parse(interface.file, &interface.owner.name)
+                && arena.interface_methods_covered(required, |origin, name| {
+                    interface
+                        .members
+                        .contains_key(&self.workspace.member_id(origin, name))
+                }) == Some(false)
+            {
+                // Missing indexed requirements need their signatures proved as
+                // well. Concrete searches include pointer receiver methods;
+                // interfaces use their value method set without a pointer.
+                let spelling = if concrete.abstract_ {
+                    concrete.owner.name.clone()
+                } else {
+                    format!("*{}", concrete.owner.name)
+                };
+                return arena.parse(concrete.file, &spelling).and_then(|ty| {
+                    arena.assign_value(
+                        crate::analysis::types::Operand {
+                            mode: crate::analysis::types::Mode::Value,
+                            ty,
+                            value: None,
+                        },
+                        required,
+                        self.workspace.integer_bits()?,
+                    )
+                }) == Some(true);
+            }
+        }
+        indexed_match
     }
 
     /// Query-local method shape: only the parameter/result arity is needed to

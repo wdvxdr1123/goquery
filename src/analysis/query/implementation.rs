@@ -76,12 +76,13 @@ impl<'a> Context<'a> {
             .find(|symbol| symbol.start == selection.start && symbol.end == selection.end)
         {
             classify_symbol(self.workspace, file, symbol)?
-        } else if let Some(member) = self.workspace.member_declaration_target(
-            file,
-            source,
-            &selection,
-            &SourceMap::new(source),
-        ) {
+        } else if let Some(member) = self
+            .workspace
+            .member_declaration_target(file, source, &selection, &SourceMap::new(source))
+            // Implementation queries on an embedding follow its written type;
+            // highlight queries use the implicit field declaration instead.
+            .filter(|member| !member.embedded)
+        {
             classify_member(member)?
         } else {
             let analysis = SourceAnalysis::new(source, stub)?;

@@ -53,6 +53,10 @@ impl Workspace {
         if !self.nested_modules.contains_key(&root)
             && self.nested_modules.len() >= MAX_NESTED_MODULES
         {
+            eprintln!(
+                "additional module view: module limit exceeded ({MAX_NESTED_MODULES}); {} remains incomplete",
+                file.display()
+            );
             return false;
         }
         self.nested_modules
@@ -77,6 +81,7 @@ impl Workspace {
             })
             .flat_map(|(_, stub)| stub.imports.iter().map(|import| import.path.clone()))
             .collect();
+        let mut limited = false;
         while let Some(import) = queue.pop_front() {
             let Some(directory) = nested_directory(&root, &module, &import) else {
                 continue;
@@ -85,9 +90,18 @@ impl Workspace {
                 continue;
             }
             if self.nested_directories.len() >= MAX_NESTED_DIRECTORIES {
+                limited = true;
                 break;
             }
-            queue.extend(self.load_nested_directory(&directory));
+            let (imports, exhausted) = self.load_nested_directory(&directory);
+            limited |= exhausted;
+            queue.extend(imports);
+        }
+        if limited {
+            eprintln!(
+                "additional module view: admission budget exhausted for {}; dependency metadata may be incomplete (limits: {MAX_NESTED_DIRECTORIES} directories, {MAX_NESTED_FILES} files, {MAX_NESTED_BYTES} source bytes)",
+                file.display()
+            );
         }
         self.rebuild_package_names();
         true
@@ -149,9 +163,9 @@ impl Workspace {
 
     /// Index one module-local package directory (production files only) and
     /// return the module-local imports for the caller's bounded worklist.
-    fn load_nested_directory(&mut self, directory: &Path) -> Vec<String> {
+    fn load_nested_directory(&mut self, directory: &Path) -> (Vec<String>, bool) {
         let Ok(entries) = std::fs::read_dir(directory) else {
-            return Vec::new();
+            return (Vec::new(), false);
         };
         let mut paths: Vec<PathBuf> = entries
             .filter_map(Result::ok)
@@ -163,18 +177,21 @@ impl Workspace {
             .collect();
         paths.sort();
         let mut imports = Vec::new();
+        let mut limited = false;
         for path in paths {
             if let Some(stub) = self.files.get(&path) {
                 imports.extend(stub.imports.iter().map(|import| import.path.clone()));
                 continue;
             }
             if self.nested_files.len() >= MAX_NESTED_FILES {
+                limited = true;
                 break;
             }
             let Some(source) = self.source(&path) else {
                 continue;
             };
             if self.nested_bytes + source.len() > MAX_NESTED_BYTES {
+                limited = true;
                 break;
             }
             let Some(stub) = self.nested_file_from(&path, &source) else {
@@ -188,7 +205,7 @@ impl Workspace {
             self.nested_files.insert(path);
         }
         self.nested_directories.insert(directory.to_path_buf());
-        imports
+        (imports, limited)
     }
 
     /// Index an additional view: the build target still applies, but the
