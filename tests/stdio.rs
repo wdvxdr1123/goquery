@@ -2374,7 +2374,15 @@ fn watched_file_changes_refresh_cross_package_state() {
     }
 
     impl Server {
-        fn new(mut child: std::process::Child) -> Self {
+        fn new(child: std::process::Child) -> Self {
+            Self::spawn(child, true)
+        }
+
+        fn manual(child: std::process::Child) -> Self {
+            Self::spawn(child, false)
+        }
+
+        fn spawn(mut child: std::process::Child, auto_reply: bool) -> Self {
             let input = Arc::new(Mutex::new(child.stdin.take().expect("server stdin")));
             let stdout = child.stdout.take().expect("server stdout");
             let requests = Arc::new(Mutex::new(Vec::new()));
@@ -2396,13 +2404,15 @@ fn watched_file_changes_refresh_cross_package_state() {
                                 .expect("request lock")
                                 .push(message.clone());
                         }
-                        let response = serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": Value::Null,
-                        });
-                        let mut input = reader_input.lock().expect("stdin lock");
-                        let _ = jsonrpc2::send(&mut *input, response);
+                        if auto_reply {
+                            let response = serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": Value::Null,
+                            });
+                            let mut input = reader_input.lock().expect("stdin lock");
+                            let _ = jsonrpc2::send(&mut *input, response);
+                        }
                     } else {
                         let _ = sender.send(message);
                     }
@@ -2415,6 +2425,14 @@ fn watched_file_changes_refresh_cross_package_state() {
                 requests,
                 next_id: 0,
             }
+        }
+
+        fn reply(&self, request: &Value) {
+            self.send(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": Value::Null,
+            }));
         }
 
         fn send(&self, message: &Value) {
@@ -3181,6 +3199,110 @@ fn watched_file_changes_refresh_cross_package_state() {
     }
     let _ = std::fs::remove_dir_all(&ondemand_root);
     let _ = std::fs::remove_dir_all(&root);
+
+    // Clients like Zed pipeline didOpen and document queries immediately after
+    // `initialized` before replying to `client/registerCapability`. Dynamic
+    // registration and folder re-registration must not hold the concurrency
+    // slot while waiting on the client response.
+    let pipelined_root =
+        std::env::temp_dir().join(format!("goquery-pipelined-watch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&pipelined_root);
+    copy_tree(&base.join("tests/fixtures/watched-files"), &pipelined_root);
+    let mut pipelined = Server::manual(
+        Command::new(env!("CARGO_BIN_EXE_goquery"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .env("GOWORK", "off")
+            .env(
+                "GOMODCACHE",
+                std::env::temp_dir().join("goquery-pipelined-modcache"),
+            )
+            .env_remove("GOQUERY_DISABLE_DIAG")
+            .spawn()
+            .expect("spawn pipelined server"),
+    );
+    let pipelined_root_uri = url::Url::from_directory_path(&pipelined_root)
+        .expect("pipelined root URI")
+        .to_string();
+    let reply = pipelined.request(
+        "initialize",
+        serde_json::json!({
+            "processId": std::process::id(),
+            "rootUri": pipelined_root_uri,
+            "workspaceFolders": [{"uri": pipelined_root_uri, "name": "pipelined"}],
+            "capabilities": {
+                "workspace": {
+                    "workspaceFolders": true,
+                    "didChangeWatchedFiles": {"dynamicRegistration": true},
+                },
+                "textDocument": {},
+            },
+            "initializationOptions": {"goroot": "", "pollIntervalMs": 0},
+        }),
+    );
+    assert!(reply.get("result").is_some(), "{reply}");
+    let pipelined_main_path = pipelined_root.join("main.go");
+    let pipelined_main = std::fs::read_to_string(&pipelined_main_path).expect("pipelined main");
+    let pipelined_main_uri = url::Url::from_file_path(&pipelined_main_path)
+        .expect("pipelined main URI")
+        .to_string();
+    pipelined.notify("initialized", serde_json::json!({}));
+    pipelined.notify(
+        "textDocument/didOpen",
+        serde_json::json!({
+            "textDocument": {
+                "uri": pipelined_main_uri,
+                "languageId": "go",
+                "version": 1,
+                "text": pipelined_main,
+            },
+        }),
+    );
+    let reply = pipelined.request(
+        "textDocument/documentSymbol",
+        serde_json::json!({"textDocument": {"uri": pipelined_main_uri}}),
+    );
+    assert!(reply["result"].is_array(), "{reply}");
+    let registration = pipelined.wait_request("client/registerCapability");
+    pipelined.reply(&registration);
+
+    pipelined.notify(
+        "workspace/didChangeWorkspaceFolders",
+        serde_json::json!({
+            "event": {
+                "added": [{"uri": pipelined_root_uri, "name": "pipelined-again"}],
+                "removed": [],
+            },
+        }),
+    );
+    let reply = pipelined.request(
+        "textDocument/documentSymbol",
+        serde_json::json!({"textDocument": {"uri": pipelined_main_uri}}),
+    );
+    assert!(reply["result"].is_array(), "{reply}");
+    let unregistration = pipelined.wait_request("client/unregisterCapability");
+    pipelined.reply(&unregistration);
+    let re_registration = pipelined.wait_request("client/registerCapability");
+    pipelined.reply(&re_registration);
+
+    let reply = pipelined.request("shutdown", Value::Null);
+    assert!(reply.get("result").is_some(), "{reply}");
+    pipelined.notify("exit", Value::Null);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if pipelined
+            .child
+            .try_wait()
+            .expect("wait pipelined server")
+            .is_some()
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "pipelined server did not exit");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = std::fs::remove_dir_all(&pipelined_root);
 }
 
 // ---------------------------------------------------------------------------

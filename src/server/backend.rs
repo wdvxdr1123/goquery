@@ -3,12 +3,13 @@ use super::capabilities;
 use super::transport::ProcessStatus;
 use crate::features::{self, CallDirection, DocumentQuery, Query, TypeDirection};
 use crate::workspace::{Workspace, WorkspaceEvent};
+use futures::lock::Mutex as AsyncMutex;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tower_lsp::LanguageServer;
 use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
@@ -59,9 +60,9 @@ pub(super) struct Backend {
     /// Sampled once: GOQUERY_DISABLE_DIAG keeps all push diagnostics off.
     diagnostics_enabled: bool,
     /// Whether `workspace/didChangeWatchedFiles` was registered successfully.
-    /// Re-registered when workspace folders change so clients that scope
-    /// watchers to the folders present at registration include the new ones.
-    watched_files_registered: AtomicBool,
+    /// Guarded by an async mutex so background registration and folder-change
+    /// re-registration run in order without holding the request concurrency slot.
+    watched_files_registered: Arc<AsyncMutex<bool>>,
     /// Start of the backend; on-demand poll throttling uses elapsed millis.
     started: std::time::Instant,
     /// Milliseconds epoch of the last request-triggered poll. Kept separate from
@@ -129,6 +130,17 @@ fn watched_files_registration() -> lsp::Registration {
     }
 }
 
+async fn register_watched_files(client: &tower_lsp::Client) -> bool {
+    if let Err(error) = client
+        .register_capability(vec![watched_files_registration()])
+        .await
+    {
+        eprintln!("file watch registration: {error}");
+        return false;
+    }
+    true
+}
+
 fn error((code, message): (i32, String)) -> Error {
     Error {
         code: ErrorCode::from(i64::from(code)),
@@ -152,7 +164,7 @@ impl Backend {
             workspace: Arc::new(Mutex::new(Workspace::default())),
             status,
             diagnostics_enabled: std::env::var_os("GOQUERY_DISABLE_DIAG").is_none(),
-            watched_files_registered: AtomicBool::new(false),
+            watched_files_registered: Arc::new(AsyncMutex::new(false)),
             started: std::time::Instant::now(),
             last_ondemand_poll: AtomicU64::new(0),
             last_semantic_request: AtomicU64::new(0),
@@ -287,49 +299,43 @@ impl Backend {
             .unwrap_or(false)
     }
 
-    /// Register file watching once; success is cached for re-registration.
-    async fn register_watched_files(&self) {
-        if let Err(error) = self
-            .client
-            .register_capability(vec![watched_files_registration()])
-            .await
-        {
-            eprintln!("file watch registration: {error}");
-            return;
-        }
-        self.watched_files_registered.store(true, Ordering::Relaxed);
+    /// Queue initial file-watch registration off the notification handler.
+    /// `ConcurrencyLimit(..., 1)` pauses stdin admission while a handler is in
+    /// flight, so awaiting `client/registerCapability` inside `initialized`
+    /// deadlocks clients (such as Zed) that send `didOpen` or queries before
+    /// replying to the server request.
+    fn spawn_register_watched_files(&self) {
+        let client = self.client.clone();
+        let registered = Arc::clone(&self.watched_files_registered);
+        tokio::spawn(async move {
+            let mut registered = registered.lock().await;
+            if *registered {
+                return;
+            }
+            *registered = register_watched_files(&client).await;
+        });
     }
 
     /// Clients may scope a file-watch registration to the workspace folders that
     /// existed when it was created. After folders change, replace the
-    /// registration so newly added folders are watched too.
-    async fn re_register_watched_files(&self) {
-        if !self.watched_files_registered.load(Ordering::Relaxed) {
-            self.register_watched_files().await;
-            return;
-        }
-        let unregistration = lsp::Unregistration {
-            id: WATCHED_FILES_REGISTRATION_ID.into(),
-            method: "workspace/didChangeWatchedFiles".into(),
-        };
-        if let Err(error) = self
-            .client
-            .unregister_capability(vec![unregistration])
-            .await
-        {
-            eprintln!("file watch unregistration: {error}");
-        }
-        if let Err(error) = self
-            .client
-            .register_capability(vec![watched_files_registration()])
-            .await
-        {
-            eprintln!("file watch registration: {error}");
-            self.watched_files_registered
-                .store(false, Ordering::Relaxed);
-            return;
-        }
-        self.watched_files_registered.store(true, Ordering::Relaxed);
+    /// registration off the notification handler so newly added folders are
+    /// watched too without blocking stdin.
+    fn spawn_re_register_watched_files(&self) {
+        let client = self.client.clone();
+        let registered = Arc::clone(&self.watched_files_registered);
+        tokio::spawn(async move {
+            let mut registered = registered.lock().await;
+            if *registered {
+                let unregistration = lsp::Unregistration {
+                    id: WATCHED_FILES_REGISTRATION_ID.into(),
+                    method: "workspace/didChangeWatchedFiles".into(),
+                };
+                if let Err(error) = client.unregister_capability(vec![unregistration]).await {
+                    eprintln!("file watch unregistration: {error}");
+                }
+            }
+            *registered = register_watched_files(&client).await;
+        });
     }
 
     fn with_workspace<R>(
@@ -459,7 +465,7 @@ impl LanguageServer for Backend {
             );
             return;
         }
-        self.register_watched_files().await;
+        self.spawn_register_watched_files();
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -536,7 +542,7 @@ impl LanguageServer for Backend {
             return;
         }
         if self.watched_files_dynamic() {
-            self.re_register_watched_files().await;
+            self.spawn_re_register_watched_files();
         }
     }
 
