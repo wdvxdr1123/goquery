@@ -236,7 +236,7 @@ fn declares(declaration: &str, pattern: &Pattern<'_>) -> bool {
     }
 }
 
-/// Interface methods appear only in their type's method-name list.
+/// Interface methods may be individual API records or a type method-name list.
 fn interface_method(declaration: &str, pattern: &Pattern<'_>) -> bool {
     let Some(rest) = declaration.strip_prefix("type ") else {
         return false;
@@ -249,6 +249,9 @@ fn interface_method(declaration: &str, pattern: &Pattern<'_>) -> bool {
     };
     if owner != receiver || !rest.trim_start().starts_with("interface") {
         return false;
+    }
+    if let Some(method) = rest.trim_start().strip_prefix("interface, ") {
+        return symbol_name(method, '(', pattern.name);
     }
     let Some(open) = declaration.find('{') else {
         return false;

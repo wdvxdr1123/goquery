@@ -134,6 +134,9 @@ pub(super) fn promoted_fields(
     }
     let mut rows = Vec::new();
     for candidate in candidates {
+        if candidate.path.is_empty() {
+            continue; // direct fields suppress promoted names but aren't table rows
+        }
         let Some((_, depth, count)) = minimum.iter().find(|(name, _, _)| name == &candidate.name)
         else {
             continue;
@@ -191,13 +194,8 @@ fn collect(
             format!("{prefix}.{}", frame.name)
         };
         let candidate_path = prefix.to_owned();
-        if frame.embedded
-            && (!crate::syntax::is_exported_name(&frame.name)
-                && !super::same_package(context, context.file(), file))
-        {
-            // Inaccessible intermediate embedding cannot promote members.
-            continue;
-        }
+        // An unexported embedding can still promote exported fields. Filter
+        // leaf field visibility below rather than rejecting the embedding path.
         if frame.embedded
             && let Some((target_file, target)) =
                 embedded_target(context.workspace(), file, &frame.annotation)
@@ -221,7 +219,7 @@ fn collect(
             );
             visiting.pop();
         }
-        if prefix.is_empty() || frame.name == "_" {
+        if frame.name == "_" {
             continue;
         }
         if !crate::syntax::is_exported_name(&frame.name) {
@@ -233,8 +231,13 @@ fn collect(
                 continue;
             }
         }
-        let Some(type_text) = super::render::type_text(context, file, &frame.annotation) else {
-            continue;
+        let type_text = if prefix.is_empty() {
+            String::new() // direct shadowing needs identity, not type rendering
+        } else {
+            let Some(text) = super::render::type_text(context, file, &frame.annotation) else {
+                continue;
+            };
+            text
         };
         out.push(Candidate {
             name: frame.name,

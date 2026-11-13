@@ -3275,6 +3275,177 @@ fn watched_file_changes_refresh_cross_package_state() {
         let _ = std::fs::remove_dir_all(&poll_root);
     }
 
+    // An opened file without imports still needs the imports of admitted
+    // siblings in an unselected nested module, including promoted fields.
+    let nested_root =
+        std::env::temp_dir().join(format!("goquery-nested-sibling-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&nested_root);
+    std::fs::create_dir_all(nested_root.join("child/p")).unwrap();
+    std::fs::create_dir_all(nested_root.join("child/dep")).unwrap();
+    for (path, source) in [
+        ("go.mod", "module example.test/outer\n\ngo 1.27.3\n"),
+        (
+            "generic.go",
+            "package outer\nfunc Wrap[A, B any](f func() (A, B)) func() (A, B) { return f }\nvar Wrapped = Wrap(func() (int, string) { return 0, \"\" })\nvar Explicit = Wrap[int, string](func() (int, string) { return 0, \"\" })\n",
+        ),
+        ("child/go.mod", "module example.test/child\n\ngo 1.27.3\n"),
+        (
+            "child/p/types.go",
+            "package p\nimport \"example.test/child/dep\"\ntype Carrier struct { dep.Inner }\ntype CarrierAlias = Carrier\n",
+        ),
+        (
+            "child/dep/types.go",
+            "package dep\ntype hidden struct { Inner int; Exported int }\nfunc (hidden) Hello() {}\ntype Inner struct { hidden }\n",
+        ),
+        (
+            "child/p/open.go",
+            "package p\nvar Item Carrier\nvar Other CarrierAlias\n",
+        ),
+    ] {
+        std::fs::write(nested_root.join(path), source).unwrap();
+    }
+    let mut nested_server = Server::new(
+        Command::new(env!("CARGO_BIN_EXE_goquery"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .env("GOWORK", "off")
+            .env("GOMODCACHE", nested_root.join("modcache"))
+            .spawn()
+            .unwrap(),
+    );
+    let reply = nested_server.request(
+        "initialize",
+        serde_json::json!({
+            "rootUri": url::Url::from_directory_path(&nested_root).unwrap(),
+            "capabilities": {}, "initializationOptions": {"goroot": "", "fileWatch": false},
+        }),
+    );
+    assert!(reply.get("result").is_some(), "{reply}");
+    nested_server.notify("initialized", serde_json::json!({}));
+    let generic_path = nested_root.join("generic.go");
+    let generic_uri = url::Url::from_file_path(&generic_path).unwrap();
+    let generic_source = std::fs::read_to_string(generic_path).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": generic_uri, "languageId": "go", "version": 1, "text": generic_source,
+        }}),
+    );
+    for name in ["Wrapped", "Explicit"] {
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": generic_uri}, "position": position(&generic_source, generic_source.find(name).unwrap()),
+        }));
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(&format!("var {name} func() (int, string)"))),
+            "generic callable inference failed: {reply}"
+        );
+    }
+    let invalid_generic =
+        format!("{generic_source}\nfunc Plain() int {{ return 0 }}\nvar Broken = Plain[int]()\n");
+    nested_server.notify("textDocument/didChange", serde_json::json!({
+        "textDocument": {"uri": generic_uri, "version": 2}, "contentChanges": [{"text": invalid_generic}],
+    }));
+    let reply = nested_server.request("textDocument/hover", serde_json::json!({
+        "textDocument": {"uri": generic_uri}, "position": position(&invalid_generic, invalid_generic.find("Broken").unwrap()),
+    }));
+    assert!(
+        reply["result"].is_null(),
+        "illegal instantiation acquired a fabricated type: {reply}"
+    );
+    nested_server.notify("textDocument/didChange", serde_json::json!({
+        "textDocument": {"uri": generic_uri, "version": 3}, "contentChanges": [{"text": generic_source}],
+    }));
+    let local_source = format!(
+        "{generic_source}\nfunc localTypes() {{\n\ttype sample struct {{\n\t\tCount int\n\t}}\n\tsamples := make([]sample, 2)\n\tfor _, want := range samples {{ _ = want }}\n\t_ = samples\n\ttype tagged struct {{\n\t\tData string `first\n\t\t\tkeep\nlast`\n\t}}\n}}\n"
+    );
+    nested_server.notify("textDocument/didChange", serde_json::json!({
+        "textDocument": {"uri": generic_uri, "version": 4}, "contentChanges": [{"text": local_source}],
+    }));
+    for (offset, expected) in [
+        (
+            local_source.find("type sample").unwrap() + 5,
+            "type sample struct {\n\tCount int\n}",
+        ),
+        (
+            local_source.find("samples :=").unwrap(),
+            "var samples []sample",
+        ),
+        (local_source.find("want :=").unwrap(), "var want sample"),
+        (
+            local_source.find("type tagged").unwrap() + 5,
+            "`first\n\t\t\tkeep\nlast`",
+        ),
+    ] {
+        let reply = nested_server.request(
+            "textDocument/hover",
+            serde_json::json!({
+                "textDocument": {"uri": generic_uri}, "position": position(&local_source, offset),
+            }),
+        );
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "local type presentation/identity lost: {reply}"
+        );
+    }
+    let nested_uri = url::Url::from_file_path(nested_root.join("child/p/open.go")).unwrap();
+    let nested_source = "package p\nvar Item Carrier\nvar Other CarrierAlias\n";
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": nested_uri, "languageId": "go", "version": 1, "text": nested_source,
+        }}),
+    );
+    let reply = nested_server.request("textDocument/hover", serde_json::json!({
+        "textDocument": {"uri": nested_uri}, "position": position(nested_source, nested_source.find("Carrier").unwrap()),
+    }));
+    let text = reply["result"]["contents"]["value"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        text.contains("Exported") && text.contains("through Inner"),
+        "missing sibling import promotion: {reply}"
+    );
+    assert!(
+        text.contains("Hello()"),
+        "exported method through private embedding was lost: {reply}"
+    );
+    let reply = nested_server.request("textDocument/hover", serde_json::json!({
+        "textDocument": {"uri": nested_uri}, "position": position(nested_source, nested_source.find("CarrierAlias").unwrap()),
+    }));
+    assert!(
+        reply["result"]["contents"]["value"]
+            .as_str()
+            .is_some_and(|text| text.contains("Hello()")),
+        "alias lost its underlying method set: {reply}"
+    );
+    assert!(
+        !text.lines().any(|line| {
+            let mut words = line.split_whitespace();
+            words.next() == Some("Inner") && words.next() == Some("int")
+        }),
+        "direct embedding did not shadow the nested same-name field: {reply}"
+    );
+    let reply = nested_server.request("workspace/symbol", serde_json::json!({"query": "Inner"}));
+    assert!(
+        !reply["result"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["name"] == "Inner")),
+        "nested view leaked into main symbols: {reply}"
+    );
+    nested_server.request("shutdown", Value::Null);
+    nested_server.notify("exit", Value::Null);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while nested_server.child.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline, "nested server did not exit");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = std::fs::remove_dir_all(&nested_root);
+
     // File watch budgets: an explicit low limit logs an actionable error and
     // never falls back to polling. Raised/unlimited budgets cover both roots.
     let limits_root =

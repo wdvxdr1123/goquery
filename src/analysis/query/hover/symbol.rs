@@ -262,9 +262,20 @@ fn type_symbol(
     {
         content.extra.push(promoted);
     }
-    if !symbol.alias
-        && let Some(methods) = method_lines(context, origin, symbol, source)
-    {
+    let methods = if symbol.alias {
+        workspace
+            .embedded_target(origin, &symbol.name)
+            .and_then(|(file, owner)| {
+                if owner.generic {
+                    return None;
+                }
+                let source = declaration_source(context, file)?;
+                method_lines(context, file, owner, source.text())
+            })
+    } else {
+        method_lines(context, origin, symbol, source)
+    };
+    if let Some(methods) = methods {
         content.extra.push(methods);
     }
     content.doc = attach(
@@ -550,10 +561,8 @@ fn collect_promoted_methods(
         if !frame.embedded {
             continue;
         }
-        let same_package = super::same_package(context, consumer, file);
-        if !crate::syntax::is_exported_name(&frame.name) && !same_package {
-            continue;
-        }
+        // Exported methods remain promoted through unexported embeddings.
+        // Visibility is checked on each resulting method, not on the path.
         let annotation = frame.annotation.trim().trim_start_matches('*').trim();
         let Some(name) = annotation.split('[').next().map(str::trim) else {
             continue;
@@ -930,12 +939,7 @@ fn canonical_declaration_text(text: &str) -> String {
             }
             if !comment_attached(&lines, end) {
                 index = end;
-                if output
-                    .last()
-                    .is_some_and(|line| !line.trim().is_empty() && !line.trim_end().ends_with('{'))
-                {
-                    output.push("");
-                }
+                detached_comment_gap(&mut output, &lines[end..]);
                 while index < lines.len() && lines[index].trim().is_empty() {
                     index += 1;
                 }
@@ -956,12 +960,7 @@ fn canonical_declaration_text(text: &str) -> String {
             }
             if !comment_attached(&lines, end) {
                 index = end;
-                if output
-                    .last()
-                    .is_some_and(|line| !line.trim().is_empty() && !line.trim_end().ends_with('{'))
-                {
-                    output.push("");
-                }
+                detached_comment_gap(&mut output, &lines[end..]);
                 while index < lines.len() && lines[index].trim().is_empty() {
                     index += 1;
                 }
@@ -975,6 +974,26 @@ fn canonical_declaration_text(text: &str) -> String {
         index += 1;
     }
     output.join("\n")
+}
+
+/// Maintain separation after omitting unattached comment groups.
+fn detached_comment_gap(output: &mut Vec<&str>, remaining: &[&str]) {
+    // Removing a trailing, unattached comment must not leave a phantom field
+    // separator before the aggregate's closing brace (e.g. reflect.Value).
+    if remaining
+        .iter()
+        .find(|line| !line.trim().is_empty())
+        .is_some_and(|line| line.trim_start().starts_with('}'))
+    {
+        while output.last().is_some_and(|line| line.trim().is_empty()) {
+            output.pop();
+        }
+    } else if output
+        .last()
+        .is_some_and(|line| !line.trim().is_empty() && !line.trim_end().ends_with('{'))
+    {
+        output.push("");
+    }
 }
 
 /// A comment group is printed only when it documents the following node.
@@ -1256,7 +1275,7 @@ fn value_symbol(
             } else {
                 let ty = shape
                     .value_text
-                    .and_then(|text| render::call_result_type(context, origin, text, 0, 1))
+                    .and_then(|text| render::call_result_type(context, origin, text, 0, 1, true))
                     .or_else(|| {
                         shape
                             .value_text

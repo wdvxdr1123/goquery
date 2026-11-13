@@ -1673,6 +1673,7 @@ fn call_initializer_type(
         text,
         slot,
         count,
+        false,
         |_| false,
     )
 }

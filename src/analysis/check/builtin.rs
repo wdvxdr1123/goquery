@@ -95,12 +95,11 @@ impl Inference<'_, '_> {
         let expression = self.unparenthesized(id);
         let text = self.text(&expression.span);
         let offset = self.base + expression.span.start;
-        if self.concrete_spelling(text, offset) {
-            // Package values are not types, even if an unrelated declaration
-            // shares their spelling in another scope.
-            self.conversion_target(arena, id)
-        } else {
-            self.parameterized_type(arena, text, offset)
+        // Builtin type operands share the lexical annotation resolver, including
+        // local defined-type identities, rather than requiring a package spelling.
+        match self.annotation_type(arena, text, offset) {
+            super::scope::AnnotationType::Resolved(ty) => Some(ty),
+            _ => None,
         }
     }
 

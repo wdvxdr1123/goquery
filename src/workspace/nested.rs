@@ -61,16 +61,22 @@ impl Workspace {
         self.modules
             .entry(root.clone())
             .or_insert_with(|| module.clone());
+        // A queried declaration may belong to a sibling whose imports differ
+        // from the opened file's. Seed the whole admitted package, not just the
+        // editor document (which may have no imports at all).
+        let directory = file.parent().unwrap_or(file);
+        let package = self.files.get(file).map(|stub| stub.package.as_str());
         let mut queue: VecDeque<String> = self
             .files
-            .get(file)
-            .map(|stub| {
-                stub.imports
-                    .iter()
-                    .map(|import| import.path.clone())
-                    .collect()
+            .range(directory.to_path_buf()..)
+            .take_while(|(path, _)| path.starts_with(directory))
+            .filter(|(path, stub)| {
+                path.parent() == Some(directory)
+                    && Some(stub.package.as_str()) == package
+                    && (path.as_path() == file || crate::workspace::production_file(path))
             })
-            .unwrap_or_default();
+            .flat_map(|(_, stub)| stub.imports.iter().map(|import| import.path.clone()))
+            .collect();
         while let Some(import) = queue.pop_front() {
             let Some(directory) = nested_directory(&root, &module, &import) else {
                 continue;
@@ -158,7 +164,8 @@ impl Workspace {
         paths.sort();
         let mut imports = Vec::new();
         for path in paths {
-            if self.files.contains_key(&path) {
+            if let Some(stub) = self.files.get(&path) {
+                imports.extend(stub.imports.iter().map(|import| import.path.clone()));
                 continue;
             }
             if self.nested_files.len() >= MAX_NESTED_FILES {

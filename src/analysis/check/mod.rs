@@ -489,7 +489,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
         self.workspace.result_type(self.file, self.file, &name)
     }
 
-    fn expression(&self, id: ExprId, result: usize, count: usize) -> Option<String> {
+    pub(crate) fn expression(&self, id: ExprId, result: usize, count: usize) -> Option<String> {
         if self.depth >= 32 {
             return None;
         }

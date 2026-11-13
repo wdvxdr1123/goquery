@@ -1189,7 +1189,7 @@ fn initializer_expression_type(
             Some(normalize_type(text))
         }
         crate::syntax::ExprKind::Call { .. } => {
-            call_result_type(context, context.file(), text, 0, 1)
+            call_result_type(context, context.file(), text, 0, 1, false)
                 .or_else(|| test_function_result(context, text))
         }
         crate::syntax::ExprKind::FunctionLiteral { .. } => function_literal_text(text),
@@ -1300,7 +1300,22 @@ pub(super) fn local(
             .annotation()
             .and_then(|span| source.get(span.clone()))
             .and_then(|annotation| workspace.signature_type(file, file, annotation))
-            .map(|annotation| format!("type {} {annotation}", binding.name)),
+            .filter(|annotation| annotation.len() <= MAX_SIGNATURE_BYTES)
+            .map(|annotation| {
+                let line_start = source[..binding.selection.start]
+                    .rfind('\n')
+                    .map_or(0, |index| index + 1);
+                let prefix = &source[line_start..binding.selection.start];
+                let indentation = &prefix[..prefix
+                    .bytes()
+                    .take_while(|byte| matches!(byte, b' ' | b'\t'))
+                    .count()];
+                format!(
+                    "type {} {}",
+                    binding.name,
+                    declaration_without_indent(&annotation, indentation)
+                )
+            }),
         DeclarationKind::Constant => local_constant(context, binding),
         DeclarationKind::Value | DeclarationKind::Variadic => {
             function_literal_type(source, binding)
@@ -1342,6 +1357,38 @@ pub(super) fn local(
     content
 }
 
+/// Remove a local declaration's enclosing indentation without changing literals.
+fn declaration_without_indent(text: &str, indentation: &str) -> String {
+    if indentation.is_empty() {
+        return text.to_owned();
+    }
+    // Struct tags may be multiline raw literals: their contents are values,
+    // so only source indentation outside a literal may be removed.
+    let mut literals = crate::syntax::Lexer::new(text)
+        .filter(|token| matches!(token.kind, TokenKind::String | TokenKind::Char))
+        .peekable();
+    let mut output = String::with_capacity(text.len());
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        while literals
+            .peek()
+            .is_some_and(|token| token.span.end <= offset)
+        {
+            literals.next();
+        }
+        let in_literal = literals
+            .peek()
+            .is_some_and(|token| token.span.start < offset && offset < token.span.end);
+        output.push_str(if offset == 0 || in_literal {
+            line
+        } else {
+            line.strip_prefix(indentation).unwrap_or(line)
+        });
+        offset += line.len();
+    }
+    output
+}
+
 /// Type of one slot in a multi-assignment short declaration (`i, j := a, b`).
 fn multi_initializer_type(
     context: &Context<'_>,
@@ -1355,13 +1402,20 @@ fn multi_initializer_type(
     let text = source.get(span.clone())?;
     let segments = split_top_level(text, ',');
     if segments.len() == 1 {
-        return call_result_type(context, context.file(), segments[0].trim(), result, count);
+        return call_result_type(
+            context,
+            context.file(),
+            segments[0].trim(),
+            result,
+            count,
+            false,
+        );
     }
     let segment = segments.get(result)?.trim();
     if segment.is_empty() {
         return None;
     }
-    call_result_type(context, context.file(), segment, 0, 1)
+    call_result_type(context, context.file(), segment, 0, 1, false)
         .or_else(|| super::value::default_type(segment).map(|text| normalize_type(&text)))
 }
 
@@ -1411,6 +1465,7 @@ fn call_initializer_type(context: &Context<'_>, source: &str, binding: &Binding)
         source.get(span.clone())?,
         result,
         count,
+        false,
     )
 }
 
@@ -1421,12 +1476,17 @@ pub(super) fn call_result_type(
     text: &str,
     slot: usize,
     count: usize,
+    package_level: bool,
 ) -> Option<String> {
     let workspace = context.workspace();
-    let rendered =
-        context.direct_call_result_type(expression_file, text, slot, count, |alias| {
-            !import_resolves(workspace, expression_file, alias)
-        })?;
+    let rendered = context.direct_call_result_type(
+        expression_file,
+        text,
+        slot,
+        count,
+        package_level,
+        |alias| !import_resolves(workspace, expression_file, alias),
+    )?;
     Some(normalize_type(&rendered))
 }
 
@@ -2171,6 +2231,15 @@ pub(super) fn conversion_type(context: &Context<'_>, origin: &Path, text: &str) 
     };
     let callee = parsed.nodes.get(function.0)?;
     let callee_text = text.get(callee.span.clone())?;
+    // Index syntax may instantiate a function or select a callable value.
+    // Conversion requires an actual type declaration at its root; brackets
+    // alone must not turn an invalid function instantiation into a type.
+    if let crate::syntax::ExprKind::Index { operand, .. } = &callee.kind {
+        let root = parsed.nodes.get(operand.0)?;
+        context
+            .workspace()
+            .type_declaration(origin, text.get(root.span.clone())?)?;
+    }
     let looks_like_type = callee_text.contains(['[', '*', ']'])
         || callee_text.starts_with("map[")
         || callee_text.starts_with("chan ")

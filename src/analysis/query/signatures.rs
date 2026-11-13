@@ -263,6 +263,7 @@ impl Context<'_> {
         text: &str,
         slot: usize,
         count: usize,
+        package_level: bool,
         invalid_import: impl FnOnce(&str) -> bool,
     ) -> Option<String> {
         let parsed = crate::syntax::parse_expression(text);
@@ -274,6 +275,12 @@ impl Context<'_> {
             return None;
         };
         let callee = parsed.nodes.get(function.0)?;
+        let instantiated = matches!(callee.kind, ExprKind::Index { .. });
+        let callee = if let ExprKind::Index { operand, .. } = &callee.kind {
+            parsed.nodes.get(operand.0)?
+        } else {
+            callee
+        };
         let workspace = self.workspace();
         let (origin, symbol) = match &callee.kind {
             ExprKind::Name => {
@@ -297,8 +304,29 @@ impl Context<'_> {
             }
             _ => return None,
         };
-        if !symbol.is_function() {
+        if !symbol.is_function() || instantiated && !symbol.generic {
             return None;
+        }
+        if symbol.generic {
+            // Without the caller's lexical scope, only a package-level
+            // initializer can safely use an empty local environment.
+            if !package_level {
+                return None;
+            }
+            // Use the same typed argument unification and assignment proof as
+            // document queries; do not manufacture types from generic spellings.
+            // Inference owns the header read, avoiding a duplicate closed-file read.
+            let locals = Locals::empty();
+            let rendered = crate::analysis::check::Inference::new(
+                workspace,
+                expression_file,
+                text,
+                &locals,
+                &parsed.nodes,
+                0,
+            )
+            .expression(parsed.root, slot, count)?;
+            return workspace.signature_type(self.file(), expression_file, &rendered);
         }
         let declaration = symbol.declaration()?;
         let end = symbol.body().map_or(declaration.end, |body| body.start);

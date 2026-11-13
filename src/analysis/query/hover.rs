@@ -764,7 +764,9 @@ fn argument_type(
                 .map(str::to_owned)
         }
         crate::syntax::ExprKind::Call { function, .. } => {
-            if let Some(result) = render::call_result_type(context, context.file(), text, 0, 1) {
+            if let Some(result) =
+                render::call_result_type(context, context.file(), text, 0, 1, false)
+            {
                 return Some(result);
             }
             let inference = crate::analysis::check::Inference::new(
