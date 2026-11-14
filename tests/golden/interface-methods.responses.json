@@ -205,6 +205,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Read(p []byte) (n int, err error)",
           "parameters": [
             {
@@ -224,6 +228,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Read(p []byte) (n int, err error)",
           "parameters": [
             {
@@ -262,6 +270,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Put(int) int",
           "parameters": [
             {
@@ -281,6 +293,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Put(int) int",
           "parameters": [
             {
@@ -1143,6 +1159,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Put(string) string",
           "parameters": [
             {
@@ -1162,6 +1182,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Put(string) string",
           "parameters": [
             {

@@ -1082,6 +1082,330 @@ stdio e2e covers declaration filtering and exact anonymous-field reference sets.
 Fmt check, full Rust tests and Clippy with warnings denied pass. These focused
 comparisons do not establish whole-corpus reference parity or a memory reduction.
 
+## Signature-help wire audit
+
+Zero-input signatures now omit `parameters` instead of emitting an empty list,
+matching the pinned gopls protocol. The stdio e2e checks both a callable name and
+the argument position. Four intentionally updated protocol goldens change only
+nine empty parameter fields; nonempty parameter information is retained.
+
+The local stdio comparison driver previously treated absent parameter lists as
+empty and removed empty documentation. Signature-help comparisons now retain all
+fields. This supersedes the normalized 39/39 result for the signature-help case:
+the strict result is 5/39, with all 34 residuals differing only in documentation
+(`benchmarks/signature-empty-parameters-strict.json`). This diagnostic attribution
+does not count as complete parity. The generic-function-value fixture remains
+hover 20/20 and signature help 0/11; its zero-input parameter difference is fixed,
+but all eleven full replies retain documentation differences
+(`benchmarks/generic-function-values/empty-parameters.json`).
+
+Fresh declaration-seeded reference queries, with both includeDeclaration values
+and complete location lists, match SDK 16/18, Hugo 6/6, Tile38 8/8, Ollama 6/6,
+typescript-go 6/6 and Prometheus 6/6. SDK's two residuals are the `VisitFuncs`
+method declaration in `internal/coverage/test/counter_test.go`: native results
+omit the interface-call occurrence in `internal/coverage/encodecounter/encode.go`.
+The preceding anonymous-rename binary also misses those same occurrences; its
+12/18 result additionally differs on four empty reference lists fixed since then.
+Reports retain all plans and responses under `benchmarks/references-corpus-current/`.
+These 50 requests are finite samples, not whole-corpus acceptance. All native
+requests in this group and the strict signature-help case stayed below 100 ms.
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass.
+The one-cycle Ollama 1068-file workload, with type-shape/definition probes and
+47 pinned feature consistency requests, has no failures. Root OS peak working
+set is 58,122,240 bytes and sampled private bytes peak at 47,779,840, below the
+100,000,000-byte gate. Driver/Go tooling children are excluded and unmeasured.
+Report: `benchmarks/signature-empty-ollama-session.json`. This independent run
+does not establish a memory reduction. No dependency or persistent cache was added.
+
+## Signature-help callable documentation
+
+The preceding wire audit's 5/39 result is superseded by 39/39 strict complete
+responses in `benchmarks/signature-documentation-golden.json`. Signature help
+now returns documentation, including explicit empty markup when the callable
+object has no comment. It reads the selected function, variable, field or
+interface-method declaration; copying a function value does not copy the
+initializer's documentation. Compound callee expressions have no object docs.
+The preferred hover content format also determines signature documentation
+format, as in pinned gopls. Markdown removes one terminal newline; plaintext
+retains the `CommentGroup.Text` newline.
+
+Raw attachment/group-text and declaration-boundary helpers moved from hover to
+`analysis::query::documentation`. Hover keeps its own editor-location doc-link
+resolution; signature help shares the existing feature Markdown renderer without
+hover's location rewrites. Signature-specific target selection stays in
+`query::signatures::documentation`. No source, AST or type graph is retained
+between requests, and the existing 64 KiB comment and 16 KiB signature budgets
+remain. There is no new dependency or persistent cache.
+
+Expanded probes also exposed missing inferred generic call signatures and
+parameter-name loss for a returned function. Signature help now shares the native
+instantiation proof with explicit function values and hover. Selecting the name
+inside an explicit instance describes its generic declaration; selecting the
+call uses the instantiated signature. Compound callees are labelled `func`.
+Returned callable presentation follows the already qualified callee result after
+native result resolution, preserving names outside the compact type arena.
+
+The focused fixture contains 23 distinct positions, each with four initialization
+format configurations (default, Markdown, plaintext and plaintext-first order),
+including deliberately conflicting signature-specific format preferences. It
+covers direct/generic functions, function variables, copied/local bindings,
+parameters, fields, methods, interface methods, parenthesized/returned callables,
+headings, lists, links, code blocks and block comments. Offline `go test -run '^$'
+./...` succeeds for the fixture; this is preparation, not a corpus build.
+The generic-function-value fixture now matches hover 20/20 and signature help
+11/11 complete replies (`benchmarks/generic-function-values/signature-docs-release.json`).
+Centralized stdio e2e checks documentation ownership/format/newlines, generic
+instantiation, returned parameter names and zero-input omission. Goldens were
+reviewed: 34 files only add 95 documentation fields and remove nine empty
+parameter fields relative to HEAD. No other result fields changed.
+
+The expanded fixture matches 92/92 full replies in the release binary (23 per
+configuration), versus 0/92 in the preceding anonymous-rename snapshot on the
+same sources and plans. Source and binary hashes are retained in
+`benchmarks/signature-documentation/{baseline,release}-{default,markdown,plaintext,ordered}.json`.
+The initial 17-position and 19-position runs are subsets, not additional coverage.
+Both the 39-request strict golden replay and generic-value 31-request comparison
+were repeated with `target/signature-documentation.exe`.
+
+The new deterministic `scripts/features/signature_help.py` plan is included in
+the local feature verifier. It chooses lexical callable sites independently of
+server results. Some are conversions/null responses; their counts are explicit:
+
+| Corpus | Complete matches | Matches among non-null gopls signatures |
+| --- | --- | --- |
+| SDK (`--limit 6`) | 29/40 | 26/37 |
+| Hugo | 21/24 | 14/17 |
+| Tile38 | 14/16 | 13/15 |
+| Ollama | 18/19 | 18/19 |
+| typescript-go | 19/21 | 18/20 |
+| Prometheus | 22/24 | 19/21 |
+
+This is 123/144 full matches (108/129 for non-null signatures); the smaller
+SDK `--limit 3` sample is not added again. Sixteen residuals are builtin
+signature help (`len`, `append`, `make`, `delete`, `panic`), including requests
+whose cursor lands on an inner builtin. Three SDK `testTraceProg` replies retain
+grouped nested function parameters where gopls repeats each type; SDK's
+`slices.Collect` inference and typescript-go's `done` callback remain unavailable.
+No gopls errors occurred in these plans. Reports:
+`benchmarks/signature-docs-sdk.json` and `benchmarks/signature-docs-corpus/`.
+These bounded samples do not establish overall signature-help parity.
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass.
+The Ollama one-cycle workload opens, queries, edits, restores and closes all
+1068 Go files, with type-shape/definition probes and 47 pinned feature consistency
+requests. It has no failures. Root OS peak working set is 58,466,304 bytes and
+sampled private bytes peak at 47,857,664, below the 100,000,000-byte gate. Driver
+and Go tooling children are excluded/unmeasured. The report is
+`benchmarks/signature-docs-ollama-session.json`; independent samples do not prove
+a memory reduction.
+
+Fresh semantic tokens/highlights remain SDK 6/6 and 72/72, Hugo 3/3 and 36/36,
+Tile38 3/3 and 25/25, Ollama 3/3 and 36/36, typescript-go 3/3 and 36/36, and
+Prometheus 3/3 and 36/36. This is 21 unique full-token and 241 highlight requests,
+excluding the smaller overlapping SDK run. Reports are under
+`benchmarks/signature-docs-regression/` and `signature-docs-sdk-regression/`.
+Unchanged-plan hover replays retain SDK 92/99, Hugo 51/51, Tile38 36/36, Ollama
+58/59, typescript-go 44/44 and Prometheus 50/50, with no newly failed row;
+the audited declaration fixture remains 29/29 (`benchmarks/signature-docs-hover/`).
+These finite comparisons do not establish whole-project parity. All signature
+queries stayed below 100 ms; three other slow requests are listed in the latency
+log. Concurrent verification does not establish a performance improvement.
+
+## SDK builtin signature help
+
+Signature help now reads builtin function templates and documentation from the
+configured SDK instead of treating builtin names as unresolved ordinary calls.
+The SDK declaration reader and `ComplexType`/`FloatType`/`IntegerType` presentation
+replacements are shared with hover. Placeholder classes stay presentation-only;
+they do not become inferred semantic types. The native checker supplies the
+existing local/package/import shadow guards. Native operand evaluation suppresses
+help only when it proves a builtin call constant, matching pinned gopls for
+constant strings, named constants, array lengths and numeric builtin results.
+
+SDK source admission remains capped at 256 KiB, signature input at 16 KiB and
+comments at 64 KiB. Nothing survives the request. Callable-name selection now
+retains the chosen bounded signature result for final construction, so a selected
+builtin does not reread its closed SDK source. No dependency or persistent cache
+was added. Missing/disabled SDK declarations and unsupported concrete builtin
+projections return unknown. Centralized stdio e2e covers configured SDK templates,
+synthetic-type replacement, local shadowing, constant suppression and disabled SDK.
+
+The focused offline-compiled fixture covers all 18 builtin names, call/name and
+active-parameter positions, constant and runtime operands, package/local/import
+and field shadowing, package initializers, and Go 1.27's `new` expression operand.
+There are 78 unique positions per format (Markdown and plaintext). The preceding
+signature-documentation snapshot matches 30/78 in each format; the first builtin
+release matches 77/78 in each, on identical source hashes, plans and capabilities.
+The remaining parenthesized `(len)(xs)` argument-position query needs a concrete
+`func([]int) int` signature with no object documentation; native currently returns
+unknown. This residual stays in the fixture and is not counted as matched.
+Reports: `benchmarks/builtin-signatures/{baseline,release}-{markdown,plaintext}.json`.
+Offline `go test -run '^$' ./...` succeeds for the fixture (preparation, not a
+corpus build). No new unit tests or protocol-golden changes were needed this step.
+
+The first fresh corpus comparison improves SDK 29/40 to 36/40, Hugo 21/24 to
+24/24, Tile38 14/16 to 16/16, Ollama 18/19 to 19/19, typescript-go 19/21 to 20/21
+and Prometheus 22/24 to 24/24. This is 139/144 complete replies; the smaller SDK
+sample is excluded from that total. Same-plan comparisons have no newly failed
+row and no gopls reference-response drift. Remaining differences are SDK's three
+nested callback parameter-layout replies, `slices.Collect` inference and the
+typescript-go `done` callback. These are finite samples, not overall acceptance.
+Reports: `benchmarks/builtin-signatures-sdk.json` and `builtin-signatures-corpus/`.
+The earlier 92-request callable-documentation fixture remains 92/92 and the strict
+39-request signature-help case remains 39/39. Hover replays retain SDK 92/99,
+Hugo 51/51, Tile38 36/36, Ollama 58/59, typescript-go 44/44 and Prometheus 50/50,
+with no newly failed row; declaration presentation remains 29/29
+(`benchmarks/builtin-signatures-hover/`).
+
+The Ollama memory driver now supports `--signature-help`, adding all 19
+deterministic signature queries while every Go buffer is open and after restore.
+This supplements the original 47 feature checks (66 total) and checks complete
+response stability across the edit cycle. This prevents relying on a memory
+workload that never invokes the new feature.
+
+After retaining the selected result, fmt check, full Rust tests, Clippy with
+warnings denied and release build pass again. The immutable final binary is
+`target/builtin-signatures-final.exe`. Fresh final comparisons retain SDK 36/40,
+Hugo 24/24, Tile38 16/16, Ollama 19/19, typescript-go 20/21 and Prometheus 24/24
+(139/144, excluding the overlapping smaller SDK sample). Final focused runs
+retain 77/78 per format, the older documentation fixture retains 92/92, and the
+strict signature-help case retains 39/39. Final reports:
+`benchmarks/builtin-signatures-final-sdk.json`, `builtin-signatures-final-corpus/`,
+`builtin-signatures/{final-markdown,final-plaintext}.json`,
+`signature-documentation/builtin-final-regression-*.json` and
+`builtin-signatures-final-golden.json`.
+
+The final enhanced Ollama 1068-file one-cycle workload, with type-shape and
+definition probes and all 66 feature requests, has no failures. All 19 signature
+queries return non-null results and remain identical after restore. Root OS peak
+working set is 58,929,152 bytes; sampled private bytes peak at 48,349,184, below
+the 100,000,000-byte gate. Driver and Go tooling children are excluded/unmeasured.
+Report: `benchmarks/builtin-signatures-final-ollama-session.json`. The earlier
+pre-retention run is `builtin-signatures-ollama-session.json`; independent runs
+do not establish a memory reduction. All requests in the final signature groups
+and the unchanged hover replay stay below 100 ms in this concurrent sample;
+this does not prove the broader latency target is met.
+
+## Nested signature presentation and channel round trips
+
+Callable labels and hover now share syntax-driven grouped-name expansion in
+`check::callable_signature::presentation`. This replaces hover's whitespace-based
+function-parameter splitter and covers function inputs/results nested in
+containers, interface methods and other function types. Duplicated annotations
+recursively receive the same edits. Lexer tokens preserve literal boundaries;
+comments, comma/result-list spacing and interpreted tag quoting use shared
+syntax helpers. The Go string encoder moved to `syntax::quote_string` /
+`syntax::quote_bytes`: Unicode controls use Unicode escapes, escaped BOM values
+stay valid Go source, and invalid UTF-8 bytes are preserved as byte escapes
+instead of becoming replacement characters. The same encoder serves constant
+hover and nested type tags.
+
+Expansion is atomic and request-local, under the existing 16 KiB input/output,
+256 parsed-node/name, 32-level expansion and 4096-step ceilings. Exponential grouped
+types return unknown on budget exhaustion instead of truncated labels. The
+centralized stdio e2e includes that exhaustion case, nested callback names,
+generic substitutions, literal tags/Unicode escapes and nested channel identity.
+No unit tests, dependency or persistent source/type cache were added.
+
+Generic instantiated callback annotations retain declaration names separately
+from the compact type arena. Formal substitution and import requalification
+are checked against the exact native instantiated type before source names are
+used. The focused fixture deliberately gives the declaring and consuming files
+conflicting import aliases. Generic hover's declaration comment now reuses the
+same qualified declared-signature path instead of a separate parameter renderer.
+
+The receive-channel test exposed a native text-boundary failure: a bidirectional
+channel containing a receive-only channel was written as `chan <-chan int`, which
+parses with a different direction. The arena writer now emits `chan (<-chan int)`;
+its existing parse/identity round-trip remains mandatory. The offline go/types
+oracle retains body 1162 matched / 1 unknown / 0 incorrect, rejected or unverified;
+type-declaration bindings retain 1 matched / 5 unknown
+(`benchmarks/nested-signatures-type-oracle.json`).
+
+The final offline-compiled focused fixture improves from hover 4/18 and signature help
+1/18 to 18/18 and 18/18 complete replies against pinned gopls, on identical source
+hashes and request plans. It includes grouped/nested/container/interface types,
+named and unnamed results, variadics, Unicode names, comments, tags containing
+`func(a,b T)`, Unicode-control/BOM tags, non-UTF-8 byte constants, returned callables, explicit/inferred
+generics, alias collisions and receive-channel substitution. Reports:
+`benchmarks/nested-signatures/{baseline-bytes,final}.json`. The earlier 35-request
+fixture is a superseded subset, not additional coverage. Fixture compilation is
+preparation, not evidence that all external projects build.
+
+Fresh signature comparisons retain SDK 39/40, Hugo 24/24, Tile38 16/16,
+Ollama 19/19, typescript-go 20/21 and Prometheus 24/24: 142/144 full replies,
+up from 139/144 with no newly failed row and unchanged reference replies.
+The SDK's three nested `testTraceProg` layout differences are fixed; SDK
+`slices.Collect` and the typescript-go `done` callback remain unknown. Reports:
+`benchmarks/nested-signatures-final-sdk.json` and `nested-signatures-final-corpus/`.
+The smaller SDK sample is not added to the base total. The earlier 92-request
+documentation fixture stays 92/92; builtin help stays 77/78 per format, retaining
+the specialized parenthesized builtin residual. These finite samples do not
+establish overall LSP parity.
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass
+for `target/nested-signatures-final.exe`. The earlier nested-signature snapshot's
+full token/highlight regressions retain SDK 6/6
+and 72/72, Hugo 3/3 and 36/36, Tile38 3/3 and 25/25, Ollama 3/3 and 36/36,
+typescript-go 3/3 and 36/36, and Prometheus 3/3 and 36/36 (21 token and 241
+highlight requests in these base groups). Reports are under
+`benchmarks/nested-signatures-regression/` and `nested-signatures-sdk-regression/`.
+Hover replays retain SDK 92/99, Hugo 51/51, Tile38 36/36, Ollama 58/59,
+typescript-go 44/44 and Prometheus 50/50, with no newly failed row; the audited
+declaration fixture stays 29/29; the final byte-preserving release repeats those
+hover results without a newly failed row (`benchmarks/nested-signatures-final-hover/`).
+
+The enhanced Ollama one-cycle 1068-file workload passes with no failures. It
+runs all 66 feature checks and three additional nested/generic/channel signature
+probes with all buffers open, restores the overlay, then edits/restores/closes
+the whole project. The final byte-preserving release has root OS peak working
+set 59,027,456 bytes; sampled private bytes peak at 48,496,640, below the
+100,000,000-byte gate. Driver and Go tooling
+children are excluded/unmeasured. Reproduce with the memory driver's
+`--cycles 1 --type-definitions --type-shapes --signature-help` options. Report:
+`benchmarks/nested-signatures-final-ollama-session.json`. The earlier profile is
+`nested-signatures-ollama-session.json`. Independent runs do not
+establish a memory reduction. Two SDK full-token requests exceed 100 ms and
+remain listed in the latency log.
+
+## Iterator signature follow-up
+
+Signature labels now have a presentation-only qualifier mode, separate from the
+strict consumer-scope rendering used by semantic text consumers. Known types may
+name a package absent from the calling file's imports, matching pinned gopls;
+these labels are never reparsed as consumer semantic facts. Native inference
+also expands a named formal's underlying constructor against an unnamed actual
+at the outer argument boundary. Final assignment and constraint checks remain
+required, and nested constructors retain their identity checks.
+
+The release SDK signature sample improves from 39/40 to 40/40 complete responses
+(`benchmarks/iterator-final-sdk.json`). The focused iterator sample has hover
+8/8 and signature help 4/8 (`benchmarks/iterator-signatures/final.json`). The four
+remaining differences select a named generic function value such as `seq` at
+the cursor; native still selects the enclosing call. These are not parity passes.
+The type oracle retains 1162 matching body bindings, one unknown and no incorrect
+results (`benchmarks/iterator-final-type-oracle.json`); declaration parameters
+remain separately classified as one match and five unknowns. New centralized
+stdio cases exercise literal callback inference and signature labels whose
+package is not imported in the consumer file. Cursor positions use whitespace
+between the opening parenthesis and argument, avoiding selection of the argument
+function object itself. No new unit tests are added.
+
+The release nested-signature fixture retains 36/36 complete responses
+(`benchmarks/nested-signatures/iterator-final.json`). The current expanded
+Ollama signature plan retains 42/43, identical to the earlier binary on the
+same 43 requests (`benchmarks/iterator-{baseline,final}-ollama.json`). The
+remaining `cancel()` value signature is unknown; the previous 19-request plan
+was a smaller sample and is not the denominator for this run.
+
+The release Ollama full-project session passes the 100,000,000-byte root memory
+gate: OS peak working set 57,991,168 bytes and sampled private bytes 47,849,472,
+with no failures (`benchmarks/iterator-final-ollama-session.json`). This uses one
+open/edit/restore/close cycle, type-definition and semantic-shape probes, all
+current signature requests and the nested-signature overlay. Children are
+excluded/unmeasured. Independent runs do not establish a memory reduction.
+
 ## Remaining work
 
 - Offline module-graph enumeration now succeeds. Verify matching package scope
@@ -1102,8 +1426,12 @@ comparisons do not establish whole-corpus reference parity or a memory reduction
   expressions, preserving bounded inference.
 - Expand native generic-call hover coverage beyond the now-matched focused
   fixtures, including contextual/partial function-value instantiation and
-  unsupported type projections. Complete signature-help documentation and
-  empty-parameter wire parity.
+  unsupported type projections. Broaden signature-help corpus and documentation
+  coverage beyond the focused callable-object fixture, preserving strict wire
+  comparisons and unknown results for unsupported inference.
+- Complete specialized parenthesized builtin signatures and broaden nested type presentation;
+  investigate the remaining named iterator-value selection and callback gaps against pinned
+  gopls, without guessing unavailable types or retaining type graphs.
 - Extend syntax/type/LSP differential coverage across all existing projects;
   these small samples do not establish overall parity.
 - Run the measured Ollama memory gate for any changes affecting allocations or

@@ -3314,6 +3314,7 @@ fn watched_file_changes_refresh_cross_package_state() {
                 "func Constrained[T ~int](value T) T { return value }\n",
                 "func Pair[A, B any](a A, b B) (first A, second B) { return a, b }\n",
                 "func Many[T any](values ...T) []T { return values }\n",
+                "type Sequence[T any] func(yield func(T) bool)\nfunc Frames() Sequence[int] { return nil }\nfunc Collect[T any](input Sequence[T]) []T { return nil }\n",
                 "func Shape[T any](value T) struct { T T `label:\"T\"` } { return struct { T T `label:\"T\"` }{value} }\n",
             ),
         ),
@@ -3391,10 +3392,19 @@ fn watched_file_changes_refresh_cross_package_state() {
         "return formal resolved to the package-level T: {reply}"
     );
     let calls = concat!(
-        "package client\nimport \"example.test/outer\"\nvar GlobalIdentity = outer.Identity[int]\nfunc genericCalls() {\n",
+        "package client\nimport \"example.test/outer\"\nconst ByteValue = \"\\xff\"\n// Global callable.\nvar GlobalIdentity = outer.Identity[int]\nfunc genericCalls() {\n",
         "_ = outer.Identity[int](1)\n_ = outer.Identity(1)\n",
         "_, _ = outer.Pair[int](1, \"value\")\n_ = outer.Many([]int{1}...)\n",
-        "_ = outer.Shape(1)\ncopied := outer.Identity[string]\n_ = copied(\"value\")\n_ = GlobalIdentity(1)\n}\n",
+        "_ = outer.Shape(1)\n// Copied callable.\ncopied := outer.Identity[string]\n_ = copied(\"value\")\n_ = GlobalIdentity(1)\n",
+        "zero := func() int { return 1 }\n_ = zero()\n_ = ReturnsCallable()(1)\n",
+        "_ = outer.Collect(outer.Frames())\n_ = outer.Collect( func(yield func(int) bool) {})\n",
+        "NestedCallback(nil)\nGenericCallback[int](nil,1)\nvar receive <-chan int\nGenericChannel[<-chan int](nil,receive)\nTaggedCallback(nil)\n}\n",
+        "func ReturnsCallable() func(value int) int { return GlobalIdentity }\n",
+        "func Produce() outer.Sequence[int] { return nil }\nfunc Gather[T any](input outer.Sequence[T]) []T { return nil }\n",
+        "func NestedCallback(callback func(first,second func(x,y int)(a,b string))) {}\n",
+        "func GenericCallback[T any](callback func(first,second T), value T) {}\n",
+        "func GenericChannel[T any](callback func(first,second chan T), value T) {}\n",
+        "func TaggedCallback(callback func(first,second struct{Value string `json:\"func(a,b T)\"`; Other string \"doc:\\\"\\u0085\\u2028\\ufeff\\\"\"})) {}\n",
     );
     let calls_uri = url::Url::from_file_path(nested_root.join("client/generic.go")).unwrap();
     nested_server.notify(
@@ -3406,6 +3416,14 @@ fn watched_file_changes_refresh_cross_package_state() {
     for (needle, expected) in [
         ("Identity[int]", "func outer.Identity(value int) int"),
         ("Identity(1)", "func outer.Identity(value int) int"),
+        (
+            "Collect(outer.Frames())",
+            "func outer.Collect(input outer.Sequence[int]) []int",
+        ),
+        (
+            "Collect( func(yield",
+            "func outer.Collect(input outer.Sequence[int]) []int",
+        ),
         (
             "Pair[int]",
             "func outer.Pair(a int, b string) (first int, second string)",
@@ -3430,9 +3448,17 @@ fn watched_file_changes_refresh_cross_package_state() {
             "instantiated signature lost native types or declaration names: {reply}"
         );
     }
-    for (needle, expected) in [
-        ("copied(", "var copied func(value string) string"),
-        ("GlobalIdentity(", "var GlobalIdentity func(value int) int"),
+    for (needle, expected, doc) in [
+        (
+            "copied(",
+            "var copied func(value string) string",
+            "Copied callable.",
+        ),
+        (
+            "GlobalIdentity(",
+            "var GlobalIdentity func(value int) int",
+            "Global callable.",
+        ),
     ] {
         let start = calls.find(needle).unwrap();
         let reply = nested_server.request(
@@ -3459,7 +3485,323 @@ fn watched_file_changes_refresh_cross_package_state() {
             reply["result"]["signatures"][0]["label"], expected,
             "function value was not callable through its original declaration: {reply}"
         );
+        assert_eq!(
+            reply["result"]["signatures"][0]["documentation"],
+            serde_json::json!({
+                "kind": "markdown", "value": doc,
+            })
+        );
     }
+    for (needle, label) in [
+        ("outer.Identity(1)", "Identity(value int) int"),
+        ("outer.Identity[int](1)", "func(value int) int"),
+        ("ReturnsCallable()(1)", "func(value int) int"),
+    ] {
+        let start = calls.find(needle).unwrap() + needle.rfind('(').unwrap() + 1;
+        let reply = nested_server.request(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "textDocument": {"uri": calls_uri}, "position": position(calls, start),
+                "context": {"triggerKind": 1, "isRetrigger": false},
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            serde_json::json!({
+                "activeSignature": 0, "activeParameter": 0,
+                "signatures": [{"label": label, "activeParameter": 0,
+                    "parameters": [{"label": "value int"}],
+                    "documentation": {"kind": "markdown", "value": ""}}],
+            }),
+            "callable signature lost type proof or result names: {reply}"
+        );
+    }
+    for needle in ["outer.Collect(outer.Frames())", "outer.Collect( func(yield"] {
+        let start = calls.find(needle).unwrap() + "outer.Collect(".len();
+        let reply = nested_server.request(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "textDocument": {"uri": calls_uri}, "position": position(calls, start),
+                "context": {"triggerKind": 1, "isRetrigger": false},
+            }),
+        );
+        assert_eq!(
+            reply["result"]["signatures"][0]["label"], "Collect(input outer.Sequence[int]) []int",
+            "named callback inference or presentation failed for {needle}: {reply}"
+        );
+    }
+    let unimported = "package client\nfunc gatherFrames() { _ = Gather( Produce()) }\n";
+    let unimported_uri = url::Url::from_file_path(nested_root.join("client/iterator.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": unimported_uri, "languageId": "go", "version": 1, "text": unimported,
+        }}),
+    );
+    let reply = nested_server.request(
+        "textDocument/signatureHelp",
+        serde_json::json!({
+            "textDocument": {"uri": unimported_uri},
+            "position": position(unimported, unimported.find("Gather(").unwrap() + "Gather(".len()),
+            "context": {"triggerKind": 1, "isRetrigger": false},
+        }),
+    );
+    assert_eq!(
+        reply["result"]["signatures"][0]["label"], "Gather(input outer.Sequence[int]) []int",
+        "displaying a proven type must not require a consumer import: {reply}"
+    );
+    for (needle, label, parameters) in [
+        (
+            "NestedCallback(nil)",
+            "NestedCallback(callback func(first func(x int, y int) (a string, b string), second func(x int, y int) (a string, b string)))",
+            vec![
+                "callback func(first func(x int, y int) (a string, b string), second func(x int, y int) (a string, b string))",
+            ],
+        ),
+        (
+            "GenericCallback[int](nil,1)",
+            "func(callback func(first int, second int), value int)",
+            vec!["callback func(first int, second int)", "value int"],
+        ),
+        (
+            "GenericChannel[<-chan int](nil,receive)",
+            "func(callback func(first chan (<-chan int), second chan (<-chan int)), value <-chan int)",
+            vec![
+                "callback func(first chan (<-chan int), second chan (<-chan int))",
+                "value <-chan int",
+            ],
+        ),
+        (
+            "TaggedCallback(nil)",
+            r#"TaggedCallback(callback func(first struct{Value string "json:\"func(a,b T)\""; Other string "doc:\"\u0085\u2028\ufeff\""}, second struct{Value string "json:\"func(a,b T)\""; Other string "doc:\"\u0085\u2028\ufeff\""}))"#,
+            vec![
+                r#"callback func(first struct{Value string "json:\"func(a,b T)\""; Other string "doc:\"\u0085\u2028\ufeff\""}, second struct{Value string "json:\"func(a,b T)\""; Other string "doc:\"\u0085\u2028\ufeff\""})"#,
+            ],
+        ),
+    ] {
+        let start = calls.find(needle).unwrap() + needle.find('(').unwrap() + 1;
+        let reply = nested_server.request(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "textDocument": {"uri": calls_uri}, "position": position(calls, start),
+                "context": {"triggerKind": 1, "isRetrigger": false},
+            }),
+        );
+        let parameters: Vec<_> = parameters
+            .into_iter()
+            .map(|label| serde_json::json!({"label": label}))
+            .collect();
+        assert_eq!(
+            reply["result"],
+            serde_json::json!({
+                "activeSignature": 0, "activeParameter": 0,
+                "signatures": [{"label": label, "parameters": parameters, "activeParameter": 0,
+                    "documentation": {"kind": "markdown", "value": ""}}],
+            }),
+            "nested signatures lost names, channel identity or literal bytes: {reply}"
+        );
+    }
+    let mut expanded_type = "func(a,b int)".to_owned();
+    for _ in 0..12 {
+        expanded_type = format!("func(a,b {expanded_type})");
+    }
+    let bounded_source = format!(
+        "package client\nfunc wide(callback {expanded_type}) {{}}\nfunc useWide() {{ wide(nil) }}\n"
+    );
+    let bounded_uri = url::Url::from_file_path(nested_root.join("client/bounded.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": bounded_uri, "languageId": "go", "version": 1, "text": bounded_source,
+        }}),
+    );
+    let reply = nested_server.request("textDocument/signatureHelp", serde_json::json!({
+        "textDocument": {"uri": bounded_uri},
+        "position": position(&bounded_source, bounded_source.find("wide(nil)").unwrap() + "wide(".len()),
+        "context": {"triggerKind": 1, "isRetrigger": false},
+    }));
+    assert!(
+        reply["result"].is_null(),
+        "exponential signature expansion must return unknown on budget exhaustion: {reply}"
+    );
+    for offset in [0, "zero(".len()] {
+        let start = calls.find("zero()").unwrap();
+        let reply = nested_server.request(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "textDocument": {"uri": calls_uri}, "position": position(calls, start + offset),
+                "context": {"triggerKind": 1, "isRetrigger": false},
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            serde_json::json!({
+                "activeSignature": 0,
+            "signatures": [{"label": "zero() int", "documentation": {"kind": "markdown", "value": ""}}],
+            }),
+            "zero-parameter signature should omit parameter metadata: {reply}"
+        );
+    }
+    let mut plaintext_server = Server::new(
+        Command::new(env!("CARGO_BIN_EXE_goquery"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .env("GOWORK", "off")
+            .spawn()
+            .unwrap(),
+    );
+    plaintext_server.request(
+        "initialize",
+        serde_json::json!({
+            "rootUri": url::Url::from_directory_path(&nested_root).unwrap(),
+            "capabilities": {"textDocument": {
+                "hover": {"contentFormat": ["plaintext", "markdown"]},
+                "signatureHelp": {"signatureInformation": {"documentationFormat": ["markdown"]}},
+            }}, "initializationOptions": {"goroot": "", "fileWatch": false},
+        }),
+    );
+    plaintext_server.notify("initialized", serde_json::json!({}));
+    plaintext_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": calls_uri, "languageId": "go", "version": 1, "text": calls,
+        }}),
+    );
+    let reply = plaintext_server.request("textDocument/signatureHelp", serde_json::json!({
+        "textDocument": {"uri": calls_uri},
+        "position": position(calls, calls.find("GlobalIdentity(1)").unwrap() + "GlobalIdentity(".len()),
+        "context": {"triggerKind": 1, "isRetrigger": false},
+    }));
+    assert_eq!(
+        reply["result"]["signatures"][0]["documentation"],
+        serde_json::json!({
+            "kind": "plaintext", "value": "Global callable.\n",
+        }),
+        "signature documentation ignored hover preference or stripped plaintext newline: {reply}"
+    );
+    let builtin_source = concat!(
+        "package client\nfunc builtinCalls() {\nvalues := []int{1}\n_ = len(values)\n",
+        "_ = len(\"constant\")\nvar r float64\n_ = complex(r, r)\n",
+        "// Local length.\nlen := func(value int) int { return value }\n_ = len(1)\n}\n",
+    );
+    let builtin_uri = url::Url::from_file_path(nested_root.join("client/builtins.go")).unwrap();
+    plaintext_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": builtin_uri, "languageId": "go", "version": 1, "text": builtin_source,
+        }}),
+    );
+    let builtin_offset = builtin_source.find("len(values)").unwrap() + "len(".len();
+    let reply = plaintext_server.request("textDocument/signatureHelp", serde_json::json!({
+        "textDocument": {"uri": builtin_uri}, "position": position(builtin_source, builtin_offset),
+        "context": {"triggerKind": 1, "isRetrigger": false},
+    }));
+    assert!(
+        reply["result"].is_null(),
+        "disabled SDK must not fabricate builtin documentation: {reply}"
+    );
+    plaintext_server.request("shutdown", Value::Null);
+    plaintext_server.notify("exit", Value::Null);
+    let signature_sdk = nested_root.join(".signature-sdk");
+    std::fs::create_dir_all(signature_sdk.join("src/builtin")).unwrap();
+    std::fs::write(
+        signature_sdk.join("src/builtin/builtin.go"),
+        concat!(
+            "package builtin\ntype Type int\ntype FloatType float32\ntype ComplexType complex64\n",
+            "// SDK length documentation.\nfunc len(v Type) int\n",
+            "// SDK complex documentation.\nfunc complex(r, i FloatType) ComplexType\n",
+        ),
+    )
+    .unwrap();
+    let mut builtin_server = Server::new(
+        Command::new(env!("CARGO_BIN_EXE_goquery"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .env("GOWORK", "off")
+            .spawn()
+            .unwrap(),
+    );
+    builtin_server.request(
+        "initialize",
+        serde_json::json!({
+            "rootUri": url::Url::from_directory_path(&nested_root).unwrap(), "capabilities": {},
+            "initializationOptions": {"goroot": signature_sdk, "fileWatch": false},
+        }),
+    );
+    builtin_server.notify("initialized", serde_json::json!({}));
+    builtin_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": builtin_uri, "languageId": "go", "version": 1, "text": builtin_source,
+        }}),
+    );
+    for (needle, label, parameters, doc) in [
+        (
+            "len(values)",
+            "len(v Type) int",
+            vec!["v Type"],
+            "SDK length documentation.",
+        ),
+        (
+            "complex(r, r)",
+            "complex(r float64, i float64) complex128",
+            vec!["r float64", "i float64"],
+            "SDK complex documentation.",
+        ),
+        (
+            "len(1)",
+            "len(value int) int",
+            vec!["value int"],
+            "Local length.",
+        ),
+    ] {
+        let start = builtin_source.find(needle).unwrap() + needle.find('(').unwrap() + 1;
+        let reply = builtin_server.request(
+            "textDocument/signatureHelp",
+            serde_json::json!({
+                "textDocument": {"uri": builtin_uri}, "position": position(builtin_source, start),
+                "context": {"triggerKind": 1, "isRetrigger": false},
+            }),
+        );
+        let parameters: Vec<_> = parameters
+            .into_iter()
+            .map(|label| serde_json::json!({"label": label}))
+            .collect();
+        assert_eq!(
+            reply["result"],
+            serde_json::json!({
+                "activeSignature": 0, "activeParameter": 0,
+                "signatures": [{"label": label, "parameters": parameters, "activeParameter": 0,
+                    "documentation": {"kind": "markdown", "value": doc}}],
+            }),
+            "SDK signature template, substitution or shadow guard failed: {reply}"
+        );
+    }
+    let start = builtin_source.find("len(\"constant\")").unwrap() + "len(".len();
+    let reply = builtin_server.request(
+        "textDocument/signatureHelp",
+        serde_json::json!({
+            "textDocument": {"uri": builtin_uri}, "position": position(builtin_source, start),
+            "context": {"triggerKind": 1, "isRetrigger": false},
+        }),
+    );
+    assert!(
+        reply["result"].is_null(),
+        "constant-folded builtin should have no callable signature: {reply}"
+    );
+    builtin_server.request("shutdown", Value::Null);
+    builtin_server.notify("exit", Value::Null);
+    let byte_hover = nested_server.request("textDocument/hover", serde_json::json!({
+        "textDocument": {"uri": calls_uri}, "position": position(calls, calls.find("ByteValue").unwrap()),
+    }));
+    assert!(
+        byte_hover["result"]["contents"]["value"]
+            .as_str()
+            .is_some_and(|value| value.contains(r#"const ByteValue untyped string = "\xff""#)),
+        "byte string rendering replaced invalid UTF-8: {byte_hover}"
+    );
     let invalid_values = concat!(
         "package client\nimport \"example.test/outer\"\nfunc invalidValues() {\n",
         "missing := outer.Pair[int]\nextra := outer.Identity[int, string]\n",

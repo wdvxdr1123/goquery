@@ -1,22 +1,14 @@
 //! Bounded Go documentation extraction: comment attachment, `CommentGroup.Text`
 //! semantics and resolution of Go doc links to editor locations.
 use super::Context;
+use crate::analysis::query::documentation;
 use crate::syntax::{Lexer, TokenKind};
 use crate::workspace::{self, Workspace};
+pub(super) use documentation::Target;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-const MAX_COMMENT_BYTES: usize = 64 * 1024;
 const MAX_DOC_LINKS: usize = 128;
-
-/// Where gopls looks for the documentation comment of a declaration.
-pub(super) struct Target {
-    pub(super) start: usize,
-    pub(super) end: usize,
-    /// Start of the enclosing `var`/`const`/`type` declaration keyword.
-    pub(super) declaration: Option<usize>,
-    pub(super) trailing: bool,
-}
 
 pub(super) struct Documents {
     pub(super) text: String,
@@ -41,156 +33,10 @@ pub(super) fn attached_in_view(
     target: Target,
     view: Option<&crate::buildconstraint::Target>,
 ) -> Option<Documents> {
-    let spans = group_before(source, target.start)
-        .or_else(|| {
-            target
-                .declaration
-                .and_then(|start| group_before(source, start))
-        })
-        .or_else(|| {
-            target
-                .trailing
-                .then(|| group_after(source, target.end))
-                .flatten()
-        })?;
-    let text = group_text(source, &spans)?;
+    let spans = documentation::spans(source, target)?;
+    let text = documentation::text(source, &spans)?;
     let links = doc_links(context, file, source, &spans, view);
     Some(Documents { text, links })
-}
-
-/// Committed comments immediately above `start`, requiring exactly one newline
-/// between the group and the declaration (gopls' `ast.CommentGroup` attachment).
-fn group_before(source: &str, start: usize) -> Option<Vec<Range<usize>>> {
-    let mut group: Option<(Vec<Range<usize>>, bool)> = None;
-    for token in Lexer::with_comments(source) {
-        if token.inserted {
-            continue;
-        }
-        if token.span.start >= start || token.span.end > start {
-            let (spans, line_start) = group.take()?;
-            if !line_start {
-                return None;
-            }
-            let gap = &source[spans.last()?.end..start];
-            return (gap.bytes().filter(|byte| *byte == b'\n').count() == 1).then_some(spans);
-        }
-        if token.kind == TokenKind::Comment {
-            let line_begin = source[..token.span.start]
-                .rfind('\n')
-                .map_or(0, |index| index + 1);
-            let line_start = source[line_begin..token.span.start]
-                .bytes()
-                .all(|byte| byte == b' ' || byte == b'\t');
-            group = match group.take() {
-                Some((mut spans, first_line_start)) => {
-                    let previous = spans.last().map_or(0, |span| span.end);
-                    if source[previous..token.span.start]
-                        .bytes()
-                        .filter(|byte| *byte == b'\n')
-                        .count()
-                        <= 1
-                    {
-                        spans.push(token.span);
-                        Some((spans, first_line_start))
-                    } else {
-                        Some((vec![token.span], line_start))
-                    }
-                }
-                None => Some((vec![token.span], line_start)),
-            };
-        } else {
-            group = None;
-        }
-    }
-    None
-}
-
-/// Trailing comment group on the same line after `end`, continuing over
-/// adjacent comment lines.
-fn group_after(source: &str, end: usize) -> Option<Vec<Range<usize>>> {
-    let mut specs = Lexer::with_comments(source).skip_while(|token| token.span.start < end);
-    let first = specs
-        .next()
-        .filter(|token| token.kind == TokenKind::Comment)?;
-    if !source[end..first.span.start]
-        .bytes()
-        .all(|byte| byte == b' ' || byte == b'\t')
-    {
-        return None;
-    }
-    let mut spans = vec![first.span.clone()];
-    for token in specs {
-        if token.kind != TokenKind::Comment {
-            break;
-        }
-        let previous = spans.last().expect("nonempty group").end;
-        if source[previous..token.span.start]
-            .bytes()
-            .filter(|byte| *byte == b'\n')
-            .count()
-            > 1
-        {
-            break;
-        }
-        spans.push(token.span);
-    }
-    Some(spans)
-}
-
-/// Port of `go/ast.(*CommentGroup).Text` for already identified comments.
-fn group_text(source: &str, spans: &[Range<usize>]) -> Option<String> {
-    let mut lines: Vec<String> = Vec::new();
-    for span in spans {
-        let comment = source.get(span.clone())?;
-        let mut content = if let Some(text) = comment.strip_prefix("//") {
-            if let Some(text) = text.strip_prefix(' ') {
-                text
-            } else if directive(text) {
-                continue;
-            } else {
-                text
-            }
-        } else {
-            comment.strip_prefix("/*")?.strip_suffix("*/")?
-        };
-        if content.is_empty() && comment.len() == 2 {
-            content = "";
-        }
-        for line in content.split('\n') {
-            lines.push(line.trim_end().to_owned());
-        }
-    }
-    let mut kept: Vec<String> = Vec::new();
-    for line in lines {
-        if !line.is_empty() || kept.last().is_some_and(|last| !last.is_empty()) {
-            kept.push(line);
-        }
-    }
-    if kept.last().is_some_and(|last| !last.is_empty()) {
-        kept.push(String::new());
-    }
-    let text = kept.join("\n");
-    (!text.is_empty() && text.len() <= MAX_COMMENT_BYTES).then_some(text)
-}
-
-fn directive(line: &str) -> bool {
-    if ["line ", "extern ", "export "]
-        .iter()
-        .any(|prefix| line.starts_with(prefix))
-    {
-        return true;
-    }
-    let Some((prefix, suffix)) = line.split_once(':') else {
-        return false;
-    };
-    !prefix.is_empty()
-        && prefix
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-        && suffix
-            .as_bytes()
-            .first()
-            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
 }
 
 /// Resolve the document links of gopls' `formatDocComment`: every symbol path

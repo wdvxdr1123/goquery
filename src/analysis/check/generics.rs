@@ -1,9 +1,16 @@
 //! Adapt expression operands to the shared structural call-inference core.
+pub(in crate::analysis::check) mod presentation;
 use super::callable_signature::{CallableSignature, signature_label};
 use super::{Inference, ScopedType};
 use crate::analysis::types::{Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind, Signature};
 use std::path::Path;
+
+#[derive(Clone, Copy)]
+pub(crate) enum SignaturePresentation {
+    Accessible,
+    Display,
+}
 
 impl<'workspace> Inference<'workspace, '_> {
     #[allow(clippy::too_many_arguments)]
@@ -45,6 +52,7 @@ impl<'workspace> Inference<'workspace, '_> {
         declaration: (&Path, &str, &Signature),
         function: ExprId,
         call: Option<(&[ExprId], bool)>,
+        presentation: SignaturePresentation,
     ) -> Option<CallableSignature> {
         let (origin, header, signature) = declaration;
         let (resolved, symbol) = self.callee(function)?;
@@ -84,8 +92,15 @@ impl<'workspace> Inference<'workspace, '_> {
             .zip(inferred)
             .collect();
         signature_label(header, signature, &symbol.name, |annotation| {
-            let ty = arena.parse_in(origin, annotation, &environment)?;
-            arena.render_resolved(ty, self.file)
+            presentation::annotation(
+                self.workspace,
+                self.file,
+                &mut arena,
+                origin,
+                annotation,
+                &environment,
+                presentation,
+            )
         })
         .map(|(signature, _)| signature)
     }
@@ -94,6 +109,23 @@ impl<'workspace> Inference<'workspace, '_> {
     pub(crate) fn explicit_function_signature(
         &self,
         function: ExprId,
+    ) -> Option<(CallableSignature, bool)> {
+        self.instantiated_callee_signature_in(function, None, SignaturePresentation::Accessible)
+    }
+
+    pub(crate) fn instantiated_callee_signature(
+        &self,
+        function: ExprId,
+        call: Option<(&[ExprId], bool)>,
+    ) -> Option<(CallableSignature, bool)> {
+        self.instantiated_callee_signature_in(function, call, SignaturePresentation::Display)
+    }
+
+    fn instantiated_callee_signature_in(
+        &self,
+        function: ExprId,
+        call: Option<(&[ExprId], bool)>,
+        presentation: SignaturePresentation,
     ) -> Option<(CallableSignature, bool)> {
         let (origin, symbol) = self.callee(function)?;
         if !symbol.is_function() || !symbol.generic {
@@ -108,8 +140,12 @@ impl<'workspace> Inference<'workspace, '_> {
             .workspace
             .source_slice(origin, declaration.start..end)?;
         let signature = crate::syntax::parse_signature(&header);
-        let label =
-            self.instantiated_function_signature((origin, &header, &signature), function, None)?;
+        let label = self.instantiated_function_signature(
+            (origin, &header, &signature),
+            function,
+            call,
+            presentation,
+        )?;
         Some((
             label,
             signature.parameters.last().is_some_and(|p| p.variadic),

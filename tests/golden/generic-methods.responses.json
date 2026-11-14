@@ -109,8 +109,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "Get() Payload",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "Get() Payload"
         }
       ]
     }
@@ -124,6 +127,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Set(v Payload, rest ...Payload) (old Payload)",
           "parameters": [
             {
@@ -144,8 +151,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "Get() Payload",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "Get() Payload"
         }
       ]
     }
@@ -157,8 +167,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "Get() Payload",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "Get() Payload"
         }
       ]
     }
@@ -172,6 +185,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Own(v Payload) Payload",
           "parameters": [
             {
@@ -191,6 +208,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "TakeSecond(v Payload) Payload",
           "parameters": [
             {
@@ -210,6 +231,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Apply(f func(Payload) Payload) Payload",
           "parameters": [
             {
@@ -229,6 +254,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Fn(v Payload) Payload",
           "parameters": [
             {
@@ -248,6 +277,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Read(v Payload) Payload",
           "parameters": [
             {
@@ -265,8 +298,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "getter() Payload",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "getter() Payload"
         }
       ]
     }
@@ -961,8 +997,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "Get() Other",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "Get() Other"
         }
       ]
     }

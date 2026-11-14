@@ -355,6 +355,10 @@
       "activeSignature": 0,
       "signatures": [
         {
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Value(data.Item) data.Item",
           "parameters": [
             {
@@ -1628,6 +1632,10 @@
       "activeSignature": 0,
       "signatures": [
         {
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Value(view.Item) view.Item",
           "parameters": [
             {

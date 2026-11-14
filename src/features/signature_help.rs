@@ -2,7 +2,8 @@
 use crate::analysis::query::{Context, SignatureTrigger};
 use serde_json::Value;
 use tower_lsp::lsp_types::{
-    ParameterInformation, ParameterLabel, SignatureHelp, SignatureInformation,
+    Documentation, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, SignatureHelp,
+    SignatureInformation,
 };
 
 pub(super) fn execute(
@@ -17,10 +18,26 @@ pub(super) fn execute(
     let Some(information) = context.signature_help(offset, trigger)? else {
         return Ok(Value::Null);
     };
+    let text = information.documentation.unwrap_or_default();
+    let (kind, text) = if context.workspace().signature_plaintext {
+        (MarkupKind::PlainText, text)
+    } else {
+        let mut rendered = super::documentation::markdown(&text, &[]);
+        if rendered.ends_with('\n') {
+            rendered.pop();
+        }
+        (MarkupKind::Markdown, rendered)
+    };
+    let active_parameter = information.signature.active_parameter;
+    let mut signature: SignatureInformation = information.signature.into();
+    signature.documentation = Some(Documentation::MarkupContent(MarkupContent {
+        kind,
+        value: text,
+    }));
     Ok(serde_json::to_value(SignatureHelp {
-        active_parameter: information.active_parameter,
+        active_parameter,
         active_signature: Some(0),
-        signatures: vec![information.into()],
+        signatures: vec![signature],
     })
     .expect("serializable signature help"))
 }
@@ -30,7 +47,7 @@ impl From<crate::analysis::check::callable_signature::CallableSignature> for Sig
         Self {
             label: value.label,
             documentation: None,
-            parameters: Some(
+            parameters: (!value.parameters.is_empty()).then(|| {
                 value
                     .parameters
                     .into_iter()
@@ -38,8 +55,8 @@ impl From<crate::analysis::check::callable_signature::CallableSignature> for Sig
                         label: ParameterLabel::Simple(parameter.label),
                         documentation: None,
                     })
-                    .collect(),
-            ),
+                    .collect()
+            }),
             active_parameter: value.active_parameter,
         }
     }

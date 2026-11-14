@@ -112,3 +112,60 @@ pub fn decode_import_path(source: &str) -> Option<String> {
     }
     import_path(source)
 }
+/// Encode decoded UTF-8 as a Go interpreted string literal.
+pub fn quote_string(value: &str) -> String {
+    quote_bytes(value.as_bytes())
+}
+
+/// Encode Go string bytes without replacing invalid UTF-8 sequences.
+pub fn quote_bytes(mut value: &[u8]) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    while !value.is_empty() {
+        let (valid, invalid) = match std::str::from_utf8(value) {
+            Ok(text) => (text, 0),
+            Err(error) => {
+                let valid = std::str::from_utf8(&value[..error.valid_up_to()])
+                    .expect("UTF-8 error prefix is validated");
+                (
+                    valid,
+                    error
+                        .error_len()
+                        .unwrap_or(value.len() - error.valid_up_to()),
+                )
+            }
+        };
+        for ch in valid.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\u{7}' => out.push_str("\\a"),
+                '\u{8}' => out.push_str("\\b"),
+                '\u{c}' => out.push_str("\\f"),
+                '\u{b}' => out.push_str("\\v"),
+                ch if ch.is_control() && ch <= '\u{7f}' => {
+                    out.push_str(&format!("\\x{:02x}", ch as u32))
+                }
+                ch if ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}' | '\u{feff}') => {
+                    let value = ch as u32;
+                    if value <= 0xffff {
+                        out.push_str(&format!("\\u{value:04x}"));
+                    } else {
+                        out.push_str(&format!("\\U{value:08x}"));
+                    }
+                }
+                ch => out.push(ch),
+            }
+        }
+        let start = valid.len();
+        for byte in &value[start..start + invalid] {
+            out.push_str(&format!("\\x{byte:02x}"));
+        }
+        value = &value[start + invalid..];
+    }
+    out.push('"');
+    out
+}

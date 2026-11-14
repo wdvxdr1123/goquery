@@ -492,29 +492,5 @@ fn sub_second(mut value: u128, unit: u128, suffix: &str, sign: &str) -> String {
 
 /// Go `strconv.Quote` rendering of a decoded string constant.
 pub(super) fn quote_bytes(value: &[u8]) -> String {
-    let text = String::from_utf8_lossy(value);
-    quote(&text)
-}
-
-/// Go `strconv.Quote` rendering of a decoded string constant.
-pub(super) fn quote(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{7}' => out.push_str("\\a"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            '\u{b}' => out.push_str("\\v"),
-            ch if ch.is_control() => out.push_str(&format!("\\x{:02x}", ch as u32)),
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
+    crate::syntax::quote_bytes(value)
 }

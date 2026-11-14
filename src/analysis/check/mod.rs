@@ -9,6 +9,7 @@ pub(crate) mod classify;
 mod composite;
 mod conversion;
 mod generics;
+pub(crate) use generics::SignaturePresentation;
 mod globals;
 mod index;
 mod iteration;

@@ -94,6 +94,8 @@ pub struct Workspace {
     pub(super) nested_files: std::collections::HashSet<PathBuf>,
     pub(super) nested_bytes: usize,
     pub(crate) completion_config: crate::features::CompletionConfig,
+    /// gopls uses the hover content preference for signature documentation too.
+    pub(crate) signature_plaintext: bool,
     pub(crate) semantic_config: crate::features::SemanticConfig,
     /// Client announced hierarchicalDocumentSymbolSupport at initialization.
     pub(crate) hierarchical_document_symbols: bool,

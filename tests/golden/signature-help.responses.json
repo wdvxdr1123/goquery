@@ -111,6 +111,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(a int, b int) (sum int)",
           "parameters": [
             {
@@ -133,6 +137,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(a int, b int) (sum int)",
           "parameters": [
             {
@@ -155,6 +163,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Sum(a int, b int) int",
           "parameters": [
             {
@@ -177,6 +189,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Sum(a int, b int) int",
           "parameters": [
             {
@@ -199,6 +215,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(a int, b int) (sum int)",
           "parameters": [
             {
@@ -221,6 +241,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Join(first string, rest ...string) string",
           "parameters": [
             {
@@ -243,6 +267,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Join(first string, rest ...string) string",
           "parameters": [
             {
@@ -265,6 +293,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Mix(prefix string, values ...int) (external.Thing, error)",
           "parameters": [
             {
@@ -287,6 +319,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Mix(prefix string, values ...int) (external.Thing, error)",
           "parameters": [
             {
@@ -312,8 +348,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "Zero()",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "Zero()"
         }
       ]
     }
@@ -332,6 +371,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Text(消息 string, n int)",
           "parameters": [
             {
@@ -354,6 +397,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Sum(a int, b int) int",
           "parameters": [
             {
@@ -381,6 +428,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(a int, b int) (sum int)",
           "parameters": [
             {
@@ -408,6 +459,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Join(first string, rest ...string) string",
           "parameters": [
             {
@@ -430,6 +485,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(int, int) int",
           "parameters": [
             {
@@ -452,6 +511,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "cb(值 int) int",
           "parameters": [
             {
@@ -471,6 +534,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "local(x string, rest ...int) int",
           "parameters": [
             {
@@ -493,6 +560,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "copy(x string, rest ...int) int",
           "parameters": [
             {
@@ -515,6 +586,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "global(a int, b int) (sum int)",
           "parameters": [
             {
@@ -537,6 +612,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "typed(n int) string",
           "parameters": [
             {
@@ -556,6 +635,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "named(value int) int",
           "parameters": [
             {
@@ -575,6 +658,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "alias(value int) int",
           "parameters": [
             {
@@ -594,6 +681,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "F(a int, b int) int",
           "parameters": [
             {
@@ -616,6 +707,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "B(text string, rest ...int) (n int)",
           "parameters": [
             {
@@ -638,6 +733,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "F(int) int",
           "parameters": [
             {
@@ -657,6 +756,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "scoped(v int) bool",
           "parameters": [
             {
@@ -676,6 +779,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "func(v int) int",
           "parameters": [
             {
@@ -700,6 +807,10 @@
       "signatures": [
         {
           "activeParameter": 1,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(a int, b int) int",
           "parameters": [
             {
@@ -722,6 +833,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "cb(int) int",
           "parameters": [
             {
@@ -739,6 +854,10 @@
       "activeSignature": 0,
       "signatures": [
         {
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "transform(value external.Thing) external.Thing",
           "parameters": [
             {
@@ -758,6 +877,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(numbers ...int) int",
           "parameters": [
             {
@@ -777,6 +900,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "named(value string) string",
           "parameters": [
             {
@@ -796,6 +923,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "alias(value string) string",
           "parameters": [
             {
@@ -815,6 +946,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Add(numbers ...int) int",
           "parameters": [
             {

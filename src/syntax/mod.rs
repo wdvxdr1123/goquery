@@ -22,6 +22,8 @@ pub use lexer::{Lexer, is_exported_name, is_identifier_continue, is_identifier_s
 pub use literal::decode_import_path;
 pub use literal::decode_rune_literal;
 pub use literal::decode_string_literal;
+pub use literal::quote_bytes;
+pub use literal::quote_string;
 pub use parser::parse_block;
 pub use parser::parse_type;
 pub use parser::parse_type_prefix;

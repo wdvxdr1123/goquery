@@ -28,6 +28,11 @@ impl Workspace {
     }
     pub fn initialize(&mut self, params: &Value) -> Result<(), (i32, String)> {
         self.completion_config = crate::features::CompletionConfig::from_initialize(params)?;
+        self.signature_plaintext = params["capabilities"]["textDocument"]["hover"]["contentFormat"]
+            .as_array()
+            .and_then(|formats| formats.first())
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|format| format != "markdown");
         self.semantic_config = crate::features::SemanticConfig::from_initialize(params);
         self.hierarchical_document_symbols = params["capabilities"]["textDocument"]
             ["documentSymbol"]["hierarchicalDocumentSymbolSupport"]

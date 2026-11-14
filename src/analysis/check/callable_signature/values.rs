@@ -125,6 +125,52 @@ impl Callable<'_> {
         }
         let expression = &expressions[id.0];
         match &expression.kind {
+            ExprKind::Call { function, .. } => {
+                let inference = Inference::new(
+                    self.workspace,
+                    self.file,
+                    self.source,
+                    self.locals,
+                    expressions,
+                    base,
+                );
+                let value = inference.scoped_expression(id, 0, 1)?;
+                // Structural function nodes intentionally omit parameter names.
+                // Retain them from the already qualified callee result label
+                // after proving the result through the native expression path.
+                if let Some((callee, _)) = self.expression(expressions, base, *function, depth + 1)
+                {
+                    let header = format!("func {}", callee.label);
+                    let signature = crate::syntax::parse_signature(&header);
+                    if signature.diagnostics.is_empty() && signature.results.len() == 1 {
+                        let result = &signature.results[0];
+                        if let Some(information) = self.type_information(
+                            TypeSource {
+                                file: self.file,
+                                source: &header,
+                                span: result.annotation.clone(),
+                                locals: None,
+                            },
+                            "func",
+                            None,
+                            depth + 1,
+                        ) {
+                            return Some(information);
+                        }
+                    }
+                }
+                return self.type_information(
+                    TypeSource {
+                        file: value.scope,
+                        source: &value.text,
+                        span: 0..value.text.len(),
+                        locals: None,
+                    },
+                    "func",
+                    None,
+                    depth + 1,
+                );
+            }
             ExprKind::Index { .. } => {
                 let inference = Inference::new(
                     self.workspace,

@@ -2,22 +2,20 @@
 use super::content::HoverContent;
 use super::doc;
 use crate::analysis::query::Context;
+use crate::analysis::query::builtin::{
+    declaration as builtin_declaration, replace_placeholder_types,
+};
 use crate::syntax::{Lexer, TokenKind};
-
-const MAX_BYTES: usize = 256 * 1024;
 
 pub(super) fn hover(
     context: &Context<'_>,
     name: &str,
     range: super::SourceRange,
 ) -> Option<HoverContent> {
-    let workspace = context.workspace();
-    let file = workspace.builtin_file()?;
-    let source = workspace
-        .source(&file)
-        .filter(|source| source.len() <= MAX_BYTES)?;
-    let stub = crate::syntax::stub(&source);
-    let symbol = stub.symbols.iter().find(|symbol| symbol.name == name)?;
+    let builtin = builtin_declaration(context, name)?;
+    let file = builtin.file;
+    let source = builtin.source;
+    let symbol = builtin.symbol;
     let declaration = symbol.range.clone();
     let (code, doc_start) = match symbol.kind {
         crate::syntax::SymbolKind::Function => (
@@ -61,22 +59,12 @@ pub(super) fn location(
     context: &Context<'_>,
     name: &str,
 ) -> Option<(std::path::PathBuf, (u32, u32))> {
-    let workspace = context.workspace();
-    let file = workspace.builtin_file()?;
-    let source = workspace
-        .source(&file)
-        .filter(|source| source.len() <= MAX_BYTES)?;
-    let stub = crate::syntax::stub(&source);
-    let symbol = stub.symbols.iter().find(|symbol| symbol.name == name)?;
+    let builtin = builtin_declaration(context, name)?;
+    let file = builtin.file;
+    let source = builtin.source;
+    let symbol = builtin.symbol;
     let position = crate::text::SourceMap::new(&source).position(symbol.selection.start);
     Some((file, (position.line, position.character)))
-}
-
-/// gopls replaces synthetic builtin type classes with common equivalents.
-fn replace_placeholder_types(text: &str) -> String {
-    text.replace("ComplexType", "complex128")
-        .replace("FloatType", "float64")
-        .replace("IntegerType", "int")
 }
 
 /// Rebuild the enclosing `const`/`var` declaration with go/printer alignment.

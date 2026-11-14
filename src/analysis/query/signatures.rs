@@ -1,4 +1,6 @@
 //! Query-local signature selection and expected callable argument semantics.
+mod builtin;
+mod documentation;
 use super::Context;
 use crate::analysis::check::callable_signature::CallableSignature;
 use crate::analysis::scope::Locals;
@@ -11,8 +13,28 @@ pub(crate) struct SignatureTrigger {
     pub(crate) retrigger: bool,
 }
 
+pub(crate) struct SignatureHelp {
+    pub(crate) signature: CallableSignature,
+    pub(crate) documentation: Option<String>,
+}
+
+struct HelpInformation {
+    callable: (CallableSignature, bool),
+    documentation: Option<String>,
+}
+
+impl From<(CallableSignature, bool)> for HelpInformation {
+    fn from(callable: (CallableSignature, bool)) -> Self {
+        Self {
+            callable,
+            documentation: None,
+        }
+    }
+}
+
 struct CallSite {
     function: ExprId,
+    expression: Option<ExprId>,
     arguments: Vec<usize>,
     in_arguments: bool,
 }
@@ -67,7 +89,7 @@ impl Context<'_> {
         &self,
         offset: usize,
         trigger: SignatureTrigger,
-    ) -> Result<Option<CallableSignature>, (i32, String)> {
+    ) -> Result<Option<SignatureHelp>, (i32, String)> {
         let context = self;
         let workspace = context.workspace();
         let file = context.file();
@@ -119,7 +141,7 @@ fn help_in_expressions(
     trigger: SignatureTrigger,
     locals: &Locals,
     body: (&[Expr], usize),
-) -> Option<CallableSignature> {
+) -> Option<SignatureHelp> {
     let source = context.source();
     let (expressions, base) = body;
     if !trigger.explicit
@@ -135,13 +157,43 @@ fn help_in_expressions(
     {
         return None;
     }
+    let mut selected_information: Option<(ExprId, HelpInformation)> = None;
     let call = call_site(source, offset, trigger, expressions, base, |function| {
-        context
-            .callable_information(locals, (expressions, base), function)
-            .is_some()
+        let Some(information) = help_information(
+            context,
+            locals,
+            body,
+            function,
+            direct_call(expressions, function),
+        ) else {
+            return false;
+        };
+        // Keep the same smallest candidate as call_site. In particular, retain
+        // a selected builtin's SDK declaration result rather than reading that
+        // closed source again when constructing the final response.
+        if selected_information
+            .as_ref()
+            .is_none_or(|(id, _)| expressions[function.0].span.len() < expressions[id.0].span.len())
+        {
+            selected_information = Some((function, information));
+        }
+        true
     })?;
-    let mut information =
-        context.callable_information(locals, (expressions, base), call.function)?;
+    let selected_information = selected_information.filter(|(id, _)| *id == call.function);
+    let information = selected_information
+        .map(|(_, information)| information)
+        .or_else(|| help_information(context, locals, body, call.function, call.expression))?;
+    let documentation = information
+        .documentation
+        .or_else(|| documentation::for_function(context, locals, body, call.function));
+    let mut information = information.callable;
+    if !matches!(
+        expressions[call.function.0].kind,
+        ExprKind::Name | ExprKind::Selector { .. }
+    ) {
+        let opening = information.0.label.find('(')?;
+        information.0.label.replace_range(..opening, "func");
+    }
     if call.in_arguments && !information.0.parameters.is_empty() {
         let mut active = call
             .arguments
@@ -153,7 +205,71 @@ fn help_in_expressions(
         }
         information.0.active_parameter = Some(active as u32);
     }
-    Some(information.0)
+    Some(SignatureHelp {
+        signature: information.0,
+        documentation,
+    })
+}
+
+fn direct_call(expressions: &[Expr], selected: ExprId) -> Option<ExprId> {
+    expressions.iter().position(|expression| {
+        matches!(expression.kind, ExprKind::Call { function, .. } if function == selected)
+    }).map(ExprId)
+}
+
+fn help_information(
+    context: &Context<'_>,
+    locals: &Locals,
+    body: (&[Expr], usize),
+    function: ExprId,
+    call: Option<ExprId>,
+) -> Option<HelpInformation> {
+    if let Some(information) = builtin::for_function(context, locals, body, function) {
+        return Some(information);
+    }
+    let (expressions, base) = body;
+    let workspace = context.workspace();
+    let inference = crate::analysis::check::Inference::new(
+        workspace,
+        context.file(),
+        context.source(),
+        locals,
+        expressions,
+        base,
+    );
+    if let Some((origin, symbol)) = inference.callee(function)
+        && symbol.is_function()
+        && symbol.generic
+    {
+        if let Some(call) = call {
+            let ExprKind::Call {
+                arguments,
+                variadic,
+                ..
+            } = &expressions[call.0].kind
+            else {
+                return None;
+            };
+            return inference
+                .instantiated_callee_signature(function, Some((arguments, *variadic)))
+                .map(HelpInformation::from);
+        }
+        // Selecting the name within an explicit instance denotes the generic
+        // declaration object, while its surrounding call denotes the instance.
+        let declaration = symbol.declaration()?;
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
+        if end.checked_sub(declaration.start)? > super::budget::MAX_BYTES {
+            return None;
+        }
+        let header = workspace.source_slice(origin, declaration.start..end)?;
+        let signature = crate::syntax::parse_signature(&header);
+        return workspace
+            .declared_signature(context.file(), origin, &header, &signature, &symbol.name)
+            .map(HelpInformation::from);
+    }
+    context
+        .callable_information(locals, body, function)
+        .map(HelpInformation::from)
 }
 
 fn call_site(
@@ -162,7 +278,7 @@ fn call_site(
     trigger: SignatureTrigger,
     expressions: &[Expr],
     base: usize,
-    callable: impl Fn(ExprId) -> bool,
+    mut callable: impl FnMut(ExprId) -> bool,
 ) -> Option<CallSite> {
     // Function-valued names under the cursor take precedence over an outer call.
     let selected = expressions
@@ -180,13 +296,14 @@ fn call_site(
     if let Some((index, _)) = selected {
         return Some(CallSite {
             function: ExprId(index),
+            expression: direct_call(expressions, ExprId(index)),
             arguments: Vec::new(),
             in_arguments: false,
         });
     }
     let mut best = None;
     let mut best_size = usize::MAX;
-    for expression in expressions {
+    for (index, expression) in expressions.iter().enumerate() {
         let ExprKind::Call {
             function,
             arguments,
@@ -245,6 +362,7 @@ fn call_site(
         best_size = expression.span.len();
         best = Some(CallSite {
             function: *function,
+            expression: Some(ExprId(index)),
             arguments: arguments
                 .iter()
                 .map(|argument| base + expressions[argument.0].span.end)

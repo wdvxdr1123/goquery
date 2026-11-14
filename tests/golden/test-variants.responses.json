@@ -216,8 +216,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "ExportedForTest()",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "ExportedForTest()"
         }
       ]
     }

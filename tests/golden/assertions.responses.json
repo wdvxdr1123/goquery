@@ -329,8 +329,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "callable() *external.Alias",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "callable() *external.Alias"
         }
       ]
     }
@@ -342,8 +345,11 @@
       "activeSignature": 0,
       "signatures": [
         {
-          "label": "func() *external.Alias",
-          "parameters": []
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
+          "label": "func() *external.Alias"
         }
       ]
     }

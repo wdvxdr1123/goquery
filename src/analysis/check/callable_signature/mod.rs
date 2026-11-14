@@ -1,9 +1,10 @@
 //! Query-local callable presentation during migration to native signature operands.
 mod methods;
+pub(crate) mod presentation;
 mod render;
 mod values;
 pub(crate) use methods::{PreparedMethods, SignatureSource};
-pub(super) use render::signature_label;
+pub(crate) use render::signature_label;
 
 pub(crate) struct ParameterLabel {
     pub(crate) label: String,

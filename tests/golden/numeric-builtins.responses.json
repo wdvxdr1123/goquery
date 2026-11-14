@@ -245,6 +245,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Pick(value float32) *Item",
           "parameters": [
             {

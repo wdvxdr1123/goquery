@@ -4,7 +4,38 @@ use crate::analysis::types::{Mode, Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind};
 
 impl Inference<'_, '_> {
-    pub(super) fn builtin_name(&self, function: ExprId) -> Option<&str> {
+    /// go/types does not give a callable signature to a folded builtin call.
+    /// Suppress help only when the existing operand evaluator proves it constant.
+    pub(crate) fn constant_builtin_call(&self, function: ExprId) -> bool {
+        let Some(name) = self.builtin_name(function) else {
+            return false;
+        };
+        if !matches!(
+            name,
+            "len" | "cap" | "complex" | "real" | "imag" | "min" | "max"
+        ) {
+            return false;
+        }
+        let selected = self.unparenthesized(function);
+        self.expressions.iter().any(|expression| {
+            let ExprKind::Call {
+                function,
+                arguments,
+                variadic,
+            } = &expression.kind
+            else {
+                return false;
+            };
+            if self.unparenthesized(*function).span != selected.span {
+                return false;
+            }
+            let mut arena = TypeArena::new(self.workspace);
+            self.builtin_operand(&mut arena, name, arguments, *variadic)
+                .is_some_and(|operand| operand.mode == Mode::Constant)
+        })
+    }
+
+    pub(crate) fn builtin_name(&self, function: ExprId) -> Option<&str> {
         let expression = self.unparenthesized(function);
         if !matches!(expression.kind, ExprKind::Name) {
             return None;

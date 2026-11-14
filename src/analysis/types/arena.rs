@@ -76,6 +76,7 @@ const _: () = assert!(std::mem::size_of::<Ty<'static>>() <= 48);
 #[derive(Clone, Copy)]
 pub(super) enum DisplayScope<'p> {
     Consumer(&'p Path),
+    Presentation(&'p Path),
     Qualified,
 }
 
@@ -204,6 +205,14 @@ impl<'a> TypeArena<'a> {
         self.identical(id, projected)?.then_some(text)
     }
 
+    /// Labels may mention a known package without adding it to the file imports.
+    /// This text must not be parsed as a semantic fact in the consumer's scope.
+    pub(crate) fn render_presentation(&self, id: TypeId, consumer: &Path) -> Option<String> {
+        let mut output = String::new();
+        self.write_in(id, DisplayScope::Presentation(consumer), &mut output, 0)?;
+        Some(output)
+    }
+
     pub(super) fn write(
         &self,
         id: TypeId,
@@ -231,7 +240,8 @@ impl<'a> TypeArena<'a> {
         match self.nodes.get(usize::from(id.0))? {
             Ty::Parameter(_) => {
                 let (origin, _, name) = self.local_parameter(id)?;
-                if matches!(consumer, DisplayScope::Consumer(file) if file != origin) {
+                if matches!(consumer, DisplayScope::Consumer(file) | DisplayScope::Presentation(file) if file != origin)
+                {
                     return None;
                 }
                 out.push_str(name);
@@ -244,7 +254,9 @@ impl<'a> TypeArena<'a> {
                 match consumer {
                     // A local declaration renders only for consumers in its own file;
                     // no other scope can prove the same spelling without a shadow risk.
-                    DisplayScope::Consumer(file) if file == *origin && !*formal => {
+                    DisplayScope::Consumer(file) | DisplayScope::Presentation(file)
+                        if file == *origin && !*formal =>
+                    {
                         out.push_str(&self.local_type_name(origin, selection)?);
                     }
                     DisplayScope::Qualified => {
@@ -286,6 +298,28 @@ impl<'a> TypeArena<'a> {
                 arguments,
             } => {
                 match consumer {
+                    DisplayScope::Presentation(file) => {
+                        let same = file.parent() == declaration.file.parent()
+                            && self.workspace.files.get(file)?.package
+                                == self.workspace.files.get(declaration.file)?.package;
+                        if !same {
+                            let import = self.workspace.import_path(declaration.file)?;
+                            let imported =
+                                self.workspace.files.get(file)?.imports.iter().rev().find(
+                                    |candidate| !candidate.is_blank() && candidate.path == import,
+                                );
+                            if !imported.is_some_and(|import| import.is_dot()) {
+                                let name = imported
+                                    .and_then(|import| self.workspace.import_name(import))
+                                    .unwrap_or(
+                                        &self.workspace.files.get(declaration.file)?.package,
+                                    );
+                                out.push_str(name);
+                                out.push('.');
+                            }
+                        }
+                        out.push_str(&declaration.symbol.name);
+                    }
                     DisplayScope::Consumer(file) => out.push_str(&self.workspace.result_type(
                         file,
                         declaration.file,
@@ -334,7 +368,21 @@ impl<'a> TypeArena<'a> {
                     Direction::Send => "chan<- ",
                     Direction::Receive => "<-chan ",
                 });
+                let parentheses = *direction == Direction::Both
+                    && matches!(
+                        self.nodes.get(usize::from(element.0)),
+                        Some(Ty::Chan {
+                            direction: Direction::Receive,
+                            ..
+                        })
+                    );
+                if parentheses {
+                    out.push('(');
+                }
                 self.write_in(*element, consumer, out, depth + 1)?;
+                if parentheses {
+                    out.push(')');
+                }
             }
         }
         (out.len() <= MAX_BYTES).then_some(())

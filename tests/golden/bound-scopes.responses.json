@@ -155,6 +155,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "Read(name string) string",
           "parameters": [
             {

@@ -1,8 +1,10 @@
 //! A request-local immutable metadata/source view, with a lazy native type arena.
 pub(crate) mod budget;
+mod builtin;
 mod calls;
 pub(crate) mod completion;
 pub(crate) mod diagnostics;
+mod documentation;
 pub(crate) mod folding;
 pub(crate) mod hierarchy;
 pub(crate) mod highlight;

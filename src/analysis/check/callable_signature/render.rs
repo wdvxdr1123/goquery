@@ -134,7 +134,7 @@ pub(crate) fn signature_label(
     }
     let mut parameter = |parameter: &Parameter| -> Option<String> {
         let annotation = &header[parameter.annotation.clone()];
-        let ty = annotation_type(annotation)?;
+        let ty = super::presentation::function_types(&annotation_type(annotation)?)?;
         let ty = if parameter.variadic {
             format!("...{ty}")
         } else {

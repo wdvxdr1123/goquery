@@ -267,3 +267,64 @@ All other requests in these corpus groups stay below 100 ms. Reports are under
 and `anonymous-rename-sdk-tokens.json` files. These workloads overlapped and
 are correctness evidence, not a controlled latency-change comparison. Rename
 latency remains lower priority; the SDK token target is still unmet.
+
+The signature-help wire audit's 39 requests and declaration-seeded reference
+samples (SDK 18, Hugo 6, Tile38 8, Ollama 6, typescript-go 6, Prometheus 6) have
+no native request above 100 ms. Reports: `benchmarks/signature-empty-parameters-strict.json`
+and `benchmarks/references-corpus-current/`. The reference corpus and Ollama
+memory workloads overlapped; these samples do not prove a speed improvement.
+At that snapshot strict signature-help parity was 5/39, with 34 documentation-only
+residuals; the subsequent documentation implementation below supersedes it.
+
+The signature-documentation release snapshot matches all 39 strict signature-help
+case replies and all 92 focused documentation replies. The six-corpus signature
+sample remains 123/144 full matches, with every native request below 100 ms;
+results and known residuals are recorded in semantic-progress.md. Fresh tokens
+and highlights retain 21/21 and 241/241 unique complete matches. Hover replays
+have no newly failed row. Concurrent-run native requests above 100 ms were:
+
+| Feature/corpus | Request | Milliseconds |
+| --- | --- | ---: |
+| Full tokens/SDK | `os/root_test.go` | 217.3 |
+| Hover/typescript-go | `internal/fourslash/tests/gen/findAllReferencesFromLinkTagReference3_test.go:fourslash_test@149` | 201.3 |
+| Hover/typescript-go | `internal/fourslash/tests/gen/quickInfoForGenericTaggedTemplateExpression_test.go:fourslash_test@154` | 352.2 |
+
+Reports: `benchmarks/signature-docs-sdk.json`, `signature-docs-corpus/`,
+`signature-docs-hover/`, `signature-docs-regression/` and
+`signature-docs-sdk-regression/`. Verification overlapped the Ollama memory
+workload. These samples do not establish a speed improvement; the SDK token
+latency target remains unmet.
+
+SDK builtin signature help improves the same bounded six-corpus signature sample
+from 123/144 to 139/144 full matches. Final SDK/Hugo/Tile38/Ollama/typescript-go/
+Prometheus counts are 36/40, 24/24, 16/16, 19/19, 20/21 and 24/24. No native
+request in these signature groups, the 156-position/format builtin fixture, the
+92-request callable-documentation regression, or the unchanged six-corpus hover
+replay exceeds 100 ms in the concurrent run. Reports: `builtin-signatures-final-sdk.json`,
+`builtin-signatures-final-corpus/`, `builtin-signatures/final-*.json`,
+`signature-documentation/builtin-final-regression-*.json` and
+`builtin-signatures-hover/`, under `benchmarks/`. This is a finite sample with
+known semantic residuals and overlapping memory verification, not evidence of
+an overall latency improvement. The SDK full-token target remains unmet.
+
+The nested-signature release snapshot improves the same base signature sample
+to SDK 39/40, Hugo 24/24, Tile38 16/16, Ollama 19/19, typescript-go 20/21 and
+Prometheus 24/24 (142/144 complete matches). Focused nested hover/signatures
+match 18/18 and 18/18; all signature and unchanged-plan hover replay requests
+stay below 100 ms. Full-token requests above 100 ms in the concurrent checks:
+
+| Corpus | Request | Milliseconds |
+| --- | --- | ---: |
+| SDK, smaller three-file sample | `internal/trace/trace_test.go` | 304.9 |
+| SDK, six-file sample | `os/root_test.go` | 238.4 |
+
+Reports: `benchmarks/nested-signatures-sdk.json`, `nested-signatures-corpus/`,
+`nested-signatures-hover/`, `nested-signatures-regression/`,
+`nested-signatures-sdk-regression/` and `nested-signatures/release.json`.
+The final byte-preserving release repeats the signature/hover comparisons in
+`nested-signatures-final-sdk.json`, `nested-signatures-final-corpus/`,
+`nested-signatures-final-hover/` and `nested-signatures/final.json`, also with no
+request above 100 ms in those groups. Token/highlight timings above belong to
+the preceding nested-signature snapshot.
+Verification overlapped the enhanced Ollama memory workload; no controlled
+speed improvement is claimed. The SDK token latency target remains unmet.

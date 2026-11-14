@@ -13,6 +13,23 @@
   search with gopls-style query syntax (`^prefix`, `'substring`, `suffix$`).
 - Completion and signature help: gopls-derived scoring, scoped locals and
   parameters, snippets, documentation and variadic signatures.
+  Zero-input signatures omit parameter metadata. Signature help reads the selected
+  callable object's attached documentation and shares hover's comment extraction
+  and Markdown rendering; the client's hover format preference also selects
+  signature documentation format, matching pinned gopls. Generic call signatures
+  reuse native instantiation proofs. Function results retain parameter names in
+  presentation without storing them in structural type nodes. Unsupported
+  inference and unavailable documentation remain bounded and incomplete.
+  Builtin signature help reads templates and comments from the configured SDK,
+  sharing hover's builtin declaration reader and synthetic-type replacements.
+  Native scope and operand checks preserve shadowing and suppress help for
+  proven constant builtin calls. Parenthesized builtin call signatures remain
+  unavailable where go/types specializes their concrete argument types.
+  Nested function and interface signatures expand grouped parameters/results by
+  parsed declaration spans, preserving literal contents within existing query
+  budgets. Generic callback names remain source presentation: requalified types
+  must pass native identity checks before their names are retained. Channel type
+  display preserves the parentheses in `chan (<-chan T)`.
 - Hover with Go types, signatures and doc comments rendered like gopls, including
   the pkg.go.dev footer. Method lists distinguish ordinary source, same-package
   tests, same-directory external tests and unrelated importers; test helpers

@@ -138,7 +138,7 @@ impl TypeArena<'_> {
         if depth >= MAX_DEPTH {
             return None;
         }
-        let (formal, mut actual) = (self.unalias(formal)?, self.unalias(actual)?);
+        let (mut formal, mut actual) = (self.unalias(formal)?, self.unalias(actual)?);
         if let Ty::Parameter(index) = self.nodes[usize::from(formal.0)] {
             if let Some(previous) = bindings[index] {
                 return self.identical(previous, actual)?.then_some(());
@@ -176,6 +176,21 @@ impl TypeArena<'_> {
             )
         {
             actual = self.underlying(actual)?;
+        }
+        if depth == 0
+            && matches!(self.nodes[usize::from(formal.0)], Ty::Named { .. })
+            && matches!(
+                self.nodes[usize::from(actual.0)],
+                Ty::Pointer(_)
+                    | Ty::Slice(_)
+                    | Ty::Array { .. }
+                    | Ty::Map { .. }
+                    | Ty::Chan { .. }
+                    | Ty::Struct { .. }
+                    | Ty::Signature { .. }
+            )
+        {
+            formal = self.underlying(formal)?;
         }
         let pairs = match (
             self.nodes[usize::from(formal.0)].clone(),

@@ -70,14 +70,18 @@ pub(super) fn instantiated(
         expressions,
         base,
     );
-    let instantiated =
-        inference.instantiated_function_signature((path, header, &signature), function, call)?;
+    let instantiated = inference.instantiated_function_signature(
+        (path, header, &signature),
+        function,
+        call,
+        crate::analysis::check::SignaturePresentation::Display,
+    )?;
     let code = format!(
         "func {}{}",
         import_qualifier(context, context.file(), path)?,
         render::normalize_signature(&instantiated.label),
     );
-    let comment = generic_signature_comment(header, &signature)?;
+    let comment = generic_signature_comment(context, path, header, &signature, &symbol.name)?;
     let separator = if code.len() > 60 { "\n" } else { " " };
     Some(format!("{code}{separator}// {comment}"))
 }
@@ -106,8 +110,20 @@ fn call_name_span(
 }
 
 /// The generic declaration rendered as gopls' trailing comment.
-fn generic_signature_comment(header: &str, signature: &crate::syntax::Signature) -> Option<String> {
+fn generic_signature_comment(
+    context: &Context<'_>,
+    origin: &Path,
+    header: &str,
+    signature: &crate::syntax::Signature,
+    name: &str,
+) -> Option<String> {
     let mut type_parameters = Vec::new();
+    let names = signature
+        .type_parameters
+        .iter()
+        .map(|parameter| header.get(parameter.name.as_ref()?.clone()))
+        .collect::<Option<Vec<_>>>()?;
+    let mut bytes = 0usize;
     for (index, parameter) in signature.type_parameters.iter().enumerate() {
         let name = header.get(parameter.name.as_ref()?.clone())?.trim();
         let constraint = header.get(parameter.annotation.clone())?.trim();
@@ -117,51 +133,29 @@ fn generic_signature_comment(header: &str, signature: &crate::syntax::Signature)
             .is_some_and(|next| {
                 header.get(next.annotation.clone()).map(str::trim) == Some(constraint)
             });
-        type_parameters.push(if grouped {
+        let constraint = context.workspace().signature_type_scoped(
+            context.file(),
+            origin,
+            constraint,
+            &names,
+        )?;
+        let parameter = if grouped {
             name.to_owned()
         } else {
-            format!("{name} {}", render::normalize_type(constraint))
-        });
-    }
-    let parameters = parameter_list(header, &signature.parameters)?;
-    let results = result_list(header, &signature.results)?;
-    let mut comment = format!("func[{}]({parameters})", type_parameters.join(", "));
-    if !results.is_empty() {
-        comment.push(' ');
-        comment.push_str(&results);
-    }
-    Some(comment)
-}
-
-fn parameter_list(header: &str, parameters: &[crate::syntax::Parameter]) -> Option<String> {
-    let mut parts = Vec::with_capacity(parameters.len());
-    for parameter in parameters {
-        let annotation = render::normalize_type(header.get(parameter.annotation.clone())?);
-        let annotation = if parameter.variadic {
-            format!("...{annotation}")
-        } else {
-            annotation
+            format!("{name} {}", render::normalize_type(&constraint))
         };
-        match parameter
-            .name
-            .as_ref()
-            .and_then(|name| header.get(name.clone()))
-        {
-            Some(name) => parts.push(format!("{} {annotation}", name.trim())),
-            None => parts.push(annotation),
+        bytes = bytes.checked_add(parameter.len() + 2)?;
+        if bytes > MAX_GENERIC_HEADER {
+            return None;
         }
+        type_parameters.push(parameter);
     }
-    Some(parts.join(", "))
-}
-
-fn result_list(header: &str, results: &[crate::syntax::Parameter]) -> Option<String> {
-    if results.is_empty() {
-        return Some(String::new());
-    }
-    if results.len() == 1 && results[0].name.is_none() {
-        return Some(render::normalize_type(
-            header.get(results[0].annotation.clone())?,
-        ));
-    }
-    Some(format!("({})", parameter_list(header, results)?))
+    let (declaration, _) =
+        context
+            .workspace()
+            .declared_signature(context.file(), origin, header, signature, name)?;
+    let declaration = render::normalize_signature(&declaration.label);
+    let (_, parameters) = declaration.split_once('(')?;
+    let comment = format!("func[{}]({parameters}", type_parameters.join(", "));
+    (comment.len() <= MAX_GENERIC_HEADER).then_some(comment)
 }

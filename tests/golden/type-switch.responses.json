@@ -550,6 +550,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "chosen(input *external.Alias) *external.Alias",
           "parameters": [
             {

@@ -1,75 +1,11 @@
 //! Native descriptions for lexical bindings, fields and methods.
 
-/// gopls only attaches assignment docs to single-name short declarations.
-fn multi_name_short_declaration(source: &str, offset: usize) -> bool {
-    let begin = source
-        .get(..offset)
-        .and_then(|prefix| prefix.rfind('\n'))
-        .map_or(0, |index| index + 1);
-    let end = source
-        .get(offset..)
-        .and_then(|rest| rest.find('\n'))
-        .map_or(source.len(), |index| offset + index);
-    let Some(line) = source.get(begin..end) else {
-        return false;
-    };
-    let Some((before, _)) = line.split_once(":=") else {
-        return false;
-    };
-    let lhs = before
-        .trim()
-        .strip_prefix("if ")
-        .or_else(|| before.trim().strip_prefix("for "))
-        .or_else(|| before.trim().strip_prefix("switch "))
-        .unwrap_or(before.trim());
-    lhs.matches(',').count() > 0
-}
+pub(super) use crate::analysis::query::documentation::declaration_keyword;
+use crate::analysis::query::documentation::{
+    control_header_statement, in_function_header, multi_name_short_declaration,
+};
 
-/// Whether `offset` is inside a function/method declaration header.
-fn in_function_header(context: &Context<'_>, offset: usize) -> bool {
-    context
-        .workspace()
-        .files
-        .get(context.file())
-        .is_some_and(|stub| {
-            stub.symbols.iter().any(|symbol| {
-                symbol
-                    .body()
-                    .zip(symbol.declaration())
-                    .is_some_and(|(body, declaration)| {
-                        declaration.start <= offset && offset < body.start
-                    })
-            })
-        })
-}
-
-/// Start of the struct field declaration containing relative `selection`.
-pub(super) fn field_start(declaration: &str, selection: usize) -> Option<usize> {
-    let prefix = declaration.get(..selection)?;
-    let boundary = prefix.rfind(['{', '\n']).map_or(0, |index| index + 1);
-    prefix
-        .get(boundary..)?
-        .char_indices()
-        .find_map(|(index, ch)| (ch != ' ' && ch != '\t').then_some(boundary + index))
-}
-
-/// First non-blank token offset of the line containing `offset`.
-pub(super) fn line_start_token(source: &str, offset: usize) -> usize {
-    let begin = source
-        .get(..offset)
-        .and_then(|prefix| prefix.rfind('\n'))
-        .map_or(0, |index| index + 1);
-    let Some(rest) = source.get(begin..offset) else {
-        return offset;
-    };
-    match rest
-        .char_indices()
-        .find(|(_, ch)| *ch != ' ' && *ch != '\t')
-    {
-        Some((index, _)) => begin + index,
-        None => offset,
-    }
-}
+pub(super) use crate::analysis::query::documentation::{field_start, line_start_token};
 
 /// Requalified type text normalized to gopls/`types.TypeString` presentation.
 pub(super) fn type_text(context: &Context<'_>, origin: &Path, annotation: &str) -> Option<String> {
@@ -432,26 +368,7 @@ fn expand_grouped_segment(segment: &str, out: &mut Vec<String>) {
     }
 }
 
-/// Remove comments from a rendered type expression; `types.TypeString` has none.
-fn strip_comments(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    let mut start = 0;
-    for token in
-        crate::syntax::Lexer::with_comments(text).filter(|token| token.kind == TokenKind::Comment)
-    {
-        output.push_str(&text[start..token.span.start]);
-        // Comments separate tokens. A multiline block also separates fields
-        // when Go's lexer inserts a semicolon at its first newline.
-        output.push(if text[token.span.clone()].contains('\n') {
-            '\n'
-        } else {
-            ' '
-        });
-        start = token.span.end;
-    }
-    output.push_str(&text[start..]);
-    output
-}
+use crate::analysis::check::callable_signature::presentation::strip_comments;
 
 /// `types.TypeString` renders struct tags as interpreted Go strings.
 fn canonical_tags(text: &str) -> String {
@@ -664,95 +581,8 @@ pub(super) fn normalize_signature(text: &str) -> String {
 }
 
 fn expand_function_types(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if let Some(end) = literal_end(text, index) {
-            output.push_str(&text[index..end]);
-            index = end;
-            continue;
-        }
-        if text[index..].starts_with("func(") {
-            let open = index + 4;
-            if let Some(close) = matching_paren(text, open) {
-                output.push_str("func(");
-                output.push_str(&expand_parameter_list(&text[open + 1..close]));
-                output.push(')');
-                index = close + 1;
-                continue;
-            }
-        }
-        let ch = text[index..].chars().next().unwrap_or('\0');
-        output.push(ch);
-        index += ch.len_utf8();
-    }
-    output
-}
-
-fn matching_paren(text: &str, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for token in crate::syntax::Lexer::new(&text[open..]) {
-        match token.kind {
-            TokenKind::LParen => depth += 1,
-            TokenKind::RParen => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(open + token.span.start);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn expand_parameter_list(inner: &str) -> String {
-    let segments = split_top_level(inner, ',');
-    let typed = segments
-        .iter()
-        .any(|segment| segment.split_whitespace().count() > 1);
-    if !typed {
-        return inner.to_owned();
-    }
-    let mut output: Vec<String> = Vec::new();
-    let mut pending: Vec<String> = Vec::new();
-    for segment in segments {
-        let segment = segment.trim();
-        if segment.is_empty() {
-            continue;
-        }
-        if simple_identifier(segment) {
-            pending.push(segment.to_owned());
-            continue;
-        }
-        let (name, ty) = match segment.split_once(char::is_whitespace) {
-            Some((name, ty)) if simple_identifier(name) && !ty.trim().is_empty() => {
-                (Some(name), ty.trim())
-            }
-            _ => (None, segment),
-        };
-        let ty = expand_function_types(ty);
-        for pending_name in pending.drain(..) {
-            output.push(format!("{pending_name} {ty}"));
-        }
-        match name {
-            Some(name) => output.push(format!("{name} {ty}")),
-            None => output.push(ty),
-        }
-    }
-    for pending_name in pending.drain(..) {
-        output.push(pending_name);
-    }
-    output.join(", ")
-}
-
-fn simple_identifier(text: &str) -> bool {
-    let mut chars = text.chars();
-    chars
-        .next()
-        .is_some_and(|first| first.is_alphabetic() || first == '_')
-        && chars.all(|ch| ch.is_alphanumeric() || ch == '_')
+    crate::analysis::check::callable_signature::presentation::function_types(text)
+        .unwrap_or_else(|| text.to_owned())
 }
 
 fn split_top_level(text: &str, separator: char) -> Vec<&str> {
@@ -1406,13 +1236,6 @@ fn multi_initializer_type(
     }
     call_result_type(context, context.file(), segment, 0, 1, false)
         .or_else(|| super::value::default_type(segment).map(|text| normalize_type(&text)))
-}
-
-/// Whether the token sits in a control-statement header (`for x := ...`).
-fn control_header_statement(source: &str, offset: usize) -> bool {
-    let start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
-    let line = source[start..offset].trim_start();
-    line.starts_with("for ")
 }
 
 /// Written signature of a short-declared function literal initializer.
@@ -2472,27 +2295,6 @@ pub(super) fn fold_array_lengths(context: &Context<'_>, origin: &Path, text: &st
 }
 
 /// Start of the declaration keyword preceding a value/type spec.
-pub(super) fn declaration_keyword(source: &str, spec_start: usize) -> Option<usize> {
-    let mut braces = 0usize;
-    let mut keyword = None;
-    for token in crate::syntax::Lexer::new(source) {
-        if token.span.start >= spec_start {
-            break;
-        }
-        match token.kind {
-            TokenKind::LBrace => braces += 1,
-            TokenKind::RBrace => braces = braces.saturating_sub(1),
-            TokenKind::Func | TokenKind::Type | TokenKind::Var | TokenKind::Const
-                if braces == 0 =>
-            {
-                keyword = Some(token.span.start);
-            }
-            _ => {}
-        }
-    }
-    keyword
-}
-
 pub(super) fn package_name(workspace: &Workspace, file: &Path) -> String {
     workspace
         .files

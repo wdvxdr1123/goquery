@@ -402,6 +402,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "function(value int) int",
           "parameters": [
             {
@@ -421,6 +425,10 @@
       "signatures": [
         {
           "activeParameter": 0,
+          "documentation": {
+            "kind": "markdown",
+            "value": ""
+          },
           "label": "func(value int) int",
           "parameters": [
             {
