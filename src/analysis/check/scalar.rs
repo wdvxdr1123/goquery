@@ -1,5 +1,6 @@
 //! Goal-directed basic operands. Untyped values default only at binding boundaries.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::DeclarationKind;
 use crate::analysis::types::{BasicKind, Constant, Mode, Operand, TypeArena, TypeForm};
 use crate::syntax::{ExprId, ExprKind};
@@ -47,7 +48,7 @@ impl Inference<'_, '_> {
     }
 
     pub(super) fn scalar_operand(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);
@@ -90,20 +91,16 @@ impl Inference<'_, '_> {
                             return None;
                         }
                         let source = self.source.get(span.clone())?;
-                        if source.len() > 16 * 1024 {
+                        if source.len() > MAX_BYTES {
                             return None;
                         }
                         let parsed = crate::syntax::parse_expression(source);
                         if !parsed.diagnostics.is_empty() {
                             return None;
                         }
-                        let operand = Inference {
-                            expressions: &parsed.nodes,
-                            base: span.start,
-                            depth: self.depth + 1,
-                            ..*self
-                        }
-                        .scalar_operand(arena, parsed.root)?;
+                        let operand = self
+                            .nested(&parsed.nodes, span.start)
+                            .scalar_operand(arena, parsed.root)?;
                         if operand.mode != Mode::Constant {
                             return None;
                         }

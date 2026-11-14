@@ -1,5 +1,6 @@
 //! Bounded local formal facts and structural projections at declaration scope.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::{Binding, DeclarationKind};
 use crate::analysis::types::{LocalFormal, LocalTypeDefinition, Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind};
@@ -21,7 +22,7 @@ impl Inference<'_, '_> {
         annotation: &str,
         annotation_offset: usize,
     ) -> Option<TypeId> {
-        if annotation.len() > 16 * 1024 {
+        if annotation.len() > MAX_BYTES {
             return None;
         }
         let parsed = crate::syntax::parse_type(annotation);
@@ -60,7 +61,7 @@ impl Inference<'_, '_> {
             let bound = if let Some(span) = self.locals.type_parameter_constraint(local) {
                 let text = self.source.get(span.clone())?;
                 bytes = bytes.checked_add(text.len())?;
-                if bytes > 16 * 1024 {
+                if bytes > MAX_BYTES {
                     return None;
                 }
                 let wrapped = format!("interface{{{text}}}");
@@ -131,7 +132,7 @@ impl Inference<'_, '_> {
         annotation: &str,
         annotation_offset: usize,
     ) -> AnnotationType {
-        if annotation.len() > 16 * 1024 || self.depth >= 32 {
+        if annotation.len() > MAX_BYTES || self.at_depth_limit() {
             return AnnotationType::Unknown;
         }
         let parsed = crate::syntax::parse_type(annotation);
@@ -219,13 +220,13 @@ impl Inference<'_, '_> {
             let annotation_span = binding.annotation()?;
             let annotation = self.source.get(annotation_span.clone())?;
             let name = self.source.get(binding.selection.clone())?;
-            if annotation.is_empty() || annotation.len() > 16 * 1024 {
+            if annotation.is_empty() || annotation.len() > MAX_BYTES {
                 return None;
             }
             bytes = bytes
                 .checked_add(name.len())?
                 .checked_add(annotation.len())?;
-            if bytes > 16 * 1024 {
+            if bytes > MAX_BYTES {
                 return None;
             }
             // Only `type A = B` in the gap is a transparent alias; a type parameter
@@ -292,7 +293,7 @@ impl Inference<'_, '_> {
         arena: &mut TypeArena<'_>,
         binding: &Binding,
     ) -> Option<TypeId> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let stub = self.workspace.files.get(self.file)?;
@@ -302,7 +303,7 @@ impl Inference<'_, '_> {
             };
             if declaration.start > binding.selection.start
                 || binding.selection.start > body.start
-                || body.start.saturating_sub(declaration.start) > 16 * 1024
+                || body.start.saturating_sub(declaration.start) > MAX_BYTES
             {
                 continue;
             }
@@ -319,7 +320,7 @@ impl Inference<'_, '_> {
                 let annotation = declaration.start + parameter.annotation.start
                     ..declaration.start + parameter.annotation.end;
                 let text = self.source.get(annotation.clone())?;
-                if text.is_empty() || text.len() > 16 * 1024 {
+                if text.is_empty() || text.len() > MAX_BYTES {
                     return None;
                 }
                 let wrapped = format!("[]{text}");
@@ -337,7 +338,7 @@ impl Inference<'_, '_> {
         arena: &mut TypeArena<'_>,
         id: ExprId,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);

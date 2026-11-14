@@ -43,7 +43,7 @@ fn record_call<'a>(
     range: SourceRange,
     count: &mut usize,
 ) -> Result<(), (i32, String)> {
-    if *count == super::budget::MAX_CALL_SITES {
+    if *count == crate::analysis::budget::MAX_CALL_SITES {
         return Err((
             crate::error::REQUEST_FAILED,
             "call hierarchy result exceeds 4096 call sites".into(),

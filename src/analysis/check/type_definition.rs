@@ -1,5 +1,6 @@
 //! Type-definition queries consume shared scopes and native declaration identities.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::query;
 use crate::analysis::scope::{Binding, DeclarationKind, Locals};
 use crate::analysis::types::{LocalTypeName, TypeArena, TypeDeclaration};
@@ -167,7 +168,7 @@ pub(crate) fn declarations<'a>(
                 .expression_declarations(arena, parsed.root)
                 .unwrap_or_else(|| Ok(Vec::new()));
         }
-        if symbol.is_value() && span.len() <= 16 * 1024 {
+        if symbol.is_value() && span.len() <= MAX_BYTES {
             let text = format!("{{var {}\n}}", &source[span.clone()]);
             let parsed = crate::syntax::parse_block(&text);
             let Some(base) = span.start.checked_sub(5) else {
@@ -267,7 +268,7 @@ impl<'a> Inference<'a, '_> {
         text: &str,
         offset: usize,
     ) -> Targets<'a> {
-        if text.len() > 16 * 1024 {
+        if text.len() > MAX_BYTES {
             return None;
         }
         let parsed = crate::syntax::parse_type(text);
@@ -299,7 +300,7 @@ impl<'a> Inference<'a, '_> {
         projected(arena, ty)
     }
     fn binding_declarations(&self, arena: &mut TypeArena<'a>, binding: &Binding) -> Targets<'a> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         if self.locals.switch_case(binding).is_some() {
@@ -337,7 +338,7 @@ impl<'a> Inference<'a, '_> {
             let text = self
                 .source
                 .get(span.clone())
-                .filter(|text| text.len() <= 16 * 1024)?;
+                .filter(|text| text.len() <= MAX_BYTES)?;
             let parsed = crate::syntax::parse_expression(text);
             if !parsed.diagnostics.is_empty() {
                 return None;
@@ -352,12 +353,7 @@ impl<'a> Inference<'a, '_> {
             {
                 return None;
             }
-            let inference = Inference {
-                expressions: &parsed.nodes,
-                base: span.start,
-                depth: self.depth + 1,
-                ..*self
-            };
+            let inference = self.nested(&parsed.nodes, span.start);
             if result == 0 && count == 1 {
                 return inference.expression_declarations(arena, parsed.root);
             }
@@ -392,7 +388,7 @@ impl<'a> Inference<'a, '_> {
         projected(arena, ty)
     }
     fn expression_declarations(&self, arena: &mut TypeArena<'a>, id: ExprId) -> Targets<'a> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);

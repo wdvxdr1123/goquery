@@ -1,5 +1,6 @@
 //! Range bindings retain only source spans; iteration types remain query-local.
 use super::{Inference, ScopedType};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::{Binding, Locals};
 use crate::analysis::types::{Mode, Operand, TypeArena};
 use crate::syntax::{ExprId, ExprKind};
@@ -15,20 +16,10 @@ impl Workspace {
         binding: &Binding,
         depth: usize,
     ) -> Option<String> {
-        Inference {
-            workspace: self,
-            file,
-            source,
-            locals,
-            expressions: &[],
-            base: 0,
-            depth,
-            name_index: None,
-            scoped_bindings: None,
-            iota: None,
-        }
-        .scoped_range_binding(binding)?
-        .render(self, file)
+        Inference::new(self, file, source, locals, &[], 0)
+            .at_depth(depth)
+            .scoped_range_binding(binding)?
+            .render(self, file)
     }
 }
 
@@ -44,7 +35,7 @@ pub(crate) fn interface_selector(
     span: std::ops::Range<usize>,
 ) -> Option<(String, String)> {
     let text = source.get(span.clone())?;
-    if text.len() > 16 * 1024 {
+    if text.len() > MAX_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_expression(text);
@@ -77,7 +68,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<ScopedType<'workspace>> {
-        if self.depth >= 32 || span.len() > 16 * 1024 {
+        if self.at_depth_limit() || span.len() > MAX_BYTES {
             return None;
         }
         let text = self.source.get(span.clone())?;
@@ -85,18 +76,15 @@ impl<'workspace> Inference<'workspace, '_> {
         if !parsed.diagnostics.is_empty() {
             return None;
         }
-        let nested = Inference {
-            workspace: self.workspace,
-            file: self.file,
-            source: self.source,
-            locals: self.locals,
-            expressions: &parsed.nodes,
-            base: span.start,
-            depth: self.depth + 1,
-            name_index: None,
-            scoped_bindings: None,
-            iota: None,
-        };
+        let nested = Inference::new(
+            self.workspace,
+            self.file,
+            self.source,
+            self.locals,
+            &parsed.nodes,
+            span.start,
+        )
+        .at_depth(self.depth + 1);
         let mut arena = TypeArena::new(self.workspace);
         let container =
             super::classify::receiver_operand(&nested, &mut arena, &parsed.nodes, parsed.root, 1)?;
@@ -116,24 +104,19 @@ impl<'workspace> Inference<'workspace, '_> {
         arena: &mut TypeArena<'_>,
         binding: &Binding,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let (span, result, count) = binding.range_initializer()?;
         let text = self
             .source
             .get(span.clone())
-            .filter(|text| text.len() <= 16 * 1024)?;
+            .filter(|text| text.len() <= MAX_BYTES)?;
         let parsed = crate::syntax::parse_expression(text);
         if !parsed.diagnostics.is_empty() {
             return None;
         }
-        let inference = Inference {
-            expressions: &parsed.nodes,
-            base: span.start,
-            depth: self.depth + 1,
-            ..*self
-        };
+        let inference = self.nested(&parsed.nodes, span.start);
         let input = inference
             .value_operand(arena, parsed.root)
             .or_else(|| inference.range_operand(arena, parsed.root))

@@ -1,6 +1,7 @@
 //! Declaration slots and expression shapes are inspected only during the query.
 use super::kinds as config;
 use super::{Shapes, ValueShape};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{ExprId, ExprKind, ExpressionTree, Lexer, StmtKind, TokenKind};
 use crate::text::SourceMap;
@@ -32,7 +33,7 @@ impl Shapes<'_> {
             let Some(end) = map.offset(symbol.range.end) else {
                 return ValueShape::default();
             };
-            if end - start > 16 * 1024 {
+            if end - start > MAX_BYTES {
                 return ValueShape::default();
             }
             (source[start..end].to_owned(), start)
@@ -97,7 +98,7 @@ impl Shapes<'_> {
         count: usize,
         depth: usize,
     ) -> ValueShape {
-        if depth >= 32 || text.len() > 16 * 1024 {
+        if depth >= MAX_DEPTH || text.len() > MAX_BYTES {
             return ValueShape::default();
         }
         let parsed = crate::syntax::parse_expression(text);
@@ -143,7 +144,7 @@ impl Shapes<'_> {
         id: ExprId,
         depth: usize,
     ) -> ValueShape {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return ValueShape::default();
         }
         let root = &parsed.nodes[id.0];

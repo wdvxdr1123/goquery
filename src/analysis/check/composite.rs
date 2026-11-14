@@ -1,7 +1,7 @@
 //! Inferred array extents share the native constant/index checks.
 use super::Inference;
 use super::scope::AnnotationType;
-use crate::analysis::query::budget::{MAX_BYTES, MAX_NODES};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES};
 use crate::analysis::scope::Locals;
 use crate::analysis::types::{Mode, Operand, TypeArena};
 use crate::syntax::{ExprId, ExprKind, Lexer, TokenKind};
@@ -45,7 +45,7 @@ pub(crate) fn inferred_array_literal(
 pub(crate) fn inferred_array_header(text: &str) -> Option<usize> {
     let mut tokens = Lexer::new(text);
     let mut first = tokens.next()?;
-    for _ in 0..32 {
+    for _ in 0..MAX_DEPTH {
         if first.kind != TokenKind::LParen {
             break;
         }
@@ -68,7 +68,7 @@ impl Inference<'_, '_> {
         arena: &mut TypeArena<'_>,
         id: ExprId,
     ) -> Option<(Operand, u64)> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Composite {

@@ -1,6 +1,7 @@
 //! Operators and universe calls preserve typed versus untyped basic values.
 use super::kinds as config;
 use super::{Shapes, Typedness, ValueShape};
+use crate::analysis::budget::MAX_DEPTH;
 use crate::syntax::{ExprId, ExprKind, ExpressionTree};
 use std::path::Path;
 
@@ -14,7 +15,7 @@ impl Shapes<'_> {
         id: ExprId,
         depth: usize,
     ) -> ValueShape {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return ValueShape::default();
         }
         let nodes = &parsed.nodes;

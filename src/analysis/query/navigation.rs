@@ -586,7 +586,7 @@ impl<'a> Context<'a> {
                     if (include_declaration || name.span != selection)
                         && matches!(resolver.resolve(&analysis, source, name), Some(Identity::Local(ref other)) if *other == selection)
                     {
-                        if locations.len() == super::budget::MAX_REFERENCES {
+                        if locations.len() == crate::analysis::budget::MAX_REFERENCES {
                             return Err((
                                 crate::error::REQUEST_FAILED,
                                 "reference result exceeds 4096 locations".into(),

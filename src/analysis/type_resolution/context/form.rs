@@ -1,9 +1,7 @@
 //! Resolve only the outer constructor, retaining scoped generic arguments.
 use super::{Resolved, TypeContext};
 use crate::analysis::scope as locals;
-use crate::analysis::types::{TypeForm, declaration_body};
-
-use crate::syntax::{Lexer, TokenKind};
+use crate::analysis::types::{TypeForm, declaration_body, type_parentheses};
 
 impl<'a> TypeContext<'a> {
     pub(in crate::analysis::type_resolution) fn form(
@@ -19,15 +17,8 @@ impl<'a> TypeContext<'a> {
         if let Some(form) = TypeForm::constructor(&node.text) {
             return Some(form);
         }
-        if Lexer::new(&node.text).next()?.kind == TokenKind::LParen {
-            let first = Lexer::new(&node.text).next()?;
-            let last = Lexer::new(&node.text)
-                .filter(|token| token.kind != TokenKind::Semicolon)
-                .last()?;
-            if last.kind != TokenKind::RParen {
-                return None;
-            }
-            let text = node.text.get(first.span.end..last.span.start)?.to_owned();
+        if let Some(span) = type_parentheses(&node.text)? {
+            let text = node.text.get(span)?.to_owned();
             let next = self.push(file, &text, environment)?;
             self.nodes[next].argument = argument;
             return self.form(next, depth + 1);

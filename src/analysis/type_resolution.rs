@@ -2,9 +2,12 @@
 mod context;
 mod implementation;
 pub(crate) mod signature;
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::scope as locals;
-use crate::analysis::types::{TypeArena, TypeForm, TypePresentation, declaration_body};
+use crate::analysis::types::{
+    TypeArena, TypeForm, TypePresentation, declaration_body, unparenthesized_type,
+};
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
 use crate::workspace::Workspace;
@@ -31,7 +34,7 @@ impl Workspace {
         origin: &Path,
         declaration: &str,
     ) -> Option<TypePresentation> {
-        if declaration.len() > 16 * 1024 {
+        if declaration.len() > MAX_BYTES {
             return None;
         }
         let origin = self.files.get_key_value(origin)?.0;
@@ -55,29 +58,16 @@ impl Workspace {
             return None;
         }
         let mut span = binding.annotation()?.clone();
-        for _ in 0..32 {
+        for _ in 0..MAX_DEPTH {
             let annotation = source.get(span.clone())?;
-            if annotation.len() > 16 * 1024 {
+            if annotation.len() > MAX_BYTES {
                 return None;
             }
             let parsed = crate::syntax::parse_type(annotation);
             if !parsed.diagnostics.is_empty() {
                 return None;
             }
-            let mut root = annotation;
-            for _ in 0..32 {
-                let first = crate::syntax::Lexer::new(root).next()?;
-                if first.kind != crate::syntax::TokenKind::LParen {
-                    break;
-                }
-                let last = crate::syntax::Lexer::new(root)
-                    .filter(|token| token.kind != crate::syntax::TokenKind::Semicolon)
-                    .last()?;
-                if last.kind != crate::syntax::TokenKind::RParen {
-                    return None;
-                }
-                root = root.get(first.span.end..last.span.start)?;
-            }
+            let root = unparenthesized_type(annotation)?;
             if crate::syntax::Lexer::new(root).next()?.kind == crate::syntax::TokenKind::Ident
                 && let Some(name) = locals::named_type(root)
                 && let Some(local) =
@@ -122,7 +112,7 @@ impl Workspace {
         result: usize,
         count: usize,
     ) -> Option<String> {
-        if text.len() > 16 * 1024 || count > 2 || result >= count {
+        if text.len() > MAX_BYTES || count > 2 || result >= count {
             return None;
         }
         if let Some(name) = locals::named_type(text)
@@ -166,7 +156,7 @@ impl Workspace {
         let map = SourceMap::new(&source);
         let declaration =
             source.get(resolved.symbol.end..map.offset(resolved.symbol.range.end)?)?;
-        if declaration.len() > 16 * 1024 {
+        if declaration.len() > MAX_BYTES {
             return None;
         }
         context.render_text(
@@ -184,23 +174,10 @@ impl Workspace {
         locals: &locals::Locals,
         offset: usize,
     ) -> Option<TypeForm> {
-        if text.len() > 16 * 1024 {
+        if text.len() > MAX_BYTES {
             return None;
         }
-        let mut root = text;
-        for _ in 0..32 {
-            let first = crate::syntax::Lexer::new(root).next()?;
-            if first.kind != crate::syntax::TokenKind::LParen {
-                break;
-            }
-            let last = crate::syntax::Lexer::new(root)
-                .filter(|token| token.kind != crate::syntax::TokenKind::Semicolon)
-                .last()?;
-            if last.kind != crate::syntax::TokenKind::RParen {
-                return None;
-            }
-            root = root.get(first.span.end..last.span.start)?;
-        }
+        let root = unparenthesized_type(text)?;
         if crate::syntax::Lexer::new(root).next()?.kind == crate::syntax::TokenKind::LParen {
             return None;
         }

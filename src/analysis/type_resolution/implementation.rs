@@ -1,6 +1,7 @@
 //! Query-local interface relations and symbolic implementation environments.
 use super::MemberTypes;
 use super::context::{OwnerKind, TypeContext};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::method_set::ReceiverMember;
 use crate::index::IndexedSymbol as Symbol;
 use crate::workspace::Workspace;
@@ -68,6 +69,6 @@ impl Workspace {
         let source = self.source(file)?;
         let names = crate::analysis::scope::type_parameters(source.get(owner.end..)?)?;
         let result = format!("{}[{}]", owner.name, names.join(","));
-        (result.len() <= 16 * 1024).then_some(result)
+        (result.len() <= MAX_BYTES).then_some(result)
     }
 }

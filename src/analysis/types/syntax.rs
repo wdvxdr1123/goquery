@@ -277,3 +277,31 @@ pub(crate) fn declaration_body(declaration: &str) -> Option<&str> {
     let start = tokens.next()?.span.start;
     Some(&declaration[start..])
 }
+
+/// Return the body span of one outer parenthesized type, or `None` inside the
+/// outer option when the type has no outer parentheses.
+pub(crate) fn type_parentheses(source: &str) -> Option<Option<std::ops::Range<usize>>> {
+    let first = Lexer::new(source).next()?;
+    if first.kind != TokenKind::LParen {
+        return Some(None);
+    }
+    let last = Lexer::new(source)
+        .filter(|token| token.kind != TokenKind::Semicolon)
+        .last()?;
+    if last.kind != TokenKind::RParen {
+        return None;
+    }
+    Some(Some(first.span.end..last.span.start))
+}
+
+/// Remove at most `MAX_DEPTH` outer pairs; a deeper remainder stays visible to
+/// the caller instead of being silently accepted or rejected by this helper.
+pub(crate) fn unparenthesized_type(mut source: &str) -> Option<&str> {
+    for _ in 0..MAX_DEPTH {
+        let Some(span) = type_parentheses(source)? else {
+            return Some(source);
+        };
+        source = source.get(span)?;
+    }
+    Some(source)
+}

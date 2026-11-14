@@ -8,6 +8,7 @@
 //! existing resolver behavior. The cache lives for one query only.
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::scope::{Binding, Locals};
+use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::ExprKind;
 use crate::workspace::Workspace;
 use std::cell::RefCell;
@@ -30,6 +31,14 @@ impl NativeTypeCache {
     }
 }
 
+struct NativeTypeContext<'a> {
+    workspace: &'a Workspace,
+    file: &'a Path,
+    source: &'a str,
+    locals: &'a Locals,
+    cache: &'a NativeTypeCache,
+}
+
 /// Whether the written initializer is a call/selector chain (checked after
 /// parsing by `binding_type`; range operands are always admitted).
 pub(crate) fn binding_type(
@@ -40,50 +49,108 @@ pub(crate) fn binding_type(
     cache: &NativeTypeCache,
     binding: &Binding,
 ) -> Option<String> {
-    let key = (binding.selection.start, binding.selection.end);
-    if let Some(value) = cache.bindings.borrow().get(&key) {
-        return value.clone();
+    NativeTypeContext {
+        workspace,
+        file,
+        source,
+        locals,
+        cache,
     }
-    let value = binding_type_uncached(workspace, file, source, locals, cache, binding);
-    if workspace.trace.queries {
-        eprintln!(
-            "native binding {} -> {}",
-            binding.name,
-            value.as_deref().unwrap_or("none")
-        );
-    }
-    if cache.bindings.borrow().len() < MAX_ENTRIES {
-        cache.bindings.borrow_mut().insert(key, value.clone());
-    }
-    value
+    .binding_type(binding)
 }
 
-fn binding_type_uncached(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &Locals,
-    cache: &NativeTypeCache,
-    binding: &Binding,
-) -> Option<String> {
-    // Written annotations and declared types are already consumer spellings.
-    if let Some(span) = binding.annotation() {
-        return source.get(span.clone()).map(|text| text.trim().to_owned());
+impl NativeTypeContext<'_> {
+    fn binding_type(&self, binding: &Binding) -> Option<String> {
+        let key = (binding.selection.start, binding.selection.end);
+        if let Some(value) = self.cache.bindings.borrow().get(&key) {
+            return value.clone();
+        }
+        let value = self.binding_type_uncached(binding);
+        if self.workspace.trace.queries {
+            eprintln!(
+                "native binding {} -> {}",
+                binding.name,
+                value.as_deref().unwrap_or("none")
+            );
+        }
+        if self.cache.bindings.borrow().len() < MAX_ENTRIES {
+            self.cache.bindings.borrow_mut().insert(key, value.clone());
+        }
+        value
     }
-    if let Some(declared) = &binding.declared_type {
-        return Some(declared.clone());
+
+    fn binding_type_uncached(&self, binding: &Binding) -> Option<String> {
+        // Written annotations and declared types are already consumer spellings.
+        if let Some(span) = binding.annotation() {
+            return self
+                .source
+                .get(span.clone())
+                .map(|text| text.trim().to_owned());
+        }
+        if let Some(declared) = &binding.declared_type {
+            return Some(declared.clone());
+        }
+        if let Some((span, result, count)) = binding.range_initializer() {
+            let container = self.expression_type(span, 0)?;
+            return range_element(self.workspace, self.file, &container, result, count);
+        }
+        let (span, result, count) = binding.initializer()?;
+        if !initializer_is_chain(self.source, span) {
+            return None;
+        }
+        self.expression_result_type(span, result, count, 0)
     }
-    if let Some((span, result, count)) = binding.range_initializer() {
-        let container = expression_type(workspace, file, source, locals, cache, span, 0)?;
-        return range_element(workspace, file, &container, result, count);
+
+    fn expression_result_type(
+        &self,
+        span: &Range<usize>,
+        result: usize,
+        count: usize,
+        depth: usize,
+    ) -> Option<String> {
+        let text = self.source.get(span.clone())?;
+        let parsed = crate::syntax::parse_expression(text);
+        if !parsed.diagnostics.is_empty() {
+            return None;
+        }
+        let root = &parsed.nodes[parsed.root.0];
+        match &root.kind {
+            ExprKind::Call { function, .. } => {
+                self.call_result_type(&parsed, text, span.start, *function, result, depth + 1)
+            }
+            ExprKind::TypeAssertion { asserted_type, .. }
+                if result == 0 && (count == 1 || count == 2) =>
+            {
+                text.get(asserted_type.clone()).map(str::to_owned)
+            }
+            _ => {
+                let ty = self.expression_type(span, depth + 1)?;
+                if count > 1 {
+                    range_element(self.workspace, self.file, &ty, result, count)
+                } else {
+                    Some(ty)
+                }
+            }
+        }
     }
-    let (span, result, count) = binding.initializer()?;
-    if !initializer_is_chain(source, span) {
-        return None;
+
+    fn expression_type(&self, span: &Range<usize>, depth: usize) -> Option<String> {
+        if depth > MAX_DEPTH {
+            return None;
+        }
+        let key = (span.start, span.end);
+        if let Some(value) = self.cache.expressions.borrow().get(&key) {
+            return value.clone();
+        }
+        let value = self.expression_type_uncached(span, depth);
+        if self.cache.expressions.borrow().len() < MAX_ENTRIES {
+            self.cache
+                .expressions
+                .borrow_mut()
+                .insert(key, value.clone());
+        }
+        value
     }
-    expression_result_type(
-        workspace, file, source, locals, cache, span, result, count, 0,
-    )
 }
 
 fn initializer_is_chain(source: &str, span: &Range<usize>) -> bool {
@@ -100,198 +167,82 @@ fn initializer_is_chain(source: &str, span: &Range<usize>) -> bool {
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-fn expression_result_type(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &Locals,
-    cache: &NativeTypeCache,
-    span: &Range<usize>,
-    result: usize,
-    count: usize,
-    depth: usize,
-) -> Option<String> {
-    let text = source.get(span.clone())?;
-    let parsed = crate::syntax::parse_expression(text);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let root = &parsed.nodes[parsed.root.0];
-    match &root.kind {
-        ExprKind::Call { function, .. } => call_result_type(
-            workspace,
-            file,
-            source,
-            locals,
-            cache,
-            &parsed,
-            text,
-            span.start,
-            *function,
-            result,
-            depth + 1,
-        ),
-        ExprKind::TypeAssertion { asserted_type, .. }
-            if result == 0 && (count == 1 || count == 2) =>
-        {
-            text.get(asserted_type.clone()).map(str::to_owned)
+impl NativeTypeContext<'_> {
+    fn expression_type_uncached(&self, span: &Range<usize>, depth: usize) -> Option<String> {
+        let text = self.source.get(span.clone())?;
+        let parsed = crate::syntax::parse_expression(text);
+        if !parsed.diagnostics.is_empty() {
+            return None;
         }
-        _ => {
-            let ty = expression_type(workspace, file, source, locals, cache, span, depth + 1)?;
-            if count > 1 {
-                range_element(workspace, file, &ty, result, count)
-            } else {
-                Some(ty)
-            }
-        }
-    }
-}
-
-fn expression_type(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &Locals,
-    cache: &NativeTypeCache,
-    span: &Range<usize>,
-    depth: usize,
-) -> Option<String> {
-    if depth > MAX_DEPTH {
-        return None;
-    }
-    let key = (span.start, span.end);
-    if let Some(value) = cache.expressions.borrow().get(&key) {
-        return value.clone();
-    }
-    let value = expression_type_uncached(workspace, file, source, locals, cache, span, depth);
-    if cache.expressions.borrow().len() < MAX_ENTRIES {
-        cache.expressions.borrow_mut().insert(key, value.clone());
-    }
-    value
-}
-
-fn expression_type_uncached(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &Locals,
-    cache: &NativeTypeCache,
-    span: &Range<usize>,
-    depth: usize,
-) -> Option<String> {
-    let text = source.get(span.clone())?;
-    let parsed = crate::syntax::parse_expression(text);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let root = &parsed.nodes[parsed.root.0];
-    match &root.kind {
-        ExprKind::Name => {
-            let name = text.get(root.span.clone())?;
-            let binding = locals.resolve_at(span.start + root.span.start, name)?;
-            if let Some(ty) = binding_type(workspace, file, source, locals, cache, binding) {
-                return Some(ty);
-            }
-            // Written annotations/declared types are already in consumer scope.
-            if let Some(span) = binding.annotation() {
-                return source.get(span.clone()).map(|text| text.trim().to_owned());
-            }
-            binding.declared_type.clone()
-        }
-        ExprKind::Index { operand, .. } => {
-            let receiver = &parsed.nodes[operand.0];
-            let ty = expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(span.start, &receiver.span),
-                depth + 1,
-            )?;
-            index_element(workspace, file, &ty)
-        }
-        ExprKind::Slice { operand, .. } => {
-            let receiver = &parsed.nodes[operand.0];
-            expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(span.start, &receiver.span),
-                depth + 1,
-            )
-        }
-        ExprKind::Parenthesized { expression } => {
-            let inner = &parsed.nodes[expression.0];
-            expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(span.start, &inner.span),
-                depth + 1,
-            )
-        }
-        ExprKind::Unary { operator, operand } => {
-            let inner = &parsed.nodes[operand.0];
-            let ty = expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(span.start, &inner.span),
-                depth + 1,
-            )?;
-            match text.get(operator.clone())? {
-                "&" => Some(format!("*{ty}")),
-                "*" => ty.strip_prefix('*').map(str::to_owned),
-                _ => None,
-            }
-        }
-        ExprKind::Selector { operand, field } => {
-            let receiver = &parsed.nodes[operand.0];
-            let receiver_ty = expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(span.start, &receiver.span),
-                depth + 1,
-            )?;
-            let name = text.get(field.clone())?;
-            match workspace.receiver_member(file, &receiver_ty, name)? {
-                ReceiverMember::Declaration(declaration) => {
-                    let data = workspace.member_data(declaration)?;
-                    workspace.requalified_type(file, declaration.file, data.annotation?.trim())
+        let root = &parsed.nodes[parsed.root.0];
+        match &root.kind {
+            ExprKind::Name => {
+                let name = text.get(root.span.clone())?;
+                let binding = self.locals.resolve_at(span.start + root.span.start, name)?;
+                if let Some(ty) = self.binding_type(binding) {
+                    return Some(ty);
                 }
-                // A method selector as a value has the method's function type,
-                // which this projection intentionally does not represent.
-                ReceiverMember::Method(..) => None,
+                // Written annotations/declared types are already in consumer scope.
+                if let Some(span) = binding.annotation() {
+                    return self
+                        .source
+                        .get(span.clone())
+                        .map(|text| text.trim().to_owned());
+                }
+                binding.declared_type.clone()
             }
+            ExprKind::Index { operand, .. } => {
+                let receiver = &parsed.nodes[operand.0];
+                let ty = self.expression_type(&absolute(span.start, &receiver.span), depth + 1)?;
+                index_element(self.workspace, self.file, &ty)
+            }
+            ExprKind::Slice { operand, .. } => {
+                let receiver = &parsed.nodes[operand.0];
+                self.expression_type(&absolute(span.start, &receiver.span), depth + 1)
+            }
+            ExprKind::Parenthesized { expression } => {
+                let inner = &parsed.nodes[expression.0];
+                self.expression_type(&absolute(span.start, &inner.span), depth + 1)
+            }
+            ExprKind::Unary { operator, operand } => {
+                let inner = &parsed.nodes[operand.0];
+                let ty = self.expression_type(&absolute(span.start, &inner.span), depth + 1)?;
+                match text.get(operator.clone())? {
+                    "&" => Some(format!("*{ty}")),
+                    "*" => ty.strip_prefix('*').map(str::to_owned),
+                    _ => None,
+                }
+            }
+            ExprKind::Selector { operand, field } => {
+                let receiver = &parsed.nodes[operand.0];
+                let receiver_ty =
+                    self.expression_type(&absolute(span.start, &receiver.span), depth + 1)?;
+                let name = text.get(field.clone())?;
+                match self
+                    .workspace
+                    .receiver_member(self.file, &receiver_ty, name)?
+                {
+                    ReceiverMember::Declaration(declaration) => {
+                        let data = self.workspace.member_data(declaration)?;
+                        self.workspace.requalified_type(
+                            self.file,
+                            declaration.file,
+                            data.annotation?.trim(),
+                        )
+                    }
+                    // A method selector as a value has the method's function type,
+                    // which this projection intentionally does not represent.
+                    ReceiverMember::Method(..) => None,
+                }
+            }
+            ExprKind::TypeAssertion { asserted_type, .. } => {
+                text.get(asserted_type.clone()).map(str::to_owned)
+            }
+            ExprKind::Call { function, .. } => {
+                self.call_result_type(&parsed, text, span.start, *function, 0, depth + 1)
+            }
+            _ => None,
         }
-        ExprKind::TypeAssertion { asserted_type, .. } => {
-            text.get(asserted_type.clone()).map(str::to_owned)
-        }
-        ExprKind::Call { function, .. } => call_result_type(
-            workspace,
-            file,
-            source,
-            locals,
-            cache,
-            &parsed,
-            text,
-            span.start,
-            *function,
-            0,
-            depth + 1,
-        ),
-        _ => None,
     }
 }
 
@@ -299,102 +250,91 @@ fn absolute(base: usize, span: &Range<usize>) -> Range<usize> {
     base + span.start..base + span.end
 }
 
-#[allow(clippy::too_many_arguments)]
-fn call_result_type(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &Locals,
-    cache: &NativeTypeCache,
-    parsed: &crate::syntax::ExpressionTree,
-    text: &str,
-    base: usize,
-    function: crate::syntax::ExprId,
-    result: usize,
-    depth: usize,
-) -> Option<String> {
-    if depth > MAX_DEPTH {
-        return None;
-    }
-    let callee = &parsed.nodes[function.0];
-    match &callee.kind {
-        ExprKind::Name => {
-            let name = text.get(callee.span.clone())?;
-            if let Some(binding) = locals.resolve_at(base + callee.span.start, name) {
-                let span = binding.annotation()?;
-                let annotation = source.get(span.clone())?;
-                return signature_result(annotation, result);
-            }
-            let (path, symbol) = workspace.unqualified_symbol(file, name)?;
-            let declaration = symbol.declaration()?;
-            let end = symbol.body().map_or(declaration.end, |body| body.start);
-            let header = workspace.source_slice(path, declaration.start..end)?;
-            signature_result(&header, result).map(|annotation| {
-                workspace
-                    .requalified_type(file, path, annotation.trim())
-                    .unwrap_or(annotation)
-            })
+impl NativeTypeContext<'_> {
+    fn call_result_type(
+        &self,
+        parsed: &crate::syntax::ExpressionTree,
+        text: &str,
+        base: usize,
+        function: crate::syntax::ExprId,
+        result: usize,
+        depth: usize,
+    ) -> Option<String> {
+        if depth > MAX_DEPTH {
+            return None;
         }
-        ExprKind::Selector { operand, field } => {
-            let receiver = &parsed.nodes[operand.0];
-            if matches!(receiver.kind, ExprKind::Name) {
-                let alias = text.get(receiver.span.clone())?;
-                if locals
-                    .resolve_at(base + receiver.span.start, alias)
-                    .is_none()
-                {
-                    let field = text.get(field.clone())?;
-                    for (path, symbol) in workspace.imported_symbol_iter(file, alias) {
-                        if !symbol.is_function() || symbol.name != field {
-                            continue;
+        let callee = &parsed.nodes[function.0];
+        match &callee.kind {
+            ExprKind::Name => {
+                let name = text.get(callee.span.clone())?;
+                if let Some(binding) = self.locals.resolve_at(base + callee.span.start, name) {
+                    let span = binding.annotation()?;
+                    let annotation = self.source.get(span.clone())?;
+                    return signature_result(annotation, result);
+                }
+                let (path, symbol) = self.workspace.unqualified_symbol(self.file, name)?;
+                self.declaration_result(path, symbol, result)
+            }
+            ExprKind::Selector { operand, field } => {
+                let receiver = &parsed.nodes[operand.0];
+                if matches!(receiver.kind, ExprKind::Name) {
+                    let alias = text.get(receiver.span.clone())?;
+                    if self
+                        .locals
+                        .resolve_at(base + receiver.span.start, alias)
+                        .is_none()
+                    {
+                        let field = text.get(field.clone())?;
+                        for (path, symbol) in self.workspace.imported_symbol_iter(self.file, alias)
+                        {
+                            if !symbol.is_function() || symbol.name != field {
+                                continue;
+                            }
+                            return self.declaration_result(path, symbol, result);
                         }
-                        let declaration = symbol.declaration()?;
-                        let end = symbol.body().map_or(declaration.end, |body| body.start);
-                        let header = workspace.source_slice(path, declaration.start..end)?;
-                        return signature_result(&header, result).map(|annotation| {
-                            workspace
-                                .requalified_type(file, path, annotation.trim())
-                                .unwrap_or(annotation)
-                        });
+                    }
+                }
+                let receiver_ty =
+                    self.expression_type(&absolute(base, &receiver.span), depth + 1)?;
+                let name = text.get(field.clone())?;
+                match self
+                    .workspace
+                    .receiver_member(self.file, &receiver_ty, name)?
+                {
+                    ReceiverMember::Method(path, symbol) => {
+                        self.declaration_result(path, symbol, result)
+                    }
+                    ReceiverMember::Declaration(declaration) => {
+                        let data = self.workspace.member_data(declaration)?;
+                        let annotation = data.annotation?;
+                        let signature = function_type_text(&annotation);
+                        let parsed = crate::syntax::parse_literal_signature(&signature);
+                        if !parsed.diagnostics.is_empty() {
+                            return None;
+                        }
+                        let result_type =
+                            signature.get(parsed.results.get(result)?.annotation.clone())?;
+                        self.workspace.requalified_type(
+                            self.file,
+                            declaration.file,
+                            result_type.trim(),
+                        )
                     }
                 }
             }
-            let receiver_ty = expression_type(
-                workspace,
-                file,
-                source,
-                locals,
-                cache,
-                &absolute(base, &receiver.span),
-                depth + 1,
-            )?;
-            let name = text.get(field.clone())?;
-            match workspace.receiver_member(file, &receiver_ty, name)? {
-                ReceiverMember::Method(path, symbol) => {
-                    let declaration = symbol.declaration()?;
-                    let end = symbol.body().map_or(declaration.end, |body| body.start);
-                    let header = workspace.source_slice(path, declaration.start..end)?;
-                    signature_result(&header, result).map(|annotation| {
-                        workspace
-                            .requalified_type(file, path, annotation.trim())
-                            .unwrap_or(annotation)
-                    })
-                }
-                ReceiverMember::Declaration(declaration) => {
-                    let data = workspace.member_data(declaration)?;
-                    let annotation = data.annotation?;
-                    let signature = function_type_text(&annotation);
-                    let parsed = crate::syntax::parse_literal_signature(&signature);
-                    if !parsed.diagnostics.is_empty() {
-                        return None;
-                    }
-                    let result_type =
-                        signature.get(parsed.results.get(result)?.annotation.clone())?;
-                    workspace.requalified_type(file, declaration.file, result_type.trim())
-                }
-            }
+            _ => None,
         }
-        _ => None,
+    }
+
+    fn declaration_result(&self, path: &Path, symbol: &Symbol, result: usize) -> Option<String> {
+        let declaration = symbol.declaration()?;
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
+        let header = self.workspace.source_slice(path, declaration.start..end)?;
+        signature_result(&header, result).map(|annotation| {
+            self.workspace
+                .requalified_type(self.file, path, annotation.trim())
+                .unwrap_or(annotation)
+        })
     }
 }
 
@@ -426,6 +366,13 @@ pub(crate) fn selector_member<'a>(
     cache: &NativeTypeCache,
     span: &Range<usize>,
 ) -> Option<ReceiverMember<'a>> {
+    let context = NativeTypeContext {
+        workspace,
+        file,
+        source,
+        locals,
+        cache,
+    };
     let text = source.get(span.clone())?;
     let parsed = crate::syntax::parse_expression(text);
     if !parsed.diagnostics.is_empty() {
@@ -436,15 +383,7 @@ pub(crate) fn selector_member<'a>(
         return None;
     };
     let receiver = &parsed.nodes[operand.0];
-    let receiver_ty = expression_type(
-        workspace,
-        file,
-        source,
-        locals,
-        cache,
-        &absolute(span.start, &receiver.span),
-        0,
-    )?;
+    let receiver_ty = context.expression_type(&absolute(span.start, &receiver.span), 0)?;
     let name = text.get(field.clone())?;
     workspace.receiver_member(file, &receiver_ty, name)
 }

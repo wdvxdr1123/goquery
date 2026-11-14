@@ -1,6 +1,6 @@
 //! Bounded query-local package value facts; pending/failed entries stay unknown.
 use super::{Operand, TypeArena, TypeId};
-use crate::analysis::query::budget;
+use crate::analysis::budget;
 use std::mem;
 use std::path::Path;
 

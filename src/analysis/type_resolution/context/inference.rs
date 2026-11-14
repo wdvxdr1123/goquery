@@ -1,6 +1,7 @@
 //! Bounded free-parameter discovery through aliases and dependent constraints.
 use super::iteration;
 use super::{Resolved, TypeContext};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::scope as locals;
 use crate::analysis::type_resolution::declaration_body;
 use crate::syntax::{Lexer, TokenKind};
@@ -56,7 +57,7 @@ impl<'a> TypeContext<'a> {
         inferred: &mut [bool],
         depth: usize,
     ) -> Option<()> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
         if let Some(index) = formals.get(&input) {
@@ -85,7 +86,7 @@ impl<'a> TypeContext<'a> {
             let source = self.workspace.source(origin)?;
             let map = SourceMap::new(&source);
             let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-            if declaration.len() > 16 * 1024 {
+            if declaration.len() > MAX_BYTES {
                 return None;
             }
             let after_parameters = crate::syntax::type_parameter_end(declaration).unwrap_or(0);

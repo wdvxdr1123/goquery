@@ -1,5 +1,5 @@
 //! Bounded, literal-safe expansion of syntax-declared signature names.
-use crate::analysis::query::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES, RELATION_STEPS};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES, RELATION_STEPS};
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
 

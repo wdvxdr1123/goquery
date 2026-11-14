@@ -1,7 +1,7 @@
 //! Bounded syntax-based declaration presentation; literal bytes are never tokens
 //! to rewrite. Multiline source layout and attached comments remain source-owned.
 mod expression;
-use crate::analysis::query::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES};
 use crate::syntax::{ExprKind, Lexer, Token, TokenKind, TypeNodeKind, TypeSyntax};
 use std::borrow::Cow;
 use std::ops::Range;

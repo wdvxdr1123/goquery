@@ -1,5 +1,6 @@
 //! Underlying declaration forms, rendered without retaining source or type trees.
 use super::{Resolved, TypeContext};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope as locals;
 use crate::analysis::types::{TypeForm, TypePresentation, declaration_body};
 
@@ -139,7 +140,7 @@ impl<'a> TypeContext<'a> {
         let source = self.workspace.source(origin)?;
         let map = SourceMap::new(&source);
         let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-        if declaration.len() > 16 * 1024 {
+        if declaration.len() > MAX_BYTES {
             return None;
         }
         self.push(origin, declaration_body(declaration)?, environment)

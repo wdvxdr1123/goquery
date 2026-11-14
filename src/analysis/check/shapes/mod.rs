@@ -3,6 +3,7 @@ pub(crate) mod kinds;
 mod operations;
 mod value;
 use self::kinds as config;
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::check::Inference;
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::scope::{self as locals, Binding, DeclarationKind, Identity};
@@ -211,7 +212,7 @@ impl<'a> Shapes<'a> {
                     let Some(text) = self
                         .source
                         .get(span.start..name.span.end)
-                        .filter(|text| text.len() <= 16 * 1024)
+                        .filter(|text| text.len() <= MAX_BYTES)
                     else {
                         return ValueShape::default();
                     };
@@ -259,7 +260,7 @@ impl<'a> Shapes<'a> {
         if binding.declaration == DeclarationKind::Variadic {
             return ValueShape::typed(config::SLICE);
         }
-        if depth >= 32 || binding.declaration == DeclarationKind::TypeParameter {
+        if depth >= MAX_DEPTH || binding.declaration == DeclarationKind::TypeParameter {
             return ValueShape::default();
         }
         let key = Key::Local(binding.selection.start, binding.scope_start());
@@ -311,7 +312,7 @@ impl<'a> Shapes<'a> {
     }
 
     fn annotation(&mut self, file: &Path, text: &str, offset: usize, depth: usize) -> ValueShape {
-        if depth >= 32 || text.len() > 16 * 1024 {
+        if depth >= MAX_DEPTH || text.len() > MAX_BYTES {
             return ValueShape::default();
         }
         if file == self.file
@@ -367,7 +368,7 @@ impl<'a> Shapes<'a> {
     }
 
     fn symbol(&mut self, file: &'a Path, symbol: &'a Symbol, depth: usize) -> ValueShape {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return ValueShape::default();
         }
         if symbol.is_callable() {

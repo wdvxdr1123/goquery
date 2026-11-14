@@ -1,7 +1,7 @@
 //! Signature-based format calls, shared by tokens and document highlights.
 use super::{FormatDirective, MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
+use crate::analysis::budget::{MEMO_BYTES, MEMO_ENTRIES};
 use crate::analysis::check::Inference;
-use crate::analysis::query::budget::{MEMO_BYTES, MEMO_ENTRIES};
 use crate::analysis::scope::Locals;
 use crate::syntax::{Expr, ExprKind, Lexer, Token, TokenKind};
 use crate::workspace::Workspace;

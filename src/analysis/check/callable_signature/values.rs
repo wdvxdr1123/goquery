@@ -1,5 +1,6 @@
 //! Callable values are followed through query-local type and initializer spans.
 use super::CallableSignature;
+use crate::analysis::budget::MAX_DEPTH;
 use crate::analysis::check::{Inference, Selection};
 use crate::analysis::scope::{Binding, Locals};
 use crate::analysis::types::TypeArena;
@@ -120,7 +121,7 @@ impl Callable<'_> {
         id: ExprId,
         depth: usize,
     ) -> Option<Information> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
         let expression = &expressions[id.0];
@@ -363,7 +364,7 @@ impl Callable<'_> {
         symbol: &crate::index::IndexedSymbol,
         depth: usize,
     ) -> Option<Information> {
-        if depth >= 32 || symbol.is_const() {
+        if depth >= MAX_DEPTH || symbol.is_const() {
             return None;
         }
         let declaration = symbol.declaration()?;
@@ -409,7 +410,7 @@ impl Callable<'_> {
     }
 
     fn binding(&self, binding: &Binding, field: Option<&str>, depth: usize) -> Option<Information> {
-        if depth >= 32 || binding.object_kind.is_type() {
+        if depth >= MAX_DEPTH || binding.object_kind.is_type() {
             return None;
         }
         let name = field.unwrap_or(&binding.name);
@@ -523,7 +524,7 @@ impl Callable<'_> {
         field: Option<&str>,
         depth: usize,
     ) -> Option<Information> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
         location.span = unwrapped(location.source, location.span, field.is_some())?;

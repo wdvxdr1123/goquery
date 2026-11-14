@@ -11,7 +11,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Unary { operator, operand } = &self.unparenthesized(id).kind else {

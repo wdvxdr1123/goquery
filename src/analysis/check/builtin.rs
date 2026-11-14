@@ -63,7 +63,7 @@ impl Inference<'_, '_> {
         arguments: &[ExprId],
         spread: bool,
     ) -> Option<Operand> {
-        if self.depth >= 32 || arguments.len() > 256 || spread && name != "append" {
+        if self.at_depth_limit() || arguments.len() > 256 || spread && name != "append" {
             return None;
         }
         let int_bits = self.workspace.integer_bits()?;

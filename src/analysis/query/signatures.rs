@@ -258,7 +258,7 @@ fn help_information(
         // declaration object, while its surrounding call denotes the instance.
         let declaration = symbol.declaration()?;
         let end = symbol.body().map_or(declaration.end, |body| body.start);
-        if end.checked_sub(declaration.start)? > super::budget::MAX_BYTES {
+        if end.checked_sub(declaration.start)? > crate::analysis::budget::MAX_BYTES {
             return None;
         }
         let header = workspace.source_slice(origin, declaration.start..end)?;
@@ -449,7 +449,7 @@ impl Context<'_> {
         let declaration = symbol.declaration()?;
         let end = symbol.body().map_or(declaration.end, |body| body.start);
         let header = workspace.source_slice(origin, declaration.start..end)?;
-        if header.len() > super::budget::MAX_BYTES {
+        if header.len() > crate::analysis::budget::MAX_BYTES {
             return None;
         }
         let signature = crate::syntax::parse_signature(&header);

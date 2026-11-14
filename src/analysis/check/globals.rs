@@ -1,5 +1,6 @@
 //! Package values use declaration slices and bounded facts in the caller's arena.
 use super::{Inference, ScopedType};
+use crate::analysis::budget::MAX_DEPTH;
 use crate::analysis::scope::Locals;
 use crate::analysis::types::{Mode, Operand, TypeArena};
 use crate::index::IndexedSymbol as Symbol;
@@ -48,7 +49,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     pub(super) fn global_root(&self, mut id: ExprId) -> bool {
-        for _ in 0..32 {
+        for _ in 0..MAX_DEPTH {
             if self.global_symbol(id).is_some() {
                 return true;
             }
@@ -64,7 +65,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     pub(super) fn global_operand(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let (file, symbol) = self.global_symbol(id)?;

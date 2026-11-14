@@ -1,5 +1,6 @@
 //! Inferred types keep their declaration scope independently of display spelling.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::scope as locals;
@@ -73,7 +74,7 @@ impl<'workspace> Inference<'workspace, '_> {
         }
         // A resolved named declaration remains usable even when its package
         // has no import spelling in the consumer. Do not invent an alias.
-        if annotation.len() > 16 * 1024 {
+        if annotation.len() > MAX_BYTES {
             return None;
         }
         let name = locals::named_type(annotation)?;
@@ -85,7 +86,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     pub(crate) fn scoped_receiver_type(&self, id: ExprId) -> Option<ScopedType<'workspace>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Selector { operand, .. } = self.unparenthesized(id).kind else {
@@ -153,7 +154,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<ScopedType<'workspace>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);
@@ -222,13 +223,8 @@ impl<'workspace> Inference<'workspace, '_> {
                 if !parsed.diagnostics.is_empty() {
                     return None;
                 }
-                Inference {
-                    expressions: &parsed.nodes,
-                    base: span.start,
-                    depth: self.depth + 1,
-                    ..*self
-                }
-                .scoped_expression(parsed.root, result, count)
+                self.nested(&parsed.nodes, span.start)
+                    .scoped_expression(parsed.root, result, count)
             }
             ExprKind::Selector { operand, field } if result == 0 && count == 1 => {
                 let operand = self.unparenthesized(*operand);

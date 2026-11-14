@@ -129,7 +129,7 @@ impl<'a> TypeArena<'a> {
             expansions: Vec::new(),
             named_checks: Vec::new(),
             named_check_depth: 0,
-            relation_steps: crate::analysis::query::budget::RELATION_STEPS,
+            relation_steps: crate::analysis::budget::RELATION_STEPS,
             expansion_depth: 0,
             constraint_depth: 0,
             constraint_terms: 0,

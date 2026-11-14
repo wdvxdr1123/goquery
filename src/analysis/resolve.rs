@@ -12,29 +12,6 @@ use std::ops::Bound;
 use std::path::{Path, PathBuf};
 
 impl Workspace {
-    pub(crate) fn import_path(&self, file: &Path) -> Option<String> {
-        let directory = file.parent()?;
-        let (root, module) = self
-            .modules
-            .iter()
-            .filter(|(root, _)| directory.starts_with(root))
-            .max_by_key(|(root, _)| root.components().count())?;
-        let suffix = directory
-            .strip_prefix(root)
-            .ok()?
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        Some(if module == "std" {
-            suffix
-        } else if suffix.is_empty() {
-            module.clone()
-        } else {
-            format!("{module}/{suffix}")
-        })
-    }
-
     pub(crate) fn imported_symbols(&self, file: &Path, alias: &str) -> Vec<(&PathBuf, &Symbol)> {
         self.imported_symbol_iter(file, alias).collect()
     }

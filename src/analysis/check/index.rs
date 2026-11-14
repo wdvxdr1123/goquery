@@ -11,7 +11,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Index { operand, arguments } = &self.unparenthesized(id).kind else {
@@ -43,7 +43,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     pub(super) fn sliced_operand(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Slice {
@@ -73,7 +73,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     fn addressable_place(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<bool> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);

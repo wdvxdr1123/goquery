@@ -1,6 +1,6 @@
 //! Operator spacing for the existing expression arena, following Go's normal
 //! and compact precedence modes without rewriting operands or literals.
-use crate::analysis::query::budget::{MAX_DEPTH, MAX_NODES};
+use crate::analysis::budget::{MAX_DEPTH, MAX_NODES};
 use crate::syntax::{Expr, ExprId, ExprKind, Lexer};
 
 pub(super) fn spaces(text: &str, expressions: &[Expr]) -> Option<Vec<(usize, bool)>> {

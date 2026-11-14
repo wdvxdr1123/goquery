@@ -1,5 +1,6 @@
 //! Scoped range projections; generic arguments remain arena nodes until rendering.
 use super::{Resolved, TypeContext};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope as locals;
 use crate::analysis::type_resolution::declaration_body;
 use crate::syntax::{Lexer, TokenKind};
@@ -203,7 +204,7 @@ impl TypeContext<'_> {
                     let source = self.workspace.source(origin)?;
                     let map = SourceMap::new(&source);
                     let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-                    if declaration.len() > 16 * 1024 {
+                    if declaration.len() > MAX_BYTES {
                         return None;
                     }
                     self.push(origin, declaration_body(declaration)?, environment)?

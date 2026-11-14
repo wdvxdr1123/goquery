@@ -2,6 +2,7 @@
 pub(in crate::analysis::check) mod presentation;
 use super::callable_signature::{CallableSignature, signature_label};
 use super::{Inference, ScopedType};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::types::{Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind, Signature};
 use std::path::Path;
@@ -59,7 +60,7 @@ impl<'workspace> Inference<'workspace, '_> {
         if resolved != origin || !symbol.is_function() || !symbol.generic {
             return None;
         }
-        if header.len() > 16 * 1024 || !signature.diagnostics.is_empty() {
+        if header.len() > MAX_BYTES || !signature.diagnostics.is_empty() {
             return None;
         }
         let mut arena = TypeArena::new(self.workspace);
@@ -133,7 +134,7 @@ impl<'workspace> Inference<'workspace, '_> {
         }
         let declaration = symbol.declaration()?;
         let end = symbol.body().map_or(declaration.end, |body| body.start);
-        if end.checked_sub(declaration.start)? > 16 * 1024 {
+        if end.checked_sub(declaration.start)? > MAX_BYTES {
             return None;
         }
         let header = self

@@ -1,5 +1,6 @@
 //! One checked assertion projection for values, tuple bindings and navigation.
 use super::{Inference, ScopedType};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::scope::{Binding, universe};
 use crate::analysis::types::{Operand, TypeArena};
 use crate::syntax::{ExprId, ExprKind, Lexer, TokenKind};
@@ -11,24 +12,19 @@ impl<'workspace> Inference<'workspace, '_> {
         arena: &mut TypeArena<'_>,
         binding: &Binding,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let case = self.locals.switch_case(binding)?;
         let text = self
             .source
             .get(case.operand.clone())
-            .filter(|text| text.len() <= 16 * 1024)?;
+            .filter(|text| text.len() <= MAX_BYTES)?;
         let parsed = crate::syntax::parse_expression(text);
         if !parsed.diagnostics.is_empty() {
             return None;
         }
-        let inference = Inference {
-            expressions: &parsed.nodes,
-            base: case.operand.start,
-            depth: self.depth + 1,
-            ..*self
-        };
+        let inference = self.nested(&parsed.nodes, case.operand.start);
         let input = inference.value_operand(arena, parsed.root)?;
         arena.is_interface(input.ty)?.then_some(())?;
         Some(input)
@@ -83,7 +79,7 @@ impl<'workspace> Inference<'workspace, '_> {
         let text = self
             .source
             .get(span.clone())
-            .filter(|text| text.len() <= 16 * 1024)?;
+            .filter(|text| text.len() <= MAX_BYTES)?;
         let token = Lexer::new(text).next()?;
         let selection = if token.kind == TokenKind::LParen {
             let parsed = crate::syntax::parse_expression(text);
@@ -91,7 +87,7 @@ impl<'workspace> Inference<'workspace, '_> {
                 return Some(false);
             }
             let mut id = parsed.root;
-            for _ in 0..32 {
+            for _ in 0..MAX_DEPTH {
                 let expression = &parsed.nodes[id.0];
                 if let ExprKind::Parenthesized { expression } = expression.kind {
                     id = expression;
@@ -152,7 +148,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::TypeAssertion {

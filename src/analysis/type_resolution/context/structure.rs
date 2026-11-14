@@ -1,5 +1,6 @@
 //! Ordered structural field identities, discarded with the signature context.
 use super::TypeContext;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::resolve;
 use crate::analysis::type_resolution::signature;
 use crate::syntax::{Lexer, TypeSyntax};
@@ -51,7 +52,7 @@ impl<'a> TypeContext<'a> {
                 ],
             )?;
             bytes = bytes.checked_add(identity.len() + 24)?;
-            if bytes > 16 * 1024 {
+            if bytes > MAX_BYTES {
                 return None;
             }
             identities.push(identity);

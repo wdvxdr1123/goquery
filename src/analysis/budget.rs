@@ -1,4 +1,4 @@
-//! Shared native-query ceilings; no request may grow a package type cache.
+//! Shared analysis ceilings; no request may grow a package type cache.
 pub(crate) const MAX_NODES: usize = 256;
 pub(crate) const MAX_DEPTH: usize = 32;
 pub(crate) const MAX_BYTES: usize = 16 * 1024;

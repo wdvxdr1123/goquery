@@ -8,6 +8,7 @@ mod owners;
 mod presentation;
 mod structure;
 use super::Resolution;
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::scope as locals;
 use crate::index::IndexedSymbol as Symbol;
 use crate::workspace::Workspace;
@@ -135,7 +136,7 @@ impl<'a> TypeContext<'a> {
         text: &str,
         environment: Option<usize>,
     ) -> Option<usize> {
-        if text.len() > 16 * 1024 || self.nodes.len() >= 4096 {
+        if text.len() > MAX_BYTES || self.nodes.len() >= 4096 {
             return None;
         }
         self.bytes = self.bytes.checked_add(text.len())?;
@@ -251,7 +252,7 @@ impl<'a> TypeContext<'a> {
         environment: Option<usize>,
         file: &Path,
     ) -> Option<String> {
-        if text.len() > 16 * 1024 {
+        if text.len() > MAX_BYTES {
             return None;
         }
         let node = TypeNode {
@@ -269,7 +270,7 @@ impl<'a> TypeContext<'a> {
     }
 
     fn render_node(&self, node: &TypeNode<'a>, file: &Path, depth: usize) -> Option<String> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
         if node.formal {
@@ -309,7 +310,7 @@ impl<'a> TypeContext<'a> {
                 }
             };
             substitution_bytes = substitution_bytes.checked_add(replacement.len())?;
-            if substitution_bytes > 16 * 1024 {
+            if substitution_bytes > MAX_BYTES {
                 return None;
             }
             substitutions.push((start..reference.name.end, replacement));
@@ -325,7 +326,7 @@ impl<'a> TypeContext<'a> {
                 .len()
                 .saturating_add(span.start - end)
                 .saturating_add(replacement.len())
-                > 16 * 1024
+                > MAX_BYTES
             {
                 return None;
             }
@@ -333,7 +334,7 @@ impl<'a> TypeContext<'a> {
             output.push_str(&replacement);
             end = span.end;
         }
-        if output.len().saturating_add(node.text.len() - end) > 16 * 1024 {
+        if output.len().saturating_add(node.text.len() - end) > MAX_BYTES {
             return None;
         }
         output.push_str(&node.text[end..]);

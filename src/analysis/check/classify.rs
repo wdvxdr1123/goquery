@@ -1,4 +1,5 @@
 //! Identity-based identifier categories; protocol numbers belong to features.
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::check::Inference;
 use crate::analysis::scope::universe::{builtin_function, builtin_type};
 use crate::analysis::scope::{Identity, ObjectKind, Resolver};
@@ -270,7 +271,7 @@ fn native_selector_kind_at(
 ) -> Option<ObjectKind> {
     let workspace = resolver.workspace();
     let file = resolver.file();
-    if span.len() > 16 * 1024 {
+    if span.len() > MAX_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_expression(source.get(span.clone())?);
@@ -634,7 +635,7 @@ fn native_range_operand(
     count: usize,
     depth: usize,
 ) -> Option<Operand> {
-    if depth >= 32 || span.len() > 16 * 1024 {
+    if depth >= MAX_DEPTH || span.len() > MAX_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_expression(inference.source.get(span.clone())?);
@@ -673,7 +674,7 @@ pub(super) fn receiver_operand(
     id: crate::syntax::ExprId,
     depth: usize,
 ) -> Option<Operand> {
-    if depth >= 32 {
+    if depth >= MAX_DEPTH {
         return None;
     }
     let expression = &nodes[id.0];
@@ -714,7 +715,7 @@ pub(super) fn receiver_operand(
                 }
                 if let Some((span, 0, 1)) = binding.initializer() {
                     let text = inference.source.get(span.clone())?;
-                    if text.len() <= 16 * 1024 {
+                    if text.len() <= MAX_BYTES {
                         let parsed = crate::syntax::parse_expression(text);
                         if parsed.diagnostics.is_empty() {
                             let mut nested = Inference::new(

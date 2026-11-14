@@ -1,6 +1,8 @@
 //! Follow stored callable declarations and initializers with the inference budget.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::{self as locals, Binding};
+use crate::analysis::types::type_parentheses;
 use crate::syntax::{Lexer, TokenKind};
 
 impl Inference<'_, '_> {
@@ -10,7 +12,7 @@ impl Inference<'_, '_> {
         result: usize,
         count: usize,
     ) -> Option<String> {
-        if self.depth >= 32 || binding.object_kind.is_type() {
+        if self.at_depth_limit() || binding.object_kind.is_type() {
             return None;
         }
         if let Some(annotation) = binding.annotation() {
@@ -26,21 +28,16 @@ impl Inference<'_, '_> {
             return None;
         }
         let text = self.source.get(span.clone())?;
-        if text.len() > 16 * 1024 {
+        if text.len() > MAX_BYTES {
             return None;
         }
         let parsed = crate::syntax::parse_expression(text);
         if !parsed.diagnostics.is_empty() {
             return None;
         }
-        Inference {
-            expressions: &parsed.nodes,
-            base: span.start,
-            depth: self.depth + 1,
-            ..*self
-        }
-        .call_result(parsed.root, &[], false, result, count)?
-        .render(self.workspace, self.file)
+        self.nested(&parsed.nodes, span.start)
+            .call_result(parsed.root, &[], false, result, count)?
+            .render(self.workspace, self.file)
     }
 
     pub(super) fn function_type_result(
@@ -50,27 +47,21 @@ impl Inference<'_, '_> {
         result: usize,
         count: usize,
     ) -> Option<String> {
-        if self.depth >= 32 || annotation.len() > 16 * 1024 {
+        if self.at_depth_limit() || annotation.len() > MAX_BYTES {
             return None;
         }
         if !crate::syntax::parse_type(annotation).diagnostics.is_empty() {
             return None;
         }
-        let first = Lexer::new(annotation).next()?;
-        if first.kind == TokenKind::LParen {
-            let last = Lexer::new(annotation)
-                .filter(|token| token.kind != TokenKind::Semicolon)
-                .last()?;
-            if last.kind != TokenKind::RParen {
-                return None;
-            }
+        if let Some(span) = type_parentheses(annotation)? {
             return self.next().function_type_result(
-                annotation.get(first.span.end..last.span.start)?,
-                offset + first.span.end,
+                annotation.get(span.clone())?,
+                offset + span.start,
                 result,
                 count,
             );
         }
+        let first = Lexer::new(annotation).next()?;
         if first.kind != TokenKind::Func {
             if first.kind == TokenKind::Mul {
                 return None;

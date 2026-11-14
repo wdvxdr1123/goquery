@@ -13,7 +13,7 @@ impl<'workspace> Inference<'workspace, '_> {
         result: usize,
         count: usize,
     ) -> Option<ScopedType<'workspace>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let callee = self.unparenthesized(function);

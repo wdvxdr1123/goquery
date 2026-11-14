@@ -54,7 +54,7 @@ pub(super) fn push<'a>(
     map: &SourceMap<'_>,
     span: Range<usize>,
 ) -> Result<(), (i32, String)> {
-    if locations.len() == super::budget::MAX_REFERENCES {
+    if locations.len() == crate::analysis::budget::MAX_REFERENCES {
         return Err((
             crate::error::REQUEST_FAILED,
             "reference result exceeds 4096 locations".into(),

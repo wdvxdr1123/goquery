@@ -1,5 +1,6 @@
 //! Complete basic-interface method unions for symbolic signature identity.
 use super::{Resolved, TypeContext};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::resolve;
 use crate::analysis::scope as locals;
 use crate::analysis::type_resolution;
@@ -36,7 +37,7 @@ impl InterfaceSet<'_> {
         self.bytes = self
             .bytes
             .checked_add(key.0.len() + key.1.len() + signature.len())?;
-        if self.bytes > 16 * 1024 || self.methods.len() >= self.limit {
+        if self.bytes > MAX_BYTES || self.methods.len() >= self.limit {
             return None;
         }
         self.methods.insert(key, signature);
@@ -71,7 +72,7 @@ impl<'a> TypeContext<'a> {
         depth: usize,
         set: &mut InterfaceSet<'a>,
     ) -> Option<()> {
-        if depth >= 32 || self.nodes[input].formal {
+        if depth >= MAX_DEPTH || self.nodes[input].formal {
             return None;
         }
         set.work = set.work.checked_sub(1)?;
@@ -172,7 +173,7 @@ impl<'a> TypeContext<'a> {
                 let source = self.workspace.source(origin)?;
                 let map = SourceMap::new(&source);
                 let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-                if declaration.len() > 16 * 1024 {
+                if declaration.len() > MAX_BYTES {
                     return None;
                 }
                 let body = type_resolution::declaration_body(declaration)?.to_owned();

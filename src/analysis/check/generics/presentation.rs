@@ -1,6 +1,6 @@
 //! Names remain source presentation; instantiated type identity stays native.
 use super::SignaturePresentation;
-use crate::analysis::query::budget::{MAX_BYTES, MAX_NODES};
+use crate::analysis::budget::{MAX_BYTES, MAX_NODES};
 use crate::analysis::types::{TypeArena, TypeId};
 use crate::syntax::{Lexer, TokenKind, TypeNodeKind};
 use crate::workspace::Workspace;

@@ -1,4 +1,5 @@
 //! Query-local member locations and annotations, keyed by the owning declaration.
+use crate::analysis::budget::MAX_BYTES;
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{AggregateMember, MemberKind, TokenKind};
 use crate::text::SourceMap;
@@ -83,7 +84,7 @@ impl Workspace {
         let selection = member.selection(declaration, entry)?;
         Some(MemberData {
             selection: map.range(base + selection.start, base + selection.end),
-            annotation: (entry.annotation.len() <= 16 * 1024)
+            annotation: (entry.annotation.len() <= MAX_BYTES)
                 .then(|| declaration.get(entry.annotation.clone()).map(str::to_owned))
                 .flatten(),
         })

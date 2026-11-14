@@ -1,4 +1,5 @@
 //! Expected syntactic type positions, including incomplete qualified names.
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::CursorScope;
 use crate::syntax::{Diagnostic, Lexer, TokenKind, TypeReference};
 use crate::workspace::Workspace;
@@ -31,7 +32,7 @@ pub(crate) fn type_position(
         }
         if symbol.is_callable() {
             let end = symbol.body().map_or(end, |body| body.start);
-            if offset <= end && end - start <= 16 * 1024 {
+            if offset <= end && end - start <= MAX_BYTES {
                 let parsed = crate::syntax::parse_signature(&source[start..end]);
                 if type_context_at(
                     &parsed.type_references,
@@ -42,7 +43,7 @@ pub(crate) fn type_position(
                     return true;
                 }
             }
-        } else if symbol.is_type() && offset >= symbol.end && end - symbol.end <= 16 * 1024 {
+        } else if symbol.is_type() && offset >= symbol.end && end - symbol.end <= MAX_BYTES {
             let mut start = symbol.end;
             if let Some(parameters) = crate::syntax::type_parameter_end(&source[start..end]) {
                 if offset < start + parameters {
@@ -75,7 +76,7 @@ pub(crate) fn type_position(
             {
                 return true;
             }
-        } else if symbol.is_value() && end - start <= 16 * 1024 {
+        } else if symbol.is_value() && end - start <= MAX_BYTES {
             let block = format!("{{var {}\n}}", &source[start..end]);
             let parsed = crate::syntax::parse_block(&block);
             if type_context_at(

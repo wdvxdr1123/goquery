@@ -8,6 +8,7 @@
 //! Selector chains that end in an inline-struct field are resolved from the
 //! binding/initializer/annotation syntax of the chain root, stepping named and
 //! inline struct fields without retaining any cross-request state.
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::scope::{Binding, CursorScope, Locals};
 use crate::analysis::source::{Name, Role, SourceAnalysis};
@@ -269,7 +270,7 @@ pub(crate) fn literal_field_declaration(
     annotation: &Range<usize>,
     projections: &[bool],
 ) -> Option<InlineField> {
-    if annotation.len() > 16 * 1024 || projections.len() > 64 {
+    if annotation.len() > MAX_BYTES || projections.len() > 64 {
         return None;
     }
     let mut ty = TypeSyntax {
@@ -517,7 +518,7 @@ fn expression_type(
     base: usize,
     depth: usize,
 ) -> Option<TypeSyntax> {
-    if depth >= 16 || text.len() > 16 * 1024 {
+    if depth >= 16 || text.len() > MAX_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_expression(text);
@@ -694,7 +695,7 @@ fn declaration_type(context: &Context<'_>, symbol: &Symbol, depth: usize) -> Opt
     }
     let declaration = symbol.declaration()?;
     let tail = context.source.get(symbol.end..declaration.end)?;
-    if tail.len() > 16 * 1024 {
+    if tail.len() > MAX_BYTES {
         return None;
     }
     let base = symbol.end;
@@ -788,7 +789,7 @@ fn signature_result(workspace: &Workspace, file: &Path, symbol: &Symbol) -> Opti
     let declaration = symbol.declaration()?;
     let end = symbol.body().map_or(declaration.end, |body| body.start);
     let header = workspace.source_slice(file, declaration.start..end)?;
-    if header.len() > 16 * 1024 {
+    if header.len() > MAX_BYTES {
         return None;
     }
     let signature = crate::syntax::parse_signature(&header);
@@ -804,7 +805,7 @@ fn signature_result(workspace: &Workspace, file: &Path, symbol: &Symbol) -> Opti
 }
 
 fn syntax(context: &Context<'_>, text: &str, start: usize) -> Option<TypeSyntax> {
-    if text.len() > 16 * 1024 {
+    if text.len() > MAX_BYTES {
         return None;
     }
     Some(TypeSyntax {
@@ -958,7 +959,7 @@ fn named_field(
         .or_else(|| workspace.type_declaration(&ty.file, receiver))?;
     let declaration = owner.declaration()?;
     let text = workspace.source_slice(file, owner.end..declaration.end)?;
-    if text.len() > 16 * 1024 {
+    if text.len() > MAX_BYTES {
         return None;
     }
     let root = crate::syntax::aggregate_offset(&text)?;
@@ -1033,7 +1034,7 @@ fn underlying_type(workspace: &Workspace, ty: &TypeSyntax, name: &str) -> Option
         .or_else(|| workspace.type_declaration(&ty.file, name))?;
     let declaration = owner.declaration()?;
     let text = workspace.source_slice(file, owner.end..declaration.end)?;
-    if text.len() > 16 * 1024 {
+    if text.len() > MAX_BYTES {
         return None;
     }
     let mut start = 0usize;

@@ -22,6 +22,7 @@ pub(crate) mod shapes;
 mod signature;
 pub(crate) mod target;
 pub(crate) mod type_definition;
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::resolve::NameIndex;
@@ -63,37 +64,13 @@ impl Workspace {
         binding: &Binding,
         depth: usize,
     ) -> Option<String> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
+        let inference = Inference::new(self, file, source, locals, &[], 0).at_depth(depth + 1);
         if locals.switch_case(binding).is_some() {
-            return Inference {
-                workspace: self,
-                file,
-                source,
-                locals,
-                expressions: &[],
-                base: 0,
-                depth: depth + 1,
-                name_index: None,
-                scoped_bindings: None,
-                iota: None,
-            }
-            .scoped_switch_binding(binding)?
-            .render(self, file);
+            return inference.scoped_switch_binding(binding)?.render(self, file);
         }
-        let inference = Inference {
-            workspace: self,
-            file,
-            source,
-            locals,
-            expressions: &[],
-            base: 0,
-            depth: depth + 1,
-            name_index: None,
-            scoped_bindings: None,
-            iota: None,
-        };
         if let Some(value) = inference.scoped_binding(binding) {
             return value?.render(self, file);
         }
@@ -156,19 +133,9 @@ impl Workspace {
         if !parsed.diagnostics.is_empty() {
             return None;
         }
-        let inferred = Inference {
-            workspace: self,
-            name_index: None,
-            scoped_bindings: None,
-            file,
-            source,
-            locals,
-            expressions: &parsed.nodes,
-            base: span.start,
-            depth: depth + 1,
-            iota: None,
-        }
-        .expression(parsed.root, result, count)?;
+        let inferred = Inference::new(self, file, source, locals, &parsed.nodes, span.start)
+            .at_depth(depth + 1)
+            .expression(parsed.root, result, count)?;
         self.receiver_in_scope(file, &inferred, locals, binding.selection.start)
             .then_some(inferred)
     }
@@ -313,7 +280,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
     }
 
     pub(crate) fn selection(&self, id: ExprId) -> Option<Selection<'workspace>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);
@@ -392,11 +359,32 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
         self.scoped_bindings = Some(cache);
         self
     }
-    fn next(&self) -> Self {
-        Self {
+    fn at_depth_limit(&self) -> bool {
+        self.depth >= MAX_DEPTH
+    }
+
+    fn at_depth(&self, depth: usize) -> Self {
+        Self { depth, ..*self }
+    }
+
+    fn nested<'nested>(
+        &self,
+        expressions: &'nested [Expr],
+        base: usize,
+    ) -> Inference<'workspace, 'nested>
+    where
+        'query: 'nested,
+    {
+        Inference {
+            expressions,
+            base,
             depth: self.depth + 1,
             ..*self
         }
+    }
+
+    fn next(&self) -> Self {
+        self.at_depth(self.depth + 1)
     }
 
     pub(crate) fn receiver_type(&self, id: ExprId) -> Option<String> {
@@ -416,7 +404,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
     }
 
     pub(crate) fn callee(&self, id: ExprId) -> Option<(&'workspace PathBuf, &'workspace Symbol)> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);
@@ -493,7 +481,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
     }
 
     pub(crate) fn expression(&self, id: ExprId, result: usize, count: usize) -> Option<String> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = &self.expressions[id.0];
@@ -678,7 +666,7 @@ impl<'workspace, 'query> Inference<'workspace, 'query> {
 // Local types/formals need distinct identities before this checker can support
 // them. Never resolve one through a same-spelled package declaration.
 fn type_names_in_scope(annotation: &str, locals: &Locals, base: usize) -> bool {
-    if annotation.len() > 16 * 1024 {
+    if annotation.len() > MAX_BYTES {
         return false;
     }
     // Existing generic receiver projection owns formal-argument handling. Keep

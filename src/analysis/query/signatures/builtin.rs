@@ -33,7 +33,7 @@ pub(super) fn for_function(
     }
     let range = declaration.symbol.range;
     let header = declaration.source.get(range.clone())?;
-    if header.len() > super::super::budget::MAX_BYTES {
+    if header.len() > crate::analysis::budget::MAX_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_signature(header);

@@ -1,5 +1,6 @@
 //! Function values retain type identities while their bodies stay opaque.
 use super::{Inference, Selection};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope as locals;
 use crate::analysis::types::{Mode, Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind};
@@ -14,7 +15,7 @@ impl<'workspace> Inference<'workspace, '_> {
         {
             let declaration = symbol.declaration()?;
             let end = symbol.body().map_or(declaration.end, |body| body.start);
-            if end.checked_sub(declaration.start)? > 16 * 1024 {
+            if end.checked_sub(declaration.start)? > MAX_BYTES {
                 return None;
             }
             let header = self
@@ -45,7 +46,7 @@ impl<'workspace> Inference<'workspace, '_> {
     }
 
     pub(super) fn method_expression_target(&self, id: ExprId) -> Option<Selection<'workspace>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let ExprKind::Selector { operand, field } = &self.unparenthesized(id).kind else {
@@ -85,7 +86,7 @@ impl<'workspace> Inference<'workspace, '_> {
         arena: &mut TypeArena<'_>,
         id: ExprId,
     ) -> Option<Option<Operand>> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return Some(None);
         }
         let ExprKind::Selector { operand, field } = &self.unparenthesized(id).kind else {
@@ -121,7 +122,7 @@ impl<'workspace> Inference<'workspace, '_> {
         arguments: &[ExprId],
         spread: bool,
     ) -> Option<Vec<Operand>> {
-        if self.depth >= 32 || arguments.len() > 256 {
+        if self.at_depth_limit() || arguments.len() > 256 {
             return None;
         }
         let actuals = arguments
@@ -164,7 +165,7 @@ impl<'workspace> Inference<'workspace, '_> {
         arena: &mut TypeArena<'_>,
         function: ExprId,
     ) -> Option<usize> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         if let Some(operand) = self.next().value_operand(arena, function) {
@@ -189,7 +190,7 @@ impl<'workspace> Inference<'workspace, '_> {
         arena: &mut TypeArena<'_>,
         id: ExprId,
     ) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);

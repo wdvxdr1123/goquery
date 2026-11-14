@@ -1,5 +1,6 @@
 //! Resolve conversion syntax without confusing value calls or shadowed types.
 use super::Inference;
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::DeclarationKind;
 use crate::analysis::types::{Mode, Operand, TypeArena, TypeForm, TypeId};
 use crate::syntax::{ExprId, ExprKind};
@@ -10,7 +11,7 @@ impl Inference<'_, '_> {
         arena: &mut TypeArena<'_>,
         function: ExprId,
     ) -> Option<TypeId> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(function);
@@ -24,11 +25,11 @@ impl Inference<'_, '_> {
         arena: &mut TypeArena<'_>,
         span: &std::ops::Range<usize>,
     ) -> Option<TypeId> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let text = self.text(span);
-        if text.len() > 16 * 1024 {
+        if text.len() > MAX_BYTES {
             return None;
         }
         let parsed = crate::syntax::parse_type(text);
@@ -64,7 +65,7 @@ impl Inference<'_, '_> {
     }
 
     pub(super) fn value_operand(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<Operand> {
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return None;
         }
         let expression = self.unparenthesized(id);

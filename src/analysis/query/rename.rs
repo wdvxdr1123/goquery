@@ -962,7 +962,7 @@ impl<'a> Context<'a> {
                 if !matched {
                     continue;
                 }
-                if rows.len() == super::budget::MAX_REFERENCES {
+                if rows.len() == crate::analysis::budget::MAX_REFERENCES {
                     return Err((
                         crate::error::REQUEST_FAILED,
                         "reference result exceeds 4096 locations".into(),

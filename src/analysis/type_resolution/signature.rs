@@ -1,11 +1,12 @@
 //! Bounded, request-local matching of scoped method-signature fingerprints.
+use crate::analysis::budget::MAX_BYTES;
 use std::collections::HashMap;
 use std::ops::Range;
 
 pub(super) fn pack(tag: &str, parts: &[String]) -> Option<String> {
     let mut result = format!("{tag};");
     for part in parts {
-        if result.len().saturating_add(part.len()).saturating_add(24) > 16 * 1024 {
+        if result.len().saturating_add(part.len()).saturating_add(24) > MAX_BYTES {
             return None;
         }
         result.push_str(&format!("{}:{part}", part.len()));
@@ -30,7 +31,7 @@ struct Matcher<'a> {
 
 impl<'a> Matcher<'a> {
     fn parse(&mut self, text: &'a str, side: u8, depth: usize) -> Option<usize> {
-        if depth > 64 || text.len() > 16 * 1024 || self.terms.len() >= 4096 {
+        if depth > 64 || text.len() > MAX_BYTES || self.terms.len() >= 4096 {
             return None;
         }
         let (tag, mut tail) = text.split_once(';')?;

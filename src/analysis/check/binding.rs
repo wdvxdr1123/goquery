@@ -1,6 +1,7 @@
 //! Query-local variable initialization facts shared by semantic consumers.
 use super::scope::AnnotationType;
 use super::{Inference, ScopedType};
+use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::scope::{Binding, DeclarationKind, Locals};
 use crate::analysis::types::{Mode, Operand, TypeArena};
 use crate::syntax::{ExprId, ExprKind};
@@ -69,7 +70,7 @@ impl<'workspace> Inference<'workspace, '_> {
         ) {
             return None;
         }
-        if self.depth >= 32 {
+        if self.at_depth_limit() {
             return Some(None);
         }
         if binding.range_initializer().is_some() {
@@ -97,17 +98,12 @@ impl<'workspace> Inference<'workspace, '_> {
                 let text = self
                     .source
                     .get(span.clone())
-                    .filter(|text| text.len() <= 16 * 1024)?;
+                    .filter(|text| text.len() <= MAX_BYTES)?;
                 let parsed = crate::syntax::parse_expression(text);
                 if !parsed.diagnostics.is_empty() {
                     return None;
                 }
-                let inference = Inference {
-                    expressions: &parsed.nodes,
-                    base: span.start,
-                    depth: self.depth + 1,
-                    ..*self
-                };
+                let inference = self.nested(&parsed.nodes, span.start);
                 let input = if result == 0 && count == 1 {
                     inference.value_operand(arena, parsed.root)?
                 } else {

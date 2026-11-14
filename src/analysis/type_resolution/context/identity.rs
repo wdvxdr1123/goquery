@@ -1,5 +1,6 @@
 //! Scoped signature fingerprints: aliases are transparent, defined types nominal.
 use super::{Resolved, TypeContext};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::scope as locals;
 use crate::analysis::type_resolution::signature;
 use crate::syntax::{Lexer, TokenKind};
@@ -31,7 +32,7 @@ impl<'a> TypeContext<'a> {
         environment: Option<usize>,
         depth: usize,
     ) -> Option<String> {
-        if depth >= 32 || header.len() > 16 * 1024 {
+        if depth >= MAX_DEPTH || header.len() > MAX_BYTES {
             return None;
         }
         let signature = crate::syntax::parse_literal_signature(header);
@@ -49,7 +50,7 @@ impl<'a> TypeContext<'a> {
                 let node = self.push(file, &header[parameter.annotation.clone()], environment)?;
                 let identity = self.identity(node, depth + 1)?;
                 bytes = bytes.checked_add(identity.len() + 24)?;
-                if bytes > 16 * 1024 {
+                if bytes > MAX_BYTES {
                     return None;
                 }
                 output.push(signature::pack(
@@ -72,7 +73,7 @@ impl<'a> TypeContext<'a> {
     }
 
     pub(super) fn identity(&mut self, input: usize, depth: usize) -> Option<String> {
-        if depth >= 32 {
+        if depth >= MAX_DEPTH {
             return None;
         }
         if self.nodes[input].formal {
@@ -175,7 +176,7 @@ impl<'a> TypeContext<'a> {
                 if symbol.alias {
                     let span = symbol.end..symbol.declaration()?.end;
                     let source;
-                    let declaration = if span.len() <= 16 * 1024 {
+                    let declaration = if span.len() <= MAX_BYTES {
                         source = self.workspace.source_slice(origin, span)?;
                         source.as_str()
                     } else {
@@ -204,7 +205,7 @@ impl<'a> TypeContext<'a> {
                 for argument in resolved.arguments {
                     let argument = self.identity(argument, depth + 1)?;
                     bytes = bytes.checked_add(argument.len() + 24)?;
-                    if bytes > 16 * 1024 {
+                    if bytes > MAX_BYTES {
                         return None;
                     }
                     parts.push(argument);

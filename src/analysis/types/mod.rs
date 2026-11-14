@@ -38,10 +38,10 @@ enum Tags {
     Ignore,
 }
 
-use crate::analysis::query::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES};
+use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH, MAX_NODES};
 
 pub(crate) use form::{TypeForm, TypePresentation};
-pub(crate) use syntax::declaration_body;
+pub(crate) use syntax::{declaration_body, type_parentheses, unparenthesized_type};
 
 #[cfg(test)]
 pub(crate) use complex::ComplexPart;

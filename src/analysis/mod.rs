@@ -1,5 +1,6 @@
 //! Shared semantic queries over declaration metadata and temporary body arenas.
 //! This layer depends on workspace/index/text, never on feature or server routing.
+pub(crate) mod budget;
 pub(crate) mod check;
 pub(crate) mod member;
 pub(crate) mod method_set;
