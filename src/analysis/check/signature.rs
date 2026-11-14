@@ -5,6 +5,32 @@ use crate::analysis::types::{Mode, Operand, TypeArena, TypeId};
 use crate::syntax::{ExprId, ExprKind};
 
 impl<'workspace> Inference<'workspace, '_> {
+    /// Signature arity is independent of actual arguments. Read a resolved
+    /// function header before native operand construction, which may need
+    /// unavailable dependency types just to describe otherwise known inputs.
+    pub(crate) fn format_parameter(&self, function: ExprId) -> Option<usize> {
+        if let Some((origin, symbol)) = self.callee(function)
+            && symbol.is_function()
+        {
+            let declaration = symbol.declaration()?;
+            let end = symbol.body().map_or(declaration.end, |body| body.start);
+            if end.checked_sub(declaration.start)? > 16 * 1024 {
+                return None;
+            }
+            let header = self
+                .workspace
+                .source_slice(origin, declaration.start..end)?;
+            let signature = crate::syntax::parse_signature(&header);
+            return (signature.diagnostics.is_empty()
+                && signature.parameters.last().is_some_and(|p| p.variadic))
+            .then(|| signature.parameters.len().checked_sub(2))
+            .flatten();
+        }
+        let mut arena = TypeArena::new(self.workspace);
+        let callable = self.value_operand(&mut arena, function)?;
+        arena.format_parameter(callable.ty)
+    }
+
     fn method_receiver_type(&self, arena: &mut TypeArena<'_>, id: ExprId) -> Option<TypeId> {
         let receiver = self.unparenthesized(id);
         if matches!(receiver.kind, ExprKind::Name)

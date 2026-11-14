@@ -2,6 +2,7 @@
 //! using request-local metadata, source views and existing native inference.
 mod builtin;
 mod content;
+mod declaration;
 mod doc;
 mod package;
 mod promote;
@@ -125,9 +126,9 @@ pub(crate) fn execute(
         Target::Global(path, symbol) => {
             let mut content = symbol::reference(context, path, symbol, range)?;
             if let Some(content_ref) = content.as_mut()
-                && let Some(code) = content_ref.code.as_deref()
+                && content_ref.code.is_some()
                 && let Some(instantiated) =
-                    instantiated_generic(context, &scope, &span, path, symbol, code)
+                    instantiated_generic(context, &scope, &span, path, symbol)
             {
                 content_ref.code = Some(instantiated);
             }
@@ -632,303 +633,101 @@ fn instantiated_generic(
     span: &Range<usize>,
     path: &Path,
     symbol: &crate::index::IndexedSymbol,
-    rendered: &str,
 ) -> Option<String> {
-    if !symbol.generic || !symbol.is_callable() {
+    if !symbol.generic || !symbol.is_function() {
         return None;
     }
     let body = scope.body.as_ref()?;
     let expressions = &body.tree.expressions;
     let base = body.base;
-    let source = context.source();
-    let (call_index, function_id) = expressions.iter().enumerate().find_map(|(index, entry)| {
-        let crate::syntax::ExprKind::Call { function, .. } = &entry.kind else {
+    let (function, arguments, variadic) = expressions.iter().find_map(|entry| {
+        let crate::syntax::ExprKind::Call {
+            function,
+            arguments,
+            variadic,
+        } = &entry.kind
+        else {
             return None;
         };
-        let callee = &expressions[function.0];
-        let selected = match &callee.kind {
-            crate::syntax::ExprKind::Name => callee.span.clone(),
-            crate::syntax::ExprKind::Index { operand, .. } => expressions[operand.0].span.clone(),
-            _ => return None,
-        };
-        ((base + selected.start..base + selected.end) == *span).then_some((index, function.0))
+        let selected = call_name_span(expressions, *function)?;
+        ((base + selected.start..base + selected.end) == *span).then_some((
+            *function,
+            arguments.as_slice(),
+            *variadic,
+        ))
     })?;
-    let crate::syntax::ExprKind::Call { arguments, .. } = &expressions[call_index].kind else {
-        return None;
-    };
-    let call_arguments = arguments.clone();
-    let explicit: Option<Vec<String>> = match &expressions[function_id].kind {
-        crate::syntax::ExprKind::Index { arguments, .. } => Some(
-            arguments
-                .iter()
-                .filter_map(|argument| {
-                    let expression = expressions.get(argument.0)?;
-                    source
-                        .get(base + expression.span.start..base + expression.span.end)
-                        .map(|text| text.trim().to_owned())
-                })
-                .collect(),
-        ),
-        _ => None,
-    };
     let source_text = render::declaration_source(context, path)?;
-    let declaration_source = source_text.text();
     let declaration = symbol.declaration()?;
     let end = symbol.body().map_or(declaration.end, |body| body.start);
-    let header = declaration_source.get(declaration.start..end)?;
-    if header.len() > MAX_GENERIC_HEADER {
+    if end.checked_sub(declaration.start)? > MAX_GENERIC_HEADER {
         return None;
     }
+    let header = source_text.text().get(declaration.start..end)?;
     let signature = crate::syntax::parse_signature(header);
-    if !signature.diagnostics.is_empty() || signature.type_parameters.is_empty() {
-        return None;
-    }
-    let names: Vec<&str> = signature
-        .type_parameters
-        .iter()
-        .filter_map(|parameter| parameter.name.as_ref())
-        .filter_map(|name| header.get(name.clone()))
-        .map(str::trim)
-        .collect();
-    if names.is_empty() {
-        return None;
-    }
-    let mut substitutions: std::collections::HashMap<&str, String> =
-        std::collections::HashMap::new();
-    if let Some(explicit) = explicit.filter(|explicit| explicit.len() == names.len()) {
-        for (name, argument) in names.iter().zip(explicit) {
-            substitutions.insert(name, argument);
-        }
-    } else {
-        for (index, parameter) in signature.parameters.iter().enumerate() {
-            let Some(argument) = call_arguments.get(index) else {
-                break;
-            };
-            let Some(annotation) = header.get(parameter.annotation.clone()) else {
-                continue;
-            };
-            let Some(actual) = argument_type(context, scope, expressions, base, *argument) else {
-                continue;
-            };
-            if !unify_type(annotation, &actual, &names, &mut substitutions) {
-                return None;
-            }
-        }
-    }
-    if substitutions.len() != names.len() {
-        return None;
-    }
-    let mut code = rendered.to_owned();
-    for (name, value) in &substitutions {
-        code = replace_identifier(&code, name, value);
-    }
-    code = strip_type_parameter_list(&code);
+    let inference = crate::analysis::check::Inference::new(
+        context.workspace(),
+        context.file(),
+        context.source(),
+        &scope.locals,
+        expressions,
+        base,
+    );
+    let instantiated = inference.instantiated_call_signature(
+        (path, header, &signature),
+        function,
+        arguments,
+        variadic,
+    )?;
+    let code = format!(
+        "func {}{}",
+        import_qualifier(context, context.file(), path)?,
+        render::normalize_signature(&instantiated.label),
+    );
     let comment = generic_signature_comment(header, &signature)?;
     let separator = if code.len() > 60 { "\n" } else { " " };
     Some(format!("{code}{separator}// {comment}"))
 }
 
-/// Consumer type of a call argument, for generic parameter inference.
-fn argument_type(
-    context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
+/// The selected name keeps its own span through qualification, explicit type
+/// arguments and parenthesized callees.
+fn call_name_span(
     expressions: &[crate::syntax::Expr],
-    base: usize,
-    id: crate::syntax::ExprId,
-) -> Option<String> {
-    let expression = expressions.get(id.0)?;
-    let source = context.source();
-    let text = source.get(base + expression.span.start..base + expression.span.end)?;
-    let workspace = context.workspace();
-    match &expression.kind {
-        crate::syntax::ExprKind::Name => {
-            let binding = scope
-                .locals
-                .resolve_at(base + expression.span.start, text)?;
-            let annotation = binding.declared_type.clone().or_else(|| {
-                binding
-                    .annotation()
-                    .and_then(|span| source.get(span.clone()).map(str::to_owned))
-            })?;
-            workspace.signature_type(context.file(), context.file(), &annotation)
-        }
-        crate::syntax::ExprKind::Literal => value::default_type(text),
-        crate::syntax::ExprKind::Composite {
-            literal_type: Some(literal_type),
-            ..
-        } => {
-            let literal = expressions.get(literal_type.0)?;
-            source
-                .get(base + literal.span.start..base + literal.span.end)
-                .map(str::trim)
-                .map(str::to_owned)
-        }
-        crate::syntax::ExprKind::Call { function, .. } => {
-            if let Some(result) =
-                render::call_result_type(context, context.file(), text, 0, 1, false)
-            {
-                return Some(result);
+    mut function: crate::syntax::ExprId,
+) -> Option<Range<usize>> {
+    for _ in 0..32 {
+        let expression = expressions.get(function.0)?;
+        match &expression.kind {
+            crate::syntax::ExprKind::Name => return Some(expression.span.clone()),
+            crate::syntax::ExprKind::Selector { field, .. } => return Some(field.clone()),
+            crate::syntax::ExprKind::Index { operand, .. }
+            | crate::syntax::ExprKind::Parenthesized {
+                expression: operand,
+            } => {
+                function = *operand;
             }
-            let inference = crate::analysis::check::Inference::new(
-                context.workspace(),
-                context.file(),
-                source,
-                &scope.locals,
-                expressions,
-                base,
-            );
-            let crate::analysis::check::Selection::Global(path, symbol) =
-                inference.selection(*function)?
-            else {
-                return None;
-            };
-            if !symbol.is_callable() {
-                return None;
-            }
-            let source_text = render::declaration_source(context, path)?;
-            let declaration = symbol.declaration()?;
-            let end = symbol.body().map_or(declaration.end, |body| body.start);
-            let header = source_text.text().get(declaration.start..end)?;
-            let signature = crate::syntax::parse_signature(header);
-            let result = signature.results.first()?;
-            let annotation = header.get(result.annotation.clone())?;
-            context
-                .workspace()
-                .signature_type(context.file(), path, annotation)
-                .map(|text| render::normalize_type(&text))
-        }
-        crate::syntax::ExprKind::Unary { operator, operand } => {
-            let operator = source.get(base + operator.start..base + operator.end)?;
-            let inner = argument_type(context, scope, expressions, base, *operand)?;
-            (operator == "&").then(|| format!("*{inner}"))
-        }
-        _ => None,
-    }
-}
-
-/// Structural single-type-parameter unification for common container shapes.
-fn unify_type<'a>(
-    annotation: &str,
-    actual: &str,
-    names: &[&'a str],
-    substitutions: &mut std::collections::HashMap<&'a str, String>,
-) -> bool {
-    let annotation = annotation.trim();
-    let actual = actual.trim();
-    if !names
-        .iter()
-        .any(|name| contains_identifier(annotation, name))
-    {
-        // Parameters independent of the type parameter list never constrain it.
-        return true;
-    }
-    if let Some(name) = names.iter().find(|name| **name == annotation) {
-        if let Some(existing) = substitutions.get(name) {
-            return existing == actual;
-        }
-        substitutions.insert(name, actual.to_owned());
-        return true;
-    }
-    if let Some(rest) = annotation.strip_prefix("[]")
-        && let Some(actual) = actual.strip_prefix("[]")
-    {
-        return unify_type(rest, actual, names, substitutions);
-    }
-    if let Some(rest) = annotation.strip_prefix('*')
-        && let Some(actual) = actual.strip_prefix('*')
-    {
-        return unify_type(rest, actual, names, substitutions);
-    }
-    if let Some(rest) = annotation.strip_prefix("...")
-        && let Some(actual) = actual.strip_prefix("[]")
-    {
-        return unify_type(rest, actual, names, substitutions);
-    }
-    false
-}
-
-/// Whether `text` contains `name` as a whole identifier.
-fn contains_identifier(text: &str, name: &str) -> bool {
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        let boundary =
-            index == 0 || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_');
-        if boundary
-            && text[index..].starts_with(name)
-            && bytes
-                .get(index + name.len())
-                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
-        {
-            return true;
-        }
-        index += 1;
-    }
-    false
-}
-
-/// Remove the declared type-parameter list from an instantiated signature.
-fn strip_type_parameter_list(code: &str) -> String {
-    let Some(open) = code.find('[') else {
-        return code.to_owned();
-    };
-    let Some(params) = code.find('(') else {
-        return code.to_owned();
-    };
-    if open > params {
-        return code.to_owned();
-    }
-    let mut depth = 0usize;
-    for (offset, ch) in code[open..].char_indices() {
-        match ch {
-            '[' => depth += 1,
-            ']' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    let mut output = String::with_capacity(code.len());
-                    output.push_str(&code[..open]);
-                    output.push_str(&code[open + offset + 1..]);
-                    return output;
-                }
-            }
-            _ => {}
+            _ => return None,
         }
     }
-    code.to_owned()
-}
-
-/// Replace whole identifier occurrences of `name` with `value`.
-fn replace_identifier(text: &str, name: &str, value: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    let bytes = text.as_bytes();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        let boundary =
-            index == 0 || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_');
-        if boundary
-            && text[index..].starts_with(name)
-            && bytes
-                .get(index + name.len())
-                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
-        {
-            output.push_str(value);
-            index += name.len();
-            continue;
-        }
-        let ch = text[index..].chars().next().unwrap_or('\0');
-        output.push(ch);
-        index += ch.len_utf8();
-    }
-    output
+    None
 }
 
 /// The generic declaration rendered as gopls' trailing comment.
 fn generic_signature_comment(header: &str, signature: &crate::syntax::Signature) -> Option<String> {
     let mut type_parameters = Vec::new();
-    for parameter in &signature.type_parameters {
+    for (index, parameter) in signature.type_parameters.iter().enumerate() {
         let name = header.get(parameter.name.as_ref()?.clone())?.trim();
         let constraint = header.get(parameter.annotation.clone())?.trim();
-        type_parameters.push(format!("{name} {constraint}"));
+        let grouped = signature
+            .type_parameters
+            .get(index + 1)
+            .is_some_and(|next| {
+                header.get(next.annotation.clone()).map(str::trim) == Some(constraint)
+            });
+        type_parameters.push(if grouped {
+            name.to_owned()
+        } else {
+            format!("{name} {}", render::normalize_type(constraint))
+        });
     }
     let parameters = parameter_list(header, &signature.parameters)?;
     let results = result_list(header, &signature.results)?;
@@ -943,11 +742,11 @@ fn generic_signature_comment(header: &str, signature: &crate::syntax::Signature)
 fn parameter_list(header: &str, parameters: &[crate::syntax::Parameter]) -> Option<String> {
     let mut parts = Vec::with_capacity(parameters.len());
     for parameter in parameters {
-        let annotation = header.get(parameter.annotation.clone())?.trim();
+        let annotation = render::normalize_type(header.get(parameter.annotation.clone())?);
         let annotation = if parameter.variadic {
             format!("...{annotation}")
         } else {
-            annotation.to_owned()
+            annotation
         };
         match parameter
             .name
@@ -966,7 +765,9 @@ fn result_list(header: &str, results: &[crate::syntax::Parameter]) -> Option<Str
         return Some(String::new());
     }
     if results.len() == 1 && results[0].name.is_none() {
-        return Some(header.get(results[0].annotation.clone())?.trim().to_owned());
+        return Some(render::normalize_type(
+            header.get(results[0].annotation.clone())?,
+        ));
     }
     Some(format!("({})", parameter_list(header, results)?))
 }

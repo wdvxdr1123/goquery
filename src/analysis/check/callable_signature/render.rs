@@ -92,91 +92,13 @@ impl Workspace {
         {
             return None;
         }
-        let mut raw_bytes = name.len().checked_add(8)?;
-        for parameter in signature.parameters.iter().chain(&signature.results) {
-            raw_bytes = raw_bytes
-                .checked_add(parameter.annotation.len())?
-                .checked_add(parameter.name.as_ref().map_or(0, |name| name.len()))?
-                .checked_add(8)?;
-            if raw_bytes > MAX_LABEL_BYTES {
-                return None;
+        signature_label(header, signature, name, |annotation| match types {
+            SignatureTypes::Member(types) => types.render(annotation),
+            SignatureTypes::Declaration(names) => {
+                self.signature_type_scoped(file, origin, annotation, names)
             }
-        }
-        if raw_bytes > MAX_LABEL_BYTES {
-            return None;
-        }
-        let parameter = |parameter: &Parameter| -> Option<String> {
-            let annotation = &header[parameter.annotation.clone()];
-            let ty = match types {
-                SignatureTypes::Member(types) => types.render(annotation)?,
-                SignatureTypes::Declaration(names) => {
-                    self.signature_type_scoped(file, origin, annotation, names)?
-                }
-                SignatureTypes::Call => self.signature_type(file, origin, annotation)?,
-            };
-            let ty = if parameter.variadic {
-                format!("...{ty}")
-            } else {
-                ty
-            };
-            Some(
-                parameter
-                    .name
-                    .as_ref()
-                    .map_or(ty.clone(), |name| format!("{} {ty}", &header[name.clone()])),
-            )
-        };
-        let mut expanded = name.len() + 8;
-        let mut parameters = Vec::new();
-        for input in &signature.parameters {
-            let label = parameter(input)?;
-            expanded = expanded.checked_add(label.len() + 2)?;
-            if expanded > MAX_LABEL_BYTES {
-                return None;
-            }
-            parameters.push(ParameterLabel { label });
-        }
-        let mut results = Vec::new();
-        for result in &signature.results {
-            let label = parameter(result)?;
-            expanded = expanded.checked_add(label.len() + 2)?;
-            if expanded > MAX_LABEL_BYTES {
-                return None;
-            }
-            results.push(label);
-        }
-        let mut label = format!(
-            "{}({})",
-            name,
-            parameters
-                .iter()
-                .map(|p| p.label.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        if !results.is_empty() {
-            label.push(' ');
-            let parentheses = results.len() > 1 || signature.results[0].name.is_some();
-            if parentheses {
-                label.push('(');
-            }
-            label.push_str(&results.join(", "));
-            if parentheses {
-                label.push(')');
-            }
-        }
-        let variadic = signature
-            .parameters
-            .last()
-            .is_some_and(|parameter| parameter.variadic);
-        Some((
-            CallableSignature {
-                label,
-                parameters,
-                active_parameter: None,
-            },
-            variadic,
-        ))
+            SignatureTypes::Call => self.signature_type(file, origin, annotation),
+        })
     }
 
     pub(crate) fn signature_type(
@@ -187,7 +109,98 @@ impl Workspace {
     ) -> Option<String> {
         self.signature_type_scoped(file, origin, source, &[])
     }
+}
 
+/// Keep parameter names and protocol label limits shared across declaration,
+/// member and native instantiated signatures. Only type rendering varies.
+pub(crate) fn signature_label(
+    header: &str,
+    signature: &Signature,
+    name: &str,
+    mut annotation_type: impl FnMut(&str) -> Option<String>,
+) -> Option<(CallableSignature, bool)> {
+    let mut raw_bytes = name.len().checked_add(8)?;
+    for parameter in signature.parameters.iter().chain(&signature.results) {
+        raw_bytes = raw_bytes
+            .checked_add(parameter.annotation.len())?
+            .checked_add(parameter.name.as_ref().map_or(0, |name| name.len()))?
+            .checked_add(8)?;
+        if raw_bytes > MAX_LABEL_BYTES {
+            return None;
+        }
+    }
+    if raw_bytes > MAX_LABEL_BYTES {
+        return None;
+    }
+    let mut parameter = |parameter: &Parameter| -> Option<String> {
+        let annotation = &header[parameter.annotation.clone()];
+        let ty = annotation_type(annotation)?;
+        let ty = if parameter.variadic {
+            format!("...{ty}")
+        } else {
+            ty
+        };
+        Some(
+            parameter
+                .name
+                .as_ref()
+                .map_or(ty.clone(), |name| format!("{} {ty}", &header[name.clone()])),
+        )
+    };
+    let mut expanded = name.len() + 8;
+    let mut parameters = Vec::new();
+    for input in &signature.parameters {
+        let label = parameter(input)?;
+        expanded = expanded.checked_add(label.len() + 2)?;
+        if expanded > MAX_LABEL_BYTES {
+            return None;
+        }
+        parameters.push(ParameterLabel { label });
+    }
+    let mut results = Vec::new();
+    for result in &signature.results {
+        let label = parameter(result)?;
+        expanded = expanded.checked_add(label.len() + 2)?;
+        if expanded > MAX_LABEL_BYTES {
+            return None;
+        }
+        results.push(label);
+    }
+    let mut label = format!(
+        "{}({})",
+        name,
+        parameters
+            .iter()
+            .map(|p| p.label.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if !results.is_empty() {
+        label.push(' ');
+        let parentheses = results.len() > 1 || signature.results[0].name.is_some();
+        if parentheses {
+            label.push('(');
+        }
+        label.push_str(&results.join(", "));
+        if parentheses {
+            label.push(')');
+        }
+    }
+    let variadic = signature
+        .parameters
+        .last()
+        .is_some_and(|parameter| parameter.variadic);
+    Some((
+        CallableSignature {
+            label,
+            parameters,
+            active_parameter: None,
+        },
+        variadic,
+    ))
+}
+
+impl Workspace {
     pub(crate) fn signature_type_scoped(
         &self,
         file: &Path,

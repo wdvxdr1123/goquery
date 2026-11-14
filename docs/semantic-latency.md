@@ -131,3 +131,63 @@ The final six-corpus implementation comparisons under `benchmarks/signature-owne
 matched 103/103 complete responses. No sampled external request exceeded 100 ms;
 the SDK request `crypto/internal/fips140/aes/gcm/gcm_nonces.go:Overhead@3438`
 took 146.3 ms in the concurrent comparison and remains listed as a slow request.
+
+## Native generic-hover checkpoint
+
+Snapshot `target/native-generic-final.exe`; reports under
+`benchmarks/native-generic/`. SDK, external hover/token groups, Hugo relations
+and the Ollama memory workload overlapped. The following observed requests
+exceeded 100 ms; these times do not establish a regression or speedup against
+the settled A/B above. Complete responses remain in the reports.
+
+| Feature | Corpus | Request | ms |
+| --- | --- | --- | ---: |
+| implementation | hugo | `hugolib/page__common.go:nextPrevProvider@939` | 123.2 |
+| implementation | hugo | `hugolib/page__common.go:nextPrevInSectionProvider@1073` | 129.7 |
+| implementation | hugo | `hugolib/page__common.go:pageCommon@1241` | 296.6 |
+| implementation | hugo | `hugolib/page__common.go:getNextPrevInSection@1112` | 118.5 |
+| implementation | hugo | `hugolib/page__common.go:getNextPrev@1017` | 452.0 |
+| implementation | hugo | `hugolib/page__common.go:getNextPrevInSection@1169` | 184.5 |
+| implementation | hugo | `hugolib/page__common.go:Store@2758` | 137.2 |
+| implementation | hugo | `hugolib/page__common.go:Scratch@2846` | 108.6 |
+| implementation | hugo | `hugolib/page__common.go:pageCommon@1157` | 108.1 |
+| semantic tokens | stdlib | `os/root_test.go` | 229.6 |
+
+## Signature-based format checkpoint
+
+Final replay `target/signature-format-unicode.exe` against the same-plan cached
+pinned gopls responses, under `benchmarks/signature-format-unicode/`. The replay
+overlapped the Ollama memory session. The SDK semantic-token request for
+`os/root_test.go` took 267.9 ms; it is the only request above 100 ms in these
+SDK/external hover, token and document-highlight groups. The preceding fresh
+reference matrix (`target/signature-format-bounded.exe`) observed 252.0 ms for
+the same request. Neither run is a controlled latency A/B, and this request
+still misses the approximately 100 ms target.
+
+## Scoped format-cursor query A/B
+
+`benchmarks/format-cursor/sdk-scope-ab.json` compares the functional whole-file
+collector (`target/format-cursor-final.exe`) and scoped collector
+(`target/format-cursor-scoped.exe`). Two fresh settled server runs per binary
+were alternated after the other task workloads finished. All complete responses
+match the fresh pinned gopls reference retained in `sdk-directives.json`.
+
+| os/root_test.go request | Baseline median ms | Scoped median ms |
+| --- | ---: | ---: |
+| `root.Open directive@8828` | 69.2 | 4.7 |
+| `root.Open directive@9505` | 61.3 | 3.5 |
+
+These measurements support faster association queries for these two cursors.
+Token generation still visits all format literals and is not covered by this
+speedup. No >100 ms request occurred in the associated six-corpus highlight
+replays or focused 257-query fixture, but broader latency acceptance remains
+unfinished.
+
+## Type-declaration presentation checkpoint
+
+`target/declaration-layout-cow.exe` passed the focused audited 29-case type
+declaration comparison, the 11-case test-view comparison and the SDK/external
+hover replays under `benchmarks/declaration-layout-cow/`. No replayed corpus
+hover or test-view request exceeded 100 ms. These checks overlapped other work;
+they do not establish a controlled speedup or general latency acceptance. The
+previously listed slow semantic-token and implementation requests remain open.

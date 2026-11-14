@@ -520,7 +520,23 @@ fn call_result_type(
     if !signature.diagnostics.is_empty() || signature.results.len() != count || result >= count {
         return None;
     }
-    let annotation = header.get(signature.results[result].annotation.clone())?;
+    let result_span = &signature.results[result].annotation;
+    // A formal type parameter needs call-site instantiation. Parsing it in the
+    // package scope could instead bind an unrelated declaration of that name.
+    if signature.type_references.iter().any(|reference| {
+        let root = reference.qualifier.as_ref().unwrap_or(&reference.name);
+        result_span.start <= root.start
+            && root.end <= result_span.end
+            && signature.type_parameters.iter().any(|parameter| {
+                parameter
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| header.get(name.clone()) == header.get(root.clone()))
+            })
+    }) {
+        return None;
+    }
+    let annotation = header.get(result_span.clone())?;
     Some(Operand {
         mode: Mode::Value,
         ty: annotation_type_id(inference.workspace, arena, file, annotation)?,
@@ -744,10 +760,9 @@ pub(super) fn receiver_operand(
             // A resolved package-level function call has a definitive declared
             // result annotation. Resolve it before the speculative call paths,
             // which may exhaust the shared arena budget on unsupported callees.
-            if matches!(&nodes[function.0].kind, ExprKind::Name)
-                && inference
-                    .callee(*function)
-                    .is_some_and(|(_, symbol)| symbol.is_function())
+            if inference
+                .callee(*function)
+                .is_some_and(|(_, symbol)| symbol.is_function())
                 && let Some(found) = call_result_type(inference, arena, *function, 0, 1)
             {
                 return Some(found);

@@ -1312,11 +1312,12 @@ pub(super) fn local(
                     .bytes()
                     .take_while(|byte| matches!(byte, b' ' | b'\t'))
                     .count()];
-                format!(
-                    "type {} {}",
+                let spec = format!(
+                    "{} {}",
                     binding.name,
                     declaration_without_indent(&annotation, indentation)
-                )
+                );
+                format!("type {}", super::declaration::format_spec(&spec))
             }),
         DeclarationKind::Constant => local_constant(context, binding),
         DeclarationKind::Value | DeclarationKind::Variadic => {
@@ -1548,7 +1549,16 @@ pub(super) fn header_binding(
         let locals = Locals::from_header(source, declaration.start, body.clone(), &parsed);
         if let Some(binding) = locals
             .definition_at(span, &source[span.clone()])
-            .filter(|binding| binding.selection == *span)
+            .filter(|binding| {
+                binding.selection == *span
+                    || binding.declaration == DeclarationKind::TypeParameter
+                        && parsed.type_references.iter().any(|reference| {
+                            reference.qualifier.is_none()
+                                && (declaration.start + reference.name.start
+                                    ..declaration.start + reference.name.end)
+                                    == *span
+                        })
+            })
         {
             return Ok(Some(local(context, &locals, binding, range)));
         }

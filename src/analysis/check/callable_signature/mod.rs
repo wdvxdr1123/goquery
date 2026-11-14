@@ -3,6 +3,7 @@ mod methods;
 mod render;
 mod values;
 pub(crate) use methods::{PreparedMethods, SignatureSource};
+pub(super) use render::signature_label;
 
 pub(crate) struct ParameterLabel {
     pub(crate) label: String,

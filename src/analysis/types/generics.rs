@@ -17,6 +17,28 @@ impl TypeArena<'_> {
         int_bits: u32,
         spread: bool,
     ) -> Option<TypeId> {
+        let arguments = self.infer_call_arguments(
+            origin, header, signature, actuals, explicit, int_bits, spread,
+        )?;
+        let names = constraints::parameter_names(header, signature)?;
+        let environment: Vec<_> = names.into_iter().zip(arguments).collect();
+        let result = &header[signature.results.get(result)?.annotation.clone()];
+        self.parse_in(origin, result, &environment)
+    }
+
+    /// Infer and prove the complete type argument list once, for result types
+    /// and call-site signature presentation alike.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn infer_call_arguments(
+        &mut self,
+        origin: &Path,
+        header: &str,
+        signature: &Signature,
+        actuals: &[Operand],
+        explicit: &[TypeId],
+        int_bits: u32,
+        spread: bool,
+    ) -> Option<Vec<TypeId>> {
         let names = constraints::parameter_names(header, signature)?;
         if names.is_empty()
             || names.len() > 32
@@ -102,9 +124,7 @@ impl TypeArena<'_> {
             let target = self.substitute(formal, &bindings, 0)?;
             self.assignable(*actual, target, int_bits)?.then_some(())?;
         }
-        let result = &header[signature.results.get(result)?.annotation.clone()];
-        let result = self.parse_in(origin, result, &environment)?;
-        self.substitute(result, &bindings, 0)
+        bindings.into_iter().collect()
     }
 
     pub(super) fn unify(

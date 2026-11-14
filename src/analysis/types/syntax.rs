@@ -11,7 +11,7 @@ impl<'a> TypeArena<'a> {
         self.parse_in(origin, source, &[])
     }
 
-    pub(super) fn parse_in(
+    pub(crate) fn parse_in(
         &mut self,
         origin: &Path,
         source: &str,

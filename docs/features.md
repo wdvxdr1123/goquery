@@ -10,6 +10,15 @@
   the pkg.go.dev footer. Method lists distinguish ordinary source, same-package
   tests, same-directory external tests and unrelated importers; test helpers
   remain in their test view rather than appearing in production hover lists.
+  Generic function-call hover shares native type-argument inference and
+  constraint/assignment checks with result inference, including imported calls,
+  partial explicit arguments and variadic expansion within existing budgets.
+  Unavailable inference retains the declaration signature.
+  Type-declaration hover shares bounded syntax-based presentation across globals,
+  local types and alias targets. Supported inline declarations normalize field
+  layout, generic parameters and expression spacing while preserving literal
+  contents. Existing multiline layout and unsupported/over-budget forms retain
+  their source presentation; this is not a complete Go formatter.
 - Inferred array literal extents (`[...]T{...}`) follow constant keyed indices
   and implicit successors, including imported constants and supported `iota`
   groups. The same facts feed local inference and hover/array-length rendering.
@@ -33,6 +42,15 @@
   Semantic tokens split resolved field/method doc references such as
   `[Type.Field]` and `[pkg.Type.Method]` using shared member identity, promotion,
   ambiguity and visibility checks. Unresolved member references stay comments.
+  Format-string splitting and format/argument highlights use the resolved
+  callable signature's last fixed parameter, including local/imported functions,
+  function literals and method expressions. They share one bounded call scan:
+  1024 candidate calls, 512 scope builds, 16384 argument tokens per call and
+  1048576 argument-token visits per request; format literals stay under 16 KiB
+  and 256 operations. One active body's expressions/locals are retained during
+  the scan. Highlight queries resolve only calls enclosing the cursor. Directive
+  cursors support repeated/indexed arguments, dynamic width/precision, nested
+  calls and escaped/raw literals; missing arguments still highlight the directive.
 - Workspace folders with dynamic refresh; open buffers override disk contents and
   closing restores the saved declarations.
 - External-edit freshness: when the client supports dynamic registration (Zed

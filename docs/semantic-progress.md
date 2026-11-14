@@ -487,6 +487,288 @@ Report: `benchmarks/test-view-scoped-ollama-session.json`. Full Rust tests,
 fmt check, Clippy with warnings denied and release build passed. No new unit
 tests were added, and no measured memory-reduction claim is made.
 
+## Imported call-result classification checkpoint
+
+Release snapshot: `target/declared-call-result.exe`, based on `fe6a300` plus
+the uncommitted classifier change. Selector classification now projects a
+resolved imported function's declared result before speculative argument
+checking can consume the shared arena budget. This reuses the existing bounded
+declaration-header path and declaration-file import scope, without adding a
+cache or retaining sources. A result referring to a function type parameter
+must still use instantiation-aware inference; parsing that formal as a
+package-level same-named type would be incorrect.
+
+With Go 1.27.3 and gopls v0.24.0, the complete SDK semantic-token sample improves
+from 4/6 to 5/6 (`benchmarks/declared-call-stdlib-tokens.json`). Only
+`internal/trace/trace_test.go` changes: `buildCmd.CombinedOutput` is now a method.
+The other five native responses are unchanged. `os/root_test.go` still differs
+in format-string splitting for the local `errEndsTest` variadic helper. SDK
+hover remains 92/99 with every native response unchanged
+(`benchmarks/declared-call-stdlib-hover.json`). Token requests for trace_test.go
+and root_test.go took 102.3 ms and 233.2 ms respectively; no SDK hover request
+exceeded 100 ms in this run. These are observations, not a controlled speed A/B.
+
+External full-response samples (`benchmarks/declared-call/`, `--limit 3`):
+
+| Corpus | Hover | Semantic tokens |
+| --- | --- | --- |
+| Hugo | 51/51 | 3/3 |
+| Tile38 | 36/36 | 3/3 |
+| Ollama | 58/59 | 3/3 |
+| typescript-go | 44/44 | 3/3 |
+| Prometheus | 50/50 | 3/3 |
+
+The remaining Ollama dependency-error hover is unchanged. No request in these
+external samples exceeded 100 ms. The focused imported/generic-call fixture
+matches both complete token responses (2/2). Its hover comparison is 30/32:
+the return-position formal `T` is confused with a package-level type `T`, and
+the explicitly instantiated call's hover retains the generic signature instead
+of displaying its substitution. Those hover gaps remain unresolved; the fixture
+and complete responses are retained under `benchmarks/declared-call-fixture*`.
+The existing Go/types oracle remains at 1162 body matches, one unknown, zero
+incorrect/rejected/unverified; type-declaration scope is one match and five
+unknowns (`benchmarks/declared-call-type-oracle.json`).
+
+The Ollama 1068-file one-cycle open/edit/restore/close workload, with full type
+shapes/definitions and all 47 feature consistency checks, passed with no failures.
+Root OS peak working set was 57,946,112 bytes and sampled private bytes
+47,632,384, both below 100,000,000. Driver and Go tooling children are excluded
+and unmeasured. This single run does not establish a memory reduction.
+Report: `benchmarks/declared-call-ollama-session.json`. Release build,
+`cargo fmt --check`, `cargo test` and Clippy with warnings denied passed.
+
+## Native generic call-hover checkpoint
+
+Snapshot: `target/native-generic-final.exe`. Function-header hover now resolves
+type-parameter uses through the parsed header's `Locals` and type-reference
+spans, rather than falling through to a same-spelled package type. Imported,
+indexed and parenthesized callees retain the selected identifier's own span.
+
+Generic call hover no longer maintains a separate spelling-based unifier or
+replaces identifiers across a rendered signature. It shares native actual
+operands, explicit type arguments, structural unification, constraints and
+assignment checks with call-result inference. Both paths obtain the checked
+type argument list from the same arena operation; result annotations are parsed
+with that concrete environment. The existing signature-label renderer supplies
+parameter/result names and variadic labels, with its existing 16 KiB output
+limit. Header input remains bounded to 16 KiB and type arguments to 32; arenas,
+sources and signatures are request-local. No new cache or dependency is added.
+
+The original imported/generic fixture improves from 30/32 to 32/32 complete hover
+responses (`benchmarks/native-generic-final-fixture-hover.json`). An expanded
+five-query comparison matches 5/5, covering explicit and inferred imported
+calls, partial explicit arguments, named tuple results, variadic spreading and
+an anonymous result whose field name and tag contain the formal's spelling.
+Names and tag text stay intact while the field type is substituted. Report:
+`benchmarks/native-generic-fixture/final-comparison.json`. The same boundaries
+are covered in the existing stdio e2e; no new Rust unit tests were added.
+
+The Go/types core comparison remains at 1162 body matches, one unknown, zero
+incorrect/rejected/unverified, and one match/five unknowns in declaration scope
+(`benchmarks/native-generic-type-oracle.json`). The SDK hover (92/99), semantic
+tokens (5/6) and definition (18/18) responses remain unchanged from the preceding
+checkpoint. Hugo implementation remains 17/17 and document highlights 36/36.
+External hover/token samples (`--limit 3`, `benchmarks/native-generic/`) remain
+Hugo 51/51 and 3/3, Tile38 36/36 and 3/3, Ollama 58/59 and 3/3, typescript-go
+44/44 and 3/3, and Prometheus 50/50 and 3/3. Every sampled native response is
+unchanged from the preceding checkpoint; Ollama's dependency-error hover remains
+unresolved. Nine Hugo implementation requests and the SDK root_test.go token
+request exceeded 100 ms during overlapping runs; all are listed in
+`docs/semantic-latency.md`. Functional matches do not establish latency parity.
+Unavailable generic-call inference keeps the declaration signature; this does
+not establish complete generic inference, generic function-value hover or
+parity for unsupported type facts.
+
+Final Rust fmt check, full tests, Clippy with warnings denied and release build
+passed. The Ollama 1068-file one-cycle session with type shapes/definitions and
+all 47 feature consistency checks passed without failures. Root OS peak working
+set was 58,826,752 bytes and sampled private bytes 48,177,152, below 100,000,000.
+Driver and Go tooling children are excluded/unmeasured; this is a finite memory
+gate, not a measured memory reduction. Report:
+`benchmarks/native-generic-ollama-session.json`.
+
+## Signature-based format tokens and argument highlights
+
+Final snapshot: `target/signature-format-unicode.exe`. The pinned gopls v0.24.0
+`formatStringAndIndex` uses a variadic signature's last fixed parameter; it
+does not require an `f` suffix or inspect a wrapper body. The previous name
+shortcut, first-literal search and workspace-wide same-named-method scan are
+removed. Resolved function declarations supply bounded header arity; other
+callables use native signature operands, keeping receiver/method-expression
+arity and local shadowing. As in the reference, a defined function type itself
+does not count as a direct signature for format splitting.
+
+Token splitting and argument-identifier highlights share the call collector in
+`analysis/query/highlight/format.rs`. Only one body's expressions and locals
+survive between candidates; nested closures replace that scope. Limits are
+1024 candidate calls, 512 scope builds, 16384 argument tokens per call and
+1048576 argument-token visits per request. Literal/header input stays at 16 KiB
+and format parsing at 256 operations. Exhausted/unavailable facts remain
+ordinary string tokens without a guessed format association. There is no new
+dependency, persistent source/AST cache or workspace-name fallback.
+
+The shared escape-range mapper now computes the actual UTF-8 width of `\u`
+code points, instead of assuming three bytes. Both `"\\x25d"` and
+`"\\u0025d"` can project the directive's original source span. Multiline
+strings keep gopls' ordinary per-line token behavior, while still participating
+in argument highlights. The existing stdio e2e covers true/false format slots,
+nonvariadic `...f` names, named/direct callable types, immediately invoked
+function literals and escaped percent signs; no new unit tests were added.
+
+The complete SDK token sample improves from 5/6 to 6/6; only os/root_test.go's
+native response changes. Its errEndsTest calls now split the format parameter
+instead of treating the entire literal as one token. Final native replays use
+the unchanged same-plan pinned gopls responses from the preceding fresh runs;
+reports retain their reference hashes and complete responses:
+`benchmarks/signature-format-unicode/` (fresh reference runs under
+`benchmarks/signature-format/`).
+
+| Corpus | Semantic tokens | Document highlights |
+| --- | --- | --- |
+| SDK (`--limit 6`) | 6/6 | 72/72 |
+| Hugo (`--limit 3`) | 3/3 | 36/36 |
+| Tile38 (`--limit 3`) | 3/3 | 25/25 |
+| Ollama (`--limit 3`) | 3/3 | 36/36 |
+| typescript-go (`--limit 3`) | 3/3 | 36/36 |
+| Prometheus (`--limit 3`) | 3/3 | 36/36 |
+
+SDK hover remains 92/99, with its seven known residuals. The focused fixture's
+two complete token responses match, including imported/local calls, method
+expressions, local shadows, generic calls, function values and literals,
+escaped percent signs and nested calls/closures. Report:
+`benchmarks/signature-format-unicode-fixture-tokens.json`. Its highlight
+comparison is explicitly 13/16: all 13 argument-cursor responses match, but
+three format-directive-cursor responses still return null instead of the
+reference's directive/argument pair. These failures remain retained in
+`benchmarks/signature-format-fixture/unicode-highlights.json`; token parity
+does not establish complete document-highlight support.
+
+Full Rust tests, fmt check, Clippy with warnings denied and release build pass.
+The final Ollama 1068-file one-cycle session with type shapes/definitions and
+all 47 consistency checks passes without failures: root OS peak working set
+58,114,048 bytes, sampled private bytes 49,287,168, both below 100,000,000.
+Driver and Go tooling children remain excluded/unmeasured. Report:
+`benchmarks/signature-format-unicode-ollama-session.json`. No comparative memory
+or speed improvement is claimed. The root_test.go token request remains slow
+(267.9 ms in the final replay); all >100 ms requests are recorded separately.
+
+## Format-directive cursor highlights and scoped call resolution
+
+Snapshot: `target/format-cursor-scoped.exe`. Cursors inside format literals and
+other non-identifier call arguments now reach the shared format-association
+logic, instead of returning null at the identifier-only entry point. A cursor
+inside either a directive or its argument yields the same write/read pair;
+missing arguments still yield the directive. Result range conversion/sorting
+is shared with identity highlights. No protocol capability or dependency is
+added.
+
+The expanded comparison found and fixed two existing boundary issues: the
+leading `[n]` of an indexed dynamic width was omitted from its range, and
+argument-end cursors were excluded. Reference behavior keeps directive ends
+exclusive, but includes argument ends. The common operation parser now retains
+the original bracket position before consuming the index.
+
+Highlight queries resolve only calls enclosing their cursor, using the same
+collector as the full token scan; unrelated format calls no longer trigger
+scope construction or signature queries. Existing call/scope/token-visit,
+header/literal and operation limits remain in force, with one active body's
+expressions/locals and no persistent AST/type/source cache.
+
+The original three null format-cursor cases are resolved. The expanded pinned
+comparison matches 257/257 complete responses, including every tested character
+and end boundary in indexed/repeated directives, dynamic width/precision,
+missing arguments, escaped/raw literals, Unicode/UTF-16 positions, nested calls
+and argument expressions containing comments. All cases, including the initial
+251/257 intermediate result, remain under
+`benchmarks/signature-format-fixture/` in `cursor-comparison.json` and
+`cursor-final-comparison.json`. Existing stdio e2e assertions cover directive
+start/last/end positions, escaped percent spans, indexed width and argument-end
+behavior. No new Rust unit tests were added.
+
+Same-plan complete document-highlight replays against the unchanged pinned
+references (`benchmarks/format-cursor/`) remain SDK 72/72, Hugo 36/36, Tile38
+25/25, Ollama 36/36, typescript-go 36/36 and Prometheus 36/36, or 241/241 total.
+The expanded fixture's complete token responses remain 2/2
+(`benchmarks/format-cursor-fixture-tokens.json`). Two actual SDK root.Open
+format-cursor responses also match fresh gopls responses in
+`benchmarks/format-cursor/sdk-directives.json`.
+
+After the other workloads finished, two fresh settled runs per binary in
+alternating order compared the correct whole-file collector snapshot
+`target/format-cursor-final.exe` with the scoped collector. Both complete
+responses matched the pinned reference in every run. Median SDK root.Open
+directive query times were 69.2/61.3 ms before and 4.7/3.5 ms after. This is
+evidence for these two finite query cases, not a general latency guarantee;
+the prior slow root_test.go semantic-token request remains unresolved. Report:
+`benchmarks/format-cursor/sdk-scope-ab.json`. No >100 ms request appeared in
+the new six-corpus highlight replays or focused comparison.
+
+Rust fmt check, full tests, Clippy with warnings denied and release build pass.
+The Ollama 1068-file one-cycle session with type shapes/definitions and all 47
+consistency checks passes with no failures: root OS peak working set 58,245,120
+bytes, sampled private bytes 48,279,552, both below 100,000,000. Driver/Go tooling
+children are excluded and unmeasured; independent session samples do not prove
+a memory reduction. Report: `benchmarks/format-cursor-ollama-session.json`.
+
+## Literal-safe bounded type-declaration presentation
+
+Final snapshot: `target/declaration-layout-cow.exe`. Global type declarations,
+local types and alias RHS declarations now share `hover/declaration`; expression
+operator spacing is isolated in its child module. The printer reuses parsed
+type nodes, field/member spans, expression identities and lexical tokens instead
+of replacing text inside strings. It handles supported inline aggregate layout,
+elastic field/tag columns, generic parameters/constraints, function/channel
+syntax and precedence-based spacing. No Go/gofmt process is invoked by hover.
+
+The old line-based attached-comment filter could delete a `//` line inside a
+multiline raw struct tag. Literal spans now protect those lines. Attached field
+comments keep their source layout; free inline comments are omitted in the
+supported single-line path, as in the pinned AST printer. Struct-tag contents,
+names and operand text are preserved. Alias RHS declarations use the same
+presentation instead of appending unformatted source.
+
+Resource limits reuse the query budgets: 16 KiB inline input, 256 tokens and
+printing steps per annotation, 256 expression-walk steps and depth 32. Formatted
+output is capped at 64 KiB before elastic padding is allocated. The line/comment
+pass stops at 256 KiB; larger alias targets borrow the existing source through
+`Cow` instead of allocating another copy. Existing multiline declarations,
+unsupported expression forms (including slices/function literals), complex
+multiline column groups and exhausted budgets keep source presentation. Full
+go/format parity is unfinished; no source, AST or type cache survives a query.
+
+The initial 12-case declaration fixture improves from 1/12 to 12/12 complete
+hover responses. The expanded and audited fixture matches 29/29 distinct exact
+identifier positions in
+`benchmarks/type-declaration-fixture/audited-final.json`: aggregates, field/tag
+alignment, nested types, aliases, grouped fields, function/channel types,
+constraints, comments, array expressions and raw literals. Earlier expanded
+reports included prefix-overlap duplicate positions for Tag/TaggedFields or
+Method/Methods and are superseded for coverage. The audited report records this
+correction; all intended cases remain present rather than being dropped.
+
+The production/internal-test/external-test/importer fixture improves from 7/11
+to 11/11, including all four formerly different Wrapper hovers and three token
+responses. Fresh pinned gopls comparison:
+`benchmarks/declaration-layout-cow/method-view.json`. The existing stdio e2e
+checks field alignment, alias RHS presentation, and literal `//` lines in both
+global and local raw tags. No new unit tests were added.
+
+The final same-plan hover replays against unchanged pinned references remain
+SDK 92/99 (`--limit 6`), Hugo 51/51, Tile38 36/36, Ollama 58/59, typescript-go
+44/44 and Prometheus 50/50 (`--limit 3` for external corpora). No previously
+matched pre-formatter row failed; seven SDK and one Ollama residuals remain.
+Reports: `benchmarks/declaration-layout-cow/`, with fresh reference runs under
+`benchmarks/declaration-layout/`. No new sampled hover request exceeded 100 ms;
+this is not a controlled speed comparison.
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass.
+The final Ollama 1068-file one-cycle session, with type shapes/definitions and
+all 47 feature consistency checks, passes without failures. Root OS peak
+working set is 58,269,696 bytes and sampled private bytes 48,746,496, both below
+100,000,000. Driver and Go tooling children are excluded/unmeasured. Independent
+samples do not prove a memory reduction. Report:
+`benchmarks/declaration-layout-cow-ollama-session.json`.
+
 ## Remaining work
 
 - Offline module-graph enumeration now succeeds. Verify matching package scope
@@ -496,9 +778,14 @@ tests were added, and no measured memory-reduction claim is made.
   implementation queries. Preserve exact identities and request-local budgets.
 - Investigate the expanded SDK view-admission/budget residuals and Ollama's
   remaining dependency-error hover. Keep all full responses.
-- Investigate the two SDK token differences, single-line type declaration
-  formatting, native arena test-view identity and general constant array-length
+- Broaden format/directive highlight coverage beyond the now-matched finite
+  fixture while preserving parser/association budgets.
+- Complete declaration-presentation coverage beyond the supported inline path;
+  preserve complex multiline layouts and literals while extending it.
+- Investigate native arena test-view identity and general constant array-length
   expressions, preserving bounded inference.
+- Expand native generic-call hover coverage beyond the now-matched focused
+  fixtures, including generic function values and unsupported type projections.
 - Extend syntax/type/LSP differential coverage across all existing projects;
   these small samples do not establish overall parity.
 - Run the measured Ollama memory gate for any changes affecting allocations or

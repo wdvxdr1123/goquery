@@ -3308,7 +3308,13 @@ fn watched_file_changes_refresh_cross_package_state() {
         ),
         (
             "generic.go",
-            "package outer\nfunc Wrap[A, B any](f func() (A, B)) func() (A, B) { return f }\nvar Wrapped = Wrap(func() (int, string) { return 0, \"\" })\nvar Explicit = Wrap[int, string](func() (int, string) { return 0, \"\" })\n",
+            concat!(
+                "package outer\nfunc Wrap[A, B any](f func() (A, B)) func() (A, B) { return f }\nvar Wrapped = Wrap(func() (int, string) { return 0, \"\" })\nvar Explicit = Wrap[int, string](func() (int, string) { return 0, \"\" })\n",
+                "type T struct{}\nfunc Identity[T any](value T) T { return value }\n",
+                "func Pair[A, B any](a A, b B) (first A, second B) { return a, b }\n",
+                "func Many[T any](values ...T) []T { return values }\n",
+                "func Shape[T any](value T) struct { T T `label:\"T\"` } { return struct { T T `label:\"T\"` }{value} }\n",
+            ),
         ),
         ("child/go.mod", "module example.test/child\n\ngo 1.27.3\n"),
         (
@@ -3368,6 +3374,203 @@ fn watched_file_changes_refresh_cross_package_state() {
                 .as_str()
                 .is_some_and(|text| text.contains(&format!("var {name} func() (int, string)"))),
             "generic callable inference failed: {reply}"
+        );
+    }
+    let formal_use = generic_source.find("value T) T").unwrap() + "value T) ".len();
+    let reply = nested_server.request(
+        "textDocument/hover",
+        serde_json::json!({
+            "textDocument": {"uri": generic_uri}, "position": position(&generic_source, formal_use),
+        }),
+    );
+    assert!(
+        reply["result"]["contents"]["value"]
+            .as_str()
+            .is_some_and(|text| text.contains("type parameter T any")),
+        "return formal resolved to the package-level T: {reply}"
+    );
+    let calls = concat!(
+        "package client\nimport \"example.test/outer\"\nfunc genericCalls() {\n",
+        "_ = outer.Identity[int](1)\n_ = outer.Identity(1)\n",
+        "_, _ = outer.Pair[int](1, \"value\")\n_ = outer.Many([]int{1}...)\n",
+        "_ = outer.Shape(1)\n}\n",
+    );
+    let calls_uri = url::Url::from_file_path(nested_root.join("client/generic.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": calls_uri, "languageId": "go", "version": 1, "text": calls,
+        }}),
+    );
+    for (needle, expected) in [
+        ("Identity[int]", "func outer.Identity(value int) int"),
+        ("Identity(1)", "func outer.Identity(value int) int"),
+        (
+            "Pair[int]",
+            "func outer.Pair(a int, b string) (first int, second string)",
+        ),
+        ("Many(", "func outer.Many(values ...int) []int"),
+        (
+            "Shape(",
+            "func outer.Shape(value int) struct{T int \"label:\\\"T\\\"\"}",
+        ),
+    ] {
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": calls_uri}, "position": position(calls, calls.find(needle).unwrap()),
+        }));
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "instantiated signature lost native types or declaration names: {reply}"
+        );
+    }
+    let format_source = concat!(
+        "package client\nfunc emit(prefix, format string, args ...any) {}\n",
+        "func misleadingf(format string, value any) {}\ntype Named func(string, ...any)\n",
+        "func formats(named Named, direct func(string, ...any), value int) {\n",
+        "emit(\"%d prefix\", \"%d emit\", value)\nmisleadingf(\"%d ordinary\", value)\n",
+        "named(\"%d named\", value)\ndirect(\"%d direct\", value)\ndirect(\"\\x25d escaped\", value)\ndirect(\"\\u0025d unicode\", value)\n",
+        "func(format string, args ...any) {}(\"%d literal\", value)\n",
+        "emit(\"prefix\", \"%[2]*.[1]*[3]f dynamic\", value, value, 1.5)\n}\n",
+    );
+    let format_uri = url::Url::from_file_path(nested_root.join("client/format.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": format_uri, "languageId": "go", "version": 1, "text": format_source,
+        }}),
+    );
+    let reply = nested_server.request(
+        "textDocument/semanticTokens/full",
+        serde_json::json!({
+            "textDocument": {"uri": format_uri},
+        }),
+    );
+    let data = reply["result"]["data"].as_array().expect("format tokens");
+    let mut line = 0;
+    let mut character = 0;
+    let mut starts = Vec::new();
+    for token in data.chunks_exact(5) {
+        let delta = token[0].as_u64().unwrap();
+        line += delta;
+        character = if delta == 0 {
+            character + token[1].as_u64().unwrap()
+        } else {
+            token[1].as_u64().unwrap()
+        };
+        starts.push(serde_json::json!({"line": line, "character": character}));
+    }
+    for (literal, split) in [
+        ("%d prefix", false),
+        ("%d emit", true),
+        ("%d ordinary", false),
+        ("%d named", false),
+        ("%d direct", true),
+        ("\\x25d escaped", true),
+        ("\\u0025d unicode", true),
+        ("%d literal", true),
+    ] {
+        let at = position(format_source, format_source.find(literal).unwrap());
+        assert_eq!(
+            starts.contains(&at),
+            split,
+            "format parameter was guessed for {literal}: {reply}"
+        );
+    }
+    for (literal, width) in [
+        ("%d emit", 2),
+        ("%d direct", 2),
+        ("%d literal", 2),
+        ("\\x25d escaped", 5),
+        ("\\u0025d unicode", 7),
+    ] {
+        let start = format_source.find(literal).unwrap();
+        let line_end = start + format_source[start..].find('\n').unwrap();
+        let argument = start + format_source[start..line_end].rfind("value").unwrap();
+        let expected = serde_json::json!([
+            {"kind": 3, "range": {"start": position(format_source, start), "end": position(format_source, start + width)}},
+            {"kind": 2, "range": {"start": position(format_source, argument), "end": position(format_source, argument + 5)}},
+        ]);
+        for offset in [start, start + width - 1] {
+            let reply = nested_server.request("textDocument/documentHighlight", serde_json::json!({
+                "textDocument": {"uri": format_uri}, "position": position(format_source, offset),
+            }));
+            assert_eq!(
+                reply["result"], expected,
+                "format cursor lost its argument: {reply}"
+            );
+        }
+        let reply = nested_server.request("textDocument/documentHighlight", serde_json::json!({
+            "textDocument": {"uri": format_uri}, "position": position(format_source, start + width),
+        }));
+        assert!(
+            reply["result"].is_null(),
+            "format range must exclude its end: {reply}"
+        );
+    }
+    let dynamic = format_source.find("%[2]*.[1]*[3]f dynamic").unwrap();
+    let number = format_source[dynamic..].find("1.5").unwrap() + dynamic;
+    let width_argument = dynamic + format_source[dynamic..number].rfind("value").unwrap();
+    for (offset, directive, length, argument, argument_length) in [
+        (dynamic + 2, dynamic + 1, 4, width_argument, 5),
+        (number + 3, dynamic + 10, 4, number, 3),
+    ] {
+        let reply = nested_server.request(
+            "textDocument/documentHighlight",
+            serde_json::json!({
+                "textDocument": {"uri": format_uri}, "position": position(format_source, offset),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            serde_json::json!([
+                {"kind": 3, "range": {"start": position(format_source, directive), "end": position(format_source, directive + length)}},
+                {"kind": 2, "range": {"start": position(format_source, argument), "end": position(format_source, argument + argument_length)}},
+            ]),
+            "indexed width or argument end boundary was lost: {reply}"
+        );
+    }
+    let declarations = concat!(
+        "package client\ntype InlineData struct{ LongName int; X string }\n",
+        "type RawTag struct{ Value string `first\n// keep literal text\n\nlast` }\n",
+        "type AliasData = InlineData\nvar _ InlineData\nvar _ RawTag\nvar _ AliasData\n",
+        "func localDeclaration() { type LocalRaw struct{ Value string `first\n// keep local text\nlast` }; var _ LocalRaw }\n",
+    );
+    let declarations_uri =
+        url::Url::from_file_path(nested_root.join("client/declarations.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": declarations_uri, "languageId": "go", "version": 1, "text": declarations,
+        }}),
+    );
+    for (name, expected) in [
+        (
+            "InlineData",
+            "type InlineData struct {\n\tLongName int\n\tX        string\n}",
+        ),
+        (
+            "RawTag",
+            "type RawTag struct {\n\tValue string `first\n// keep literal text\n\nlast`\n}",
+        ),
+        (
+            "AliasData",
+            "type AliasData = InlineData\n\ntype InlineData struct {\n\tLongName int\n\tX        string\n}",
+        ),
+        (
+            "LocalRaw",
+            "type LocalRaw struct {\n\tValue string `first\n// keep local text\nlast`\n}",
+        ),
+    ] {
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": declarations_uri}, "position": position(declarations, declarations.rfind(name).unwrap()),
+        }));
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "declaration formatting changed a name, literal or field layout: {reply}"
         );
     }
     let invalid_generic =

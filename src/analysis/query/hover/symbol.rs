@@ -227,7 +227,7 @@ fn type_symbol(
     if spec.len() > MAX_DECLARATION_BYTES {
         return None;
     }
-    let mut type_decl = format!("type {}", canonical_declaration_text(spec));
+    let mut type_decl = format!("type {}", super::declaration::format_spec(spec));
     if declaring && let Some(layout) = super::size::type_layout(context, origin, symbol) {
         let wasted =
             super::size::struct_layout(context, origin, symbol).and_then(super::size::wasted);
@@ -247,7 +247,7 @@ fn type_symbol(
         let text = rhs.text;
         type_decl.push_str("\n\n");
         type_decl.push_str("type ");
-        type_decl.push_str(text.trim_end());
+        type_decl.push_str(super::declaration::format_spec(&text).trim_end());
     }
     let type_decl = render::fold_array_lengths(context, origin, &type_decl);
     let mut content = HoverContent::new(range);
@@ -916,87 +916,6 @@ fn expression_const_type_at(
         }
     }
     None
-}
-
-/// go/format output for a type spec: LF endings and only attached comments.
-fn canonical_declaration_text(text: &str) -> String {
-    let text = text.replace("\r\n", "\n").replace('\r', "");
-    let lines: Vec<&str> = text.split('\n').collect();
-    let mut output: Vec<&str> = Vec::with_capacity(lines.len());
-    let mut index = 0usize;
-    while index < lines.len() {
-        let trimmed = lines[index].trim_start();
-        if trimmed.starts_with("//") {
-            let mut end = index;
-            while end < lines.len() && lines[end].trim_start().starts_with("//") {
-                end += 1;
-            }
-            if !comment_attached(&lines, end) {
-                index = end;
-                detached_comment_gap(&mut output, &lines[end..]);
-                while index < lines.len() && lines[index].trim().is_empty() {
-                    index += 1;
-                }
-                continue;
-            }
-            output.extend_from_slice(&lines[index..end]);
-            index = end;
-            continue;
-        }
-        if trimmed.starts_with("/*") {
-            let mut end = index;
-            while end < lines.len() {
-                let closes = lines[end].contains("*/");
-                end += 1;
-                if closes {
-                    break;
-                }
-            }
-            if !comment_attached(&lines, end) {
-                index = end;
-                detached_comment_gap(&mut output, &lines[end..]);
-                while index < lines.len() && lines[index].trim().is_empty() {
-                    index += 1;
-                }
-                continue;
-            }
-            output.extend_from_slice(&lines[index..end]);
-            index = end;
-            continue;
-        }
-        output.push(lines[index]);
-        index += 1;
-    }
-    output.join("\n")
-}
-
-/// Maintain separation after omitting unattached comment groups.
-fn detached_comment_gap(output: &mut Vec<&str>, remaining: &[&str]) {
-    // Removing a trailing, unattached comment must not leave a phantom field
-    // separator before the aggregate's closing brace (e.g. reflect.Value).
-    if remaining
-        .iter()
-        .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.trim_start().starts_with('}'))
-    {
-        while output.last().is_some_and(|line| line.trim().is_empty()) {
-            output.pop();
-        }
-    } else if output
-        .last()
-        .is_some_and(|line| !line.trim().is_empty() && !line.trim_end().ends_with('{'))
-    {
-        output.push("");
-    }
-}
-
-/// A comment group is printed only when it documents the following node.
-fn comment_attached(lines: &[&str], next: usize) -> bool {
-    let Some(line) = lines.get(next) else {
-        return false;
-    };
-    let trimmed = line.trim();
-    !trimmed.is_empty() && !trimmed.starts_with('}')
 }
 
 /// Evaluate a named constant expression (possibly inherited from its group).

@@ -6,6 +6,7 @@
 //! write positions. Return/result control-flow highlights mirror the reference
 //! server's identifier behavior. No source, syntax tree or identity survives the
 //! request; bodies are parsed on demand and only spans are retained.
+mod format;
 use super::{Context, SourceRange};
 use crate::analysis::check::navigation::anonymous;
 use crate::analysis::member::MemberDeclaration;
@@ -17,6 +18,7 @@ use crate::index::{IndexedSymbol as Symbol, SymbolKind};
 use crate::syntax::{BlockTree, Expr, ExprId, ExprKind, Lexer, StmtKind, TokenKind};
 use crate::text::SourceMap;
 use crate::workspace::Workspace;
+pub(crate) use format::format_directives;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -100,7 +102,7 @@ impl<'a> Context<'a> {
     ) -> Result<Option<Vec<HighlightRow>>, (i32, String)> {
         let source = self.source();
         let Some(selection) = crate::analysis::source::identifier_at(source, offset) else {
-            return Ok(None);
+            return Ok(self.format_highlights(offset));
         };
         let file = self.file();
         let workspace = self.workspace;
@@ -114,7 +116,7 @@ impl<'a> Context<'a> {
         };
         let analysis_time = phase.map(|phase| phase.elapsed());
         let Some(cursor_name) = analysis.names.iter().find(|name| name.span == selection) else {
-            return Ok(None);
+            return Ok(self.format_highlights(offset));
         };
         let map = SourceMap::new(source);
         let phase = workspace.trace.queries.then(std::time::Instant::now);
@@ -148,7 +150,8 @@ impl<'a> Context<'a> {
             );
         }
         let mut rows: Vec<(Range<usize>, HighlightKind)> = Vec::new();
-        printf_rows(&scanner.printf_calls, source, offset, &mut rows);
+        let printf_calls = format::calls_at(workspace, file, source, offset);
+        printf_rows(&printf_calls, source, offset, &mut rows);
         control_flow_rows(&scanner.functions, offset, &mut rows);
         if let Canonical::Package(alias) = &cursor.canonical
             && let Some(span) = import_spec_span(workspace, source, file, alias)
@@ -320,24 +323,44 @@ impl<'a> Context<'a> {
                 start.elapsed()
             );
         }
-        let mut result: Vec<_> = rows
-            .into_iter()
-            .map(|(span, kind)| HighlightRow {
-                range: SourceRange::new(&map, span),
-                kind,
-            })
-            .collect();
-        result.sort_by_key(|row| {
-            (
-                row.range.start.line,
-                row.range.start.utf16_column,
-                row.range.end.line,
-                row.range.end.utf16_column,
-            )
-        });
-        result.truncate(MAX_HIGHLIGHTS);
-        Ok(Some(result))
+        Ok(finish_rows(&map, rows))
     }
+
+    /// Literal/operator cursors do not have identifier identities. Their
+    /// format associations still come from the same bounded signature scan.
+    fn format_highlights(&self, offset: usize) -> Option<Vec<HighlightRow>> {
+        let source = self.source();
+        let calls = format::calls_at(self.workspace, self.file(), source, offset);
+        let mut rows = Vec::new();
+        printf_rows(&calls, source, offset, &mut rows);
+        finish_rows(&SourceMap::new(source), rows)
+    }
+}
+
+fn finish_rows(
+    map: &SourceMap<'_>,
+    rows: Vec<(Range<usize>, HighlightKind)>,
+) -> Option<Vec<HighlightRow>> {
+    if rows.is_empty() {
+        return None;
+    }
+    let mut result: Vec<_> = rows
+        .into_iter()
+        .map(|(span, kind)| HighlightRow {
+            range: SourceRange::new(map, span),
+            kind,
+        })
+        .collect();
+    result.sort_by_key(|row| {
+        (
+            row.range.start.line,
+            row.range.start.utf16_column,
+            row.range.end.line,
+            row.range.end.utf16_column,
+        )
+    });
+    result.truncate(MAX_HIGHLIGHTS);
+    Some(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -986,7 +1009,6 @@ struct Scanner<'a, 'q> {
     /// spells an imported package's name.
     package_name: Option<Range<usize>>,
     functions: Vec<FunctionFacts>,
-    printf_calls: Vec<PrintfCall>,
     statements: usize,
     composites: usize,
     nested: usize,
@@ -1052,7 +1074,6 @@ impl<'a, 'q> Scanner<'a, 'q> {
             declarations: Vec::new(),
             package_name: None,
             functions: Vec::new(),
-            printf_calls: Vec::new(),
             statements: 0,
             composites: 0,
             nested: 0,
@@ -1510,7 +1531,6 @@ impl<'a, 'q> Scanner<'a, 'q> {
                 arguments,
                 ..
             } => {
-                self.record_printf(expressions, base, id);
                 self.collect_expression(expressions, base, *function, None, depth + 1, visited);
                 for argument in arguments {
                     self.collect_expression(expressions, base, *argument, None, depth + 1, visited);
@@ -1538,83 +1558,6 @@ impl<'a, 'q> Scanner<'a, 'q> {
                 self.collect_expression(expressions, base, *operand, None, depth + 1, visited)
             }
             _ => {}
-        }
-    }
-
-    /// Records a printf-like call: a variadic-looking callable whose name ends
-    /// with 'f' and whose leading string-literal argument contains a '%'. The
-    /// reference server reads the signature and format parameter from type
-    /// information; this bounded approximation covers the standard formatting
-    /// helpers without another type query.
-    fn record_printf(&mut self, expressions: &[Expr], base: usize, id: ExprId) {
-        if self.printf_calls.len() >= MAX_PRINTF_CALLS {
-            return;
-        }
-        let Some(Expr {
-            kind:
-                ExprKind::Call {
-                    function,
-                    arguments,
-                    ..
-                },
-            span,
-            ..
-        }) = expressions.get(id.0)
-        else {
-            return;
-        };
-        if arguments.len() < 2 {
-            return;
-        }
-        let Some(name) = callable_name(expressions, *function) else {
-            return;
-        };
-        let name = self
-            .source
-            .get(base + name.start..base + name.end)
-            .unwrap_or("");
-        if !name.ends_with('f') {
-            return;
-        }
-        for (index, argument) in arguments.iter().enumerate() {
-            let Some(Expr {
-                kind: ExprKind::Literal,
-                span: literal,
-                ..
-            }) = expressions.get(argument.0)
-            else {
-                continue;
-            };
-            let Some(text) = self.source.get(base + literal.start..base + literal.end) else {
-                continue;
-            };
-            let Some(bytes) = crate::syntax::decode_string_literal(text) else {
-                continue;
-            };
-            if bytes.len() > MAX_FORMAT_BYTES || !bytes.contains(&b'%') {
-                continue;
-            }
-            let Ok(format) = String::from_utf8(bytes) else {
-                continue;
-            };
-            let operations = parse_format(&format, index + 1);
-            if operations.is_empty() {
-                continue;
-            }
-            let arguments = arguments
-                .iter()
-                .filter_map(|argument| {
-                    let span = expressions.get(argument.0)?.span.clone();
-                    Some(base + span.start..base + span.end)
-                })
-                .collect();
-            self.printf_calls.push(PrintfCall {
-                span: base + span.start..base + span.end,
-                arguments,
-                format_span: base + literal.start..base + literal.end,
-                format_index: index,
-            });
-            return;
         }
     }
 
@@ -1837,20 +1780,7 @@ fn eligible_spans(tree: &BlockTree, id: ExprId, out: &mut Vec<Range<usize>>) {
     }
 }
 
-/// The callable's written name span: unwraps parentheses, selectors and generic
-/// instantiations to the trailing identifier.
-fn callable_name(expressions: &[Expr], id: ExprId) -> Option<Range<usize>> {
-    let expression = expressions.get(id.0)?;
-    match &expression.kind {
-        ExprKind::Name => Some(expression.span.clone()),
-        ExprKind::Selector { field, .. } => Some(field.clone()),
-        ExprKind::Parenthesized { expression } => callable_name(expressions, *expression),
-        ExprKind::Index { operand, .. } => callable_name(expressions, *operand),
-        _ => None,
-    }
-}
-
-/// Printf-family highlights for the cursor identifier. Rows are added before
+/// Format-operation and argument highlights for a cursor. Rows are added before
 /// control-flow and identity rows, like the reference server's result map.
 fn printf_rows(
     calls: &[PrintfCall],
@@ -1899,13 +1829,15 @@ fn printf_call_rows(
         {
             visited.push((range.clone(), argument));
         }
-        if argument < call.arguments.len()
-            && call.arguments[argument].start <= offset
-            && offset < call.arguments[argument].end
+        let actual = call.arguments.get(argument);
+        if range.contains(&offset)
+            || actual.is_some_and(|span| span.start <= offset && offset <= span.end)
         {
             push_row(rows, range, HighlightKind::Write);
-            push_row(rows, call.arguments[argument].clone(), HighlightKind::Read);
-            succeeded = argument;
+            if let Some(actual) = actual {
+                push_row(rows, actual.clone(), HighlightKind::Read);
+                succeeded = argument;
+            }
         }
     };
     for operation in &operations {
@@ -1998,12 +1930,12 @@ fn escape_length(bytes: &[u8]) -> Option<(usize, usize)> {
     match first {
         b'a' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' | b'\\' | b'\'' | b'"' => Some((1, 1)),
         b'x' => Some((3, 1)),
-        b'u' => Some((5, 3)),
-        b'U' => {
-            let digits = bytes.get(1..9)?;
+        b'u' | b'U' => {
+            let width = if first == b'u' { 4 } else { 8 };
+            let digits = bytes.get(1..1 + width)?;
             let value = std::str::from_utf8(digits).ok()?;
             let value = u32::from_str_radix(value, 16).ok()?;
-            char::from_u32(value).map(|character| (9, character.len_utf8()))
+            char::from_u32(value).map(|character| (1 + width, character.len_utf8()))
         }
         b'0'..=b'7' => {
             let mut length = 1;
@@ -2078,8 +2010,8 @@ fn parse_operation(
     let mut pending = false;
     let mut index_position = 0usize;
     if position < format.len() && format[position] == b'[' {
-        (position, argument, _) = parse_index(format, position, first_arg)?;
         index_position = position;
+        (position, argument, _) = parse_index(format, position, first_arg)?;
         pending = true;
     }
     let (width, position_after_width) =
@@ -2328,235 +2260,6 @@ fn top_level_assign(source: &str) -> Option<usize> {
 pub(crate) struct FormatDirective {
     pub(crate) literal: Range<usize>,
     pub(crate) directives: Vec<Range<usize>>,
-}
-
-const MAX_FORMAT_LITERALS: usize = 1024;
-const MAX_FORMAT_SIGNATURES: usize = 64;
-
-/// Format string directives inside a source snapshot, for semantic token
-/// splitting. This mirrors gopls' `formatString`: a variadic call whose last
-/// non-variadic parameter receives a literal string containing `%`. Known
-/// `...f` helpers keep the token-level fast path; other selector calls resolve
-/// one unique variadic declaration from workspace metadata. Directive ranges are
-/// raw source byte ranges, matching gopls' `RangeInStringLiteral`.
-pub(crate) fn format_directives(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-) -> Vec<FormatDirective> {
-    let tokens: Vec<_> = Lexer::new(source).collect();
-    let mut out = Vec::new();
-    let mut index = 0usize;
-    let mut signatures: std::collections::HashMap<String, Option<usize>> =
-        std::collections::HashMap::new();
-    while index + 1 < tokens.len() && out.len() < MAX_FORMAT_LITERALS {
-        let open = index;
-        if tokens[open].kind != TokenKind::LParen || open == 0 {
-            index += 1;
-            continue;
-        }
-        let callee = &tokens[open - 1];
-        let name = source.get(callee.span.clone()).unwrap_or("");
-        let function_literal = open >= 2 && tokens[open - 2].kind == TokenKind::Func;
-        if callee.kind != TokenKind::Ident || function_literal {
-            index += 1;
-            continue;
-        }
-        let Some((close, arguments)) = call_arguments(&tokens, open) else {
-            index += 1;
-            continue;
-        };
-        let selector = open >= 2 && tokens[open - 2].kind == TokenKind::Period;
-        if !name.ends_with('f') {
-            // Cheap pre-filter: only calls with a bare `%` string literal can
-            // project a format parameter, so most selector calls avoid metadata.
-            let literal = arguments.iter().position(|(start, end)| {
-                *end == start + 1
-                    && tokens[*start].kind == TokenKind::String
-                    && source
-                        .get(tokens[*start].span.clone())
-                        .is_some_and(|text| !text.contains('\n') && text.contains('%'))
-            });
-            if selector
-                && let Some(literal) = literal
-                && let Some(format_index) = format_parameter_index(
-                    workspace,
-                    file,
-                    name,
-                    &tokens,
-                    open,
-                    source,
-                    &mut signatures,
-                )
-                && format_index == literal
-            {
-                let literal = tokens[arguments[format_index].0].span.clone();
-                if push_format_literal(source, literal, &mut out) {
-                    index = close.max(index + 1);
-                    continue;
-                }
-            }
-            index += 1;
-            continue;
-        }
-        if arguments.len() >= 2 {
-            for (start, end) in arguments {
-                // Only a bare string-literal argument counts, as in gopls.
-                if end != start + 1 || tokens[start].kind != TokenKind::String {
-                    continue;
-                }
-                let literal = tokens[start].span.clone();
-                if push_format_literal(source, literal, &mut out) {
-                    break;
-                }
-            }
-        }
-        index = close.max(index + 1);
-    }
-    out
-}
-
-fn push_format_literal(
-    source: &str,
-    literal: Range<usize>,
-    out: &mut Vec<FormatDirective>,
-) -> bool {
-    let Some(text) = source.get(literal.clone()) else {
-        return false;
-    };
-    // gopls skips multiline strings and non-format literals.
-    if text.contains('\n') || text.len() > MAX_FORMAT_BYTES {
-        return false;
-    }
-    let directives = format_literal_directives(source, literal.clone());
-    if directives.is_empty() {
-        return false;
-    }
-    out.push(FormatDirective {
-        literal,
-        directives,
-    });
-    true
-}
-
-/// Index of the format parameter (the last non-variadic parameter) for a
-/// selector call whose callee does not end in `f`. The declaration must be the
-/// unique variadic match among the receiver's methods, or among the imported
-/// package's functions when the qualifier names an import. Ambiguous, missing or
-/// unparsable declarations project no format parameter.
-fn format_parameter_index(
-    workspace: &Workspace,
-    file: &Path,
-    name: &str,
-    tokens: &[crate::syntax::Token],
-    open: usize,
-    source: &str,
-    cache: &mut std::collections::HashMap<String, Option<usize>>,
-) -> Option<usize> {
-    if cache.len() >= MAX_FORMAT_SIGNATURES {
-        return None;
-    }
-    let receiver = (open >= 3 && tokens[open - 3].kind == TokenKind::Ident)
-        .then(|| source.get(tokens[open - 3].span.clone()))
-        .flatten();
-    let key = format!("{name}\u{0}{}", receiver.unwrap_or(""));
-    if let Some(cached) = cache.get(&key) {
-        return *cached;
-    }
-    let resolved = resolve_format_parameter(workspace, file, name, receiver)
-        .and_then(|parameters| parameters.checked_sub(2));
-    cache.insert(key, resolved);
-    resolved
-}
-
-fn resolve_format_parameter(
-    workspace: &Workspace,
-    file: &Path,
-    name: &str,
-    receiver: Option<&str>,
-) -> Option<usize> {
-    if let Some(receiver) = receiver
-        && scope::universe::imported_name(workspace, file, receiver)
-    {
-        let mut found = None;
-        for (path, symbol) in workspace.imported_symbol_iter(file, receiver) {
-            if symbol.receiver.is_some() || symbol.name != name {
-                continue;
-            }
-            if let Some(parameters) = variadic_parameter_count(workspace, path, symbol) {
-                if found.is_some() {
-                    return None;
-                }
-                found = Some(parameters);
-            }
-        }
-        return found.filter(|parameters| *parameters >= 2);
-    }
-    let mut found = None;
-    for (path, stub) in &workspace.files {
-        for symbol in &stub.symbols {
-            if symbol.receiver.is_none() || symbol.name != name {
-                continue;
-            }
-            if let Some(parameters) = variadic_parameter_count(workspace, path, symbol) {
-                if found.is_some() {
-                    return None;
-                }
-                found = Some(parameters);
-            }
-        }
-    }
-    found.filter(|parameters| *parameters >= 2)
-}
-
-fn variadic_parameter_count(workspace: &Workspace, file: &Path, symbol: &Symbol) -> Option<usize> {
-    let declaration = symbol.declaration()?;
-    let end = symbol.body().map_or(declaration.end, |body| body.start);
-    let header = workspace.source_slice(file, declaration.start..end)?;
-    let signature = crate::syntax::parse_signature(&header);
-    if !signature.diagnostics.is_empty()
-        || !signature
-            .parameters
-            .last()
-            .is_some_and(|parameter| parameter.variadic)
-    {
-        return None;
-    }
-    Some(signature.parameters.len())
-}
-
-/// Top-level argument token ranges of one call, starting at its `(`.
-fn call_arguments(
-    tokens: &[crate::syntax::Token],
-    open: usize,
-) -> Option<(usize, Vec<(usize, usize)>)> {
-    let mut depth = 0usize;
-    let mut arguments = Vec::new();
-    let mut start = open + 1;
-    let mut index = open + 1;
-    while index < tokens.len() {
-        match tokens[index].kind {
-            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
-            TokenKind::RParen if depth == 0 => {
-                if start < index {
-                    arguments.push((start, index));
-                }
-                return Some((index, arguments));
-            }
-            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                depth = depth.checked_sub(1)?;
-            }
-            TokenKind::Comma if depth == 0 => {
-                if start < index {
-                    arguments.push((start, index));
-                }
-                start = index + 1;
-            }
-            _ => {}
-        }
-        index += 1;
-    }
-    None
 }
 
 /// Raw source ranges of the directives in one string literal.

@@ -165,6 +165,22 @@ impl TypeArena<'_> {
         }
     }
 
+    /// Last fixed parameter of a variadic callable, as used by gopls for
+    /// format-literal tokens and argument highlights. No naming convention is
+    /// involved and the actual argument need not be assignable to prove arity.
+    pub(crate) fn format_parameter(&self, input: TypeId) -> Option<usize> {
+        // The reference requires a signature itself, rather than the
+        // underlying signature of a defined function type.
+        match &self.nodes[usize::from(input.0)] {
+            Ty::Signature {
+                parameters,
+                variadic: true,
+                ..
+            } => parameters.len().checked_sub(2),
+            _ => None,
+        }
+    }
+
     pub(crate) fn call_signature(
         &mut self,
         callee: TypeId,
