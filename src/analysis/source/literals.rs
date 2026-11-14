@@ -4,10 +4,15 @@ use super::{Role, SourceAnalysis};
 use crate::analysis::types::TypeForm;
 use crate::syntax::{Expr, ExprId, ExprKind};
 use crate::workspace::Workspace;
+use std::collections::HashMap;
+use std::ops::Range;
 use std::path::Path;
 
 impl SourceAnalysis {
     pub(super) fn literal_elements(&mut self, expressions: &[Expr], base: usize) {
+        // Sibling elided literals project the same container type. Keep one
+        // descriptor per projection instead of one per literal occurrence.
+        let mut contexts = HashMap::new();
         for (id, expression) in expressions.iter().enumerate() {
             let ExprKind::Composite {
                 literal_type: Some(ty),
@@ -61,15 +66,22 @@ impl SourceAnalysis {
                     if !self.contains_name(&(base + span.start..base + span.end)) {
                         continue;
                     }
-                    if self.literal_types.len() >= 4096 {
-                        self.literal_limit = true;
-                        return;
-                    }
-                    let next = self.literal_types.len();
-                    self.literal_types.push(LiteralType::Element {
-                        container: context,
-                        key,
-                    });
+                    let next = match contexts.get(&(context, key)) {
+                        Some(next) => *next,
+                        None => {
+                            if self.literal_types.len() >= 4096 {
+                                self.literal_limit = true;
+                                return;
+                            }
+                            let next = self.literal_types.len();
+                            self.literal_types.push(LiteralType::Element {
+                                container: context,
+                                key,
+                            });
+                            contexts.insert((context, key), next);
+                            next
+                        }
+                    };
                     pending.push((child, next, depth + 1));
                 }
             }
@@ -83,8 +95,27 @@ impl SourceAnalysis {
         workspace: &Workspace,
         file: &Path,
         source: &str,
-        mut context: usize,
+        context: usize,
     ) -> Option<(String, usize)> {
+        let (span, projections) = self.literal_element_projection(context)?;
+        let mut ty = source.get(span.clone())?.to_owned();
+        for key in projections.into_iter().rev() {
+            let form = workspace.type_form(file, &ty, &self.locals, span.start)?;
+            if !matches!(form, TypeForm::Array | TypeForm::Slice | TypeForm::Map)
+                || key && !matches!(form, TypeForm::Map)
+            {
+                return None;
+            }
+            ty = workspace.range_type(file, &ty, &self.locals, span.start, usize::from(!key), 2)?;
+        }
+        Some((ty, span.start))
+    }
+
+    /// Preserve the written container origin for declaration-identity queries.
+    pub(crate) fn literal_element_projection(
+        &self,
+        mut context: usize,
+    ) -> Option<(Range<usize>, Vec<bool>)> {
         let mut projections = Vec::new();
         let span = loop {
             if projections.len() > 64 {
@@ -101,17 +132,7 @@ impl SourceAnalysis {
         if span.len() > 16 * 1024 {
             return None;
         }
-        let mut ty = source.get(span.clone())?.to_owned();
-        for key in projections.into_iter().rev() {
-            let form = workspace.type_form(file, &ty, &self.locals, span.start)?;
-            if !matches!(form, TypeForm::Array | TypeForm::Slice | TypeForm::Map)
-                || key && !matches!(form, TypeForm::Map)
-            {
-                return None;
-            }
-            ty = workspace.range_type(file, &ty, &self.locals, span.start, usize::from(!key), 2)?;
-        }
-        Some((ty, span.start))
+        Some((span.clone(), projections))
     }
 }
 

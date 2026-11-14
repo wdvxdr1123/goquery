@@ -314,19 +314,46 @@ pub(super) fn normalize_type(text: &str) -> String {
     let text = strip_comments(text);
     let text = canonical_multiline_aggregates(&text);
     let mut output = collapse_whitespace(&text);
-    output = output
-        .replace("struct {", "struct{")
-        .replace("struct{ ", "struct{")
-        .replace("interface {", "interface{")
-        .replace("interface{ ", "interface{");
-    while output.contains("; }") {
-        output = output.replace("; }", "}");
-    }
-    output = output.replace(" }", "}");
+    output = outside_literals(&output, |text| {
+        text.replace("struct {", "struct{")
+            .replace("struct{ ", "struct{")
+            .replace("interface {", "interface{")
+            .replace("interface{ ", "interface{")
+    });
+    output = outside_literals(&output, |text| {
+        let mut text = text.to_owned();
+        while text.contains("; }") {
+            text = text.replace("; }", "}");
+        }
+        text.replace(" }", "}")
+    });
     output = canonical_array_lengths(&output);
     output = canonical_tags(&output);
     output = expand_grouped_fields(&output);
     output.trim().to_owned()
+}
+
+/// Apply spelling-only presentation changes to code, preserving literal tokens.
+fn outside_literals(text: &str, mut transform: impl FnMut(&str) -> String) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut start = 0;
+    for token in crate::syntax::Lexer::new(text)
+        .filter(|token| matches!(token.kind, TokenKind::String | TokenKind::Char))
+    {
+        output.push_str(&transform(&text[start..token.span.start]));
+        output.push_str(&text[token.span.clone()]);
+        start = token.span.end;
+    }
+    output.push_str(&transform(&text[start..]));
+    output
+}
+
+/// At a quote, use the shared lexer to skip escaped and multiline literals.
+fn literal_end(text: &str, index: usize) -> Option<usize> {
+    matches!(text.as_bytes()[index], b'"' | b'\'' | b'`')
+        .then(|| crate::syntax::Lexer::new(&text[index..]).next())
+        .flatten()
+        .map(|token| index + token.span.end)
 }
 
 /// `types.TypeString` expands grouped struct/interface field names.
@@ -335,16 +362,17 @@ fn expand_grouped_fields(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut index = 0usize;
     while index < bytes.len() {
-        let aggregate = text[index..]
-            .find("struct{")
-            .map(|position| (index + position, "struct{"))
-            .into_iter()
-            .chain(
-                text[index..]
-                    .find("interface{")
-                    .map(|position| (index + position, "interface{")),
-            )
-            .min_by_key(|(position, _)| *position);
+        let aggregate = crate::syntax::Lexer::new(&text[index..]).find_map(|token| {
+            let keyword = match token.kind {
+                TokenKind::Struct => "struct{",
+                TokenKind::Interface => "interface{",
+                _ => return None,
+            };
+            let start = index + token.span.start;
+            text[start..]
+                .starts_with(keyword)
+                .then_some((start, keyword))
+        });
         let Some((start, keyword)) = aggregate else {
             output.push_str(&text[index..]);
             break;
@@ -360,7 +388,9 @@ fn expand_grouped_fields(text: &str) -> String {
         let segments: Vec<&str> = split_top_level(body, ';');
         let mut expanded = Vec::new();
         for segment in segments {
-            expand_grouped_segment(segment, &mut expanded);
+            if !segment.trim().is_empty() {
+                expand_grouped_segment(segment, &mut expanded);
+            }
         }
         output.push_str(&expanded.join("; "));
         output.push('}');
@@ -371,39 +401,28 @@ fn expand_grouped_fields(text: &str) -> String {
 
 fn expand_grouped_segment(segment: &str, out: &mut Vec<String>) {
     let trimmed = segment.trim();
-    let tokens: Vec<&str> = trimmed.split(' ').filter(|part| !part.is_empty()).collect();
-    if tokens.len() < 2 {
-        out.push(trimmed.to_owned());
-        return;
-    }
     let mut names = Vec::new();
-    let mut cursor = 0usize;
-    while cursor + 1 < tokens.len() {
-        let candidate = tokens[cursor].trim_end_matches(',');
-        if !candidate
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-            || !candidate
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    let mut tokens = crate::syntax::Lexer::new(trimmed).peekable();
+    let mut end = 0;
+    while let Some(token) = tokens.next() {
+        if token.kind != TokenKind::Ident {
+            break;
+        }
+        names.push(&trimmed[token.span.clone()]);
+        end = token.span.end;
+        if tokens
+            .peek()
+            .is_none_or(|token| token.kind != TokenKind::Comma)
         {
             break;
         }
-        if tokens[cursor].ends_with(',') {
-            names.push(candidate);
-            cursor += 1;
-            continue;
-        }
-        names.push(candidate);
-        cursor += 1;
-        break;
+        tokens.next();
     }
     if names.len() < 2 {
         out.push(trimmed.to_owned());
         return;
     }
-    let rest = tokens[cursor..].join(" ");
+    let rest = trimmed[end..].trim_start();
     if rest.is_empty() {
         out.push(trimmed.to_owned());
         return;
@@ -415,98 +434,39 @@ fn expand_grouped_segment(segment: &str, out: &mut Vec<String>) {
 
 /// Remove comments from a rendered type expression; `types.TypeString` has none.
 fn strip_comments(text: &str) -> String {
-    let bytes = text.as_bytes();
     let mut output = String::with_capacity(text.len());
-    let mut index = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'`' => {
-                let Some(close) = text[index + 1..].find('`') else {
-                    output.push_str(&text[index..]);
-                    break;
-                };
-                output.push_str(&text[index..index + close + 2]);
-                index += close + 2;
-            }
-            b'"' => {
-                let mut end = index + 1;
-                while end < bytes.len() {
-                    match bytes[end] {
-                        b'\\' => end += 2,
-                        b'"' => break,
-                        _ => end += 1,
-                    }
-                }
-                let end = (end + 1).min(bytes.len());
-                output.push_str(&text[index..end]);
-                index = end;
-            }
-            b'/' if bytes.get(index + 1) == Some(&b'/') => {
-                index += 2;
-                while index < bytes.len() && bytes[index] != b'\n' {
-                    index += 1;
-                }
-            }
-            b'/' if bytes.get(index + 1) == Some(&b'*') => {
-                index += 2;
-                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
-                {
-                    index += 1;
-                }
-                index = (index + 2).min(bytes.len());
-            }
-            _ => {
-                let ch = text[index..].chars().next().unwrap_or('\0');
-                output.push(ch);
-                index += ch.len_utf8();
-            }
-        }
+    let mut start = 0;
+    for token in
+        crate::syntax::Lexer::with_comments(text).filter(|token| token.kind == TokenKind::Comment)
+    {
+        output.push_str(&text[start..token.span.start]);
+        // Comments separate tokens. A multiline block also separates fields
+        // when Go's lexer inserts a semicolon at its first newline.
+        output.push(if text[token.span.clone()].contains('\n') {
+            '\n'
+        } else {
+            ' '
+        });
+        start = token.span.end;
     }
+    output.push_str(&text[start..]);
     output
 }
 
 /// `types.TypeString` renders struct tags as interpreted Go strings.
 fn canonical_tags(text: &str) -> String {
-    let bytes = text.as_bytes();
     let mut output = String::with_capacity(text.len());
-    let mut index = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'`' => {
-                let Some(close) = text[index + 1..].find('`') else {
-                    output.push_str(&text[index..]);
-                    break;
-                };
-                let content = text[index + 1..index + 1 + close].replace('\r', "");
-                output.push_str(&super::value::quote(&content));
-                index += close + 2;
-            }
-            b'"' => {
-                let mut end = index + 1;
-                while end < bytes.len() {
-                    match bytes[end] {
-                        b'\\' => end += 2,
-                        b'"' => break,
-                        _ => end += 1,
-                    }
-                }
-                let Some(literal) = text.get(index..=end) else {
-                    output.push_str(&text[index..]);
-                    break;
-                };
-                match crate::syntax::decode_string_literal(literal) {
-                    Some(decoded) => output.push_str(&super::value::quote_bytes(&decoded)),
-                    None => output.push_str(literal),
-                }
-                index = end + 1;
-            }
-            _ => {
-                let ch = text[index..].chars().next().unwrap_or('\0');
-                output.push(ch);
-                index += ch.len_utf8();
-            }
+    let mut start = 0;
+    for token in crate::syntax::Lexer::new(text).filter(|token| token.kind == TokenKind::String) {
+        output.push_str(&text[start..token.span.start]);
+        let literal = &text[token.span.clone()];
+        match crate::syntax::decode_string_literal(literal) {
+            Some(decoded) => output.push_str(&super::value::quote_bytes(&decoded)),
+            None => output.push_str(literal),
         }
+        start = token.span.end;
     }
+    output.push_str(&text[start..]);
     output
 }
 
@@ -516,6 +476,11 @@ fn canonical_multiline_aggregates(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut index = 0usize;
     while index < bytes.len() {
+        if let Some(end) = literal_end(text, index) {
+            output.push_str(&text[index..end]);
+            index = end;
+            continue;
+        }
         if text[index..].starts_with("struct")
             && bytes
                 .get(index + 6)
@@ -568,8 +533,8 @@ fn aggregate_body(body: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    let parts: Vec<String> = trimmed
-        .split('\n')
+    let parts: Vec<String> = split_top_level(trimmed, ';')
+        .into_iter()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(|line| line.trim_end_matches(';').trim_end().to_owned())
@@ -616,6 +581,11 @@ fn canonical_array_lengths(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut index = 0usize;
     while index < bytes.len() {
+        if let Some(end) = literal_end(text, index) {
+            output.push_str(&text[index..end]);
+            index = end;
+            continue;
+        }
         if bytes[index] == b'['
             && let Some(close) = text[index + 1..].find(']')
         {
@@ -660,25 +630,21 @@ fn array_length(text: &str) -> Option<i64> {
 /// Collapse source line breaks/tabs outside string and rune literals.
 fn collapse_whitespace(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
-    let mut quote: Option<char> = None;
     let mut pending_space = false;
-    for ch in text.chars() {
-        if let Some(active) = quote {
-            output.push(ch);
-            if ch == active {
-                quote = None;
+    let mut index = 0;
+    while index < text.len() {
+        if let Some(end) = literal_end(text, index) {
+            if pending_space && !output.is_empty() {
+                output.push(' ');
             }
+            pending_space = false;
+            output.push_str(&text[index..end]);
+            index = end;
             continue;
         }
+        let ch = text[index..].chars().next().unwrap_or('\0');
+        index += ch.len_utf8();
         match ch {
-            '"' | '\'' | '`' => {
-                if pending_space && !output.is_empty() {
-                    output.push(' ');
-                }
-                pending_space = false;
-                quote = Some(ch);
-                output.push(ch);
-            }
             ch if ch.is_whitespace() => pending_space = true,
             ch => {
                 if pending_space && !output.is_empty() {
@@ -702,6 +668,11 @@ fn expand_function_types(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut index = 0usize;
     while index < bytes.len() {
+        if let Some(end) = literal_end(text, index) {
+            output.push_str(&text[index..end]);
+            index = end;
+            continue;
+        }
         if text[index..].starts_with("func(") {
             let open = index + 4;
             if let Some(close) = matching_paren(text, open) {
@@ -721,13 +692,13 @@ fn expand_function_types(text: &str) -> String {
 
 fn matching_paren(text: &str, open: usize) -> Option<usize> {
     let mut depth = 0usize;
-    for (offset, ch) in text[open..].char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
+    for token in crate::syntax::Lexer::new(&text[open..]) {
+        match token.kind {
+            TokenKind::LParen => depth += 1,
+            TokenKind::RParen => {
+                depth = depth.checked_sub(1)?;
                 if depth == 0 {
-                    return Some(open + offset);
+                    return Some(open + token.span.start);
                 }
             }
             _ => {}
@@ -788,13 +759,18 @@ fn split_top_level(text: &str, separator: char) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut depth = 0usize;
     let mut start = 0usize;
-    for (index, ch) in text.char_indices() {
-        match ch {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ch if ch == separator && depth == 0 => {
-                segments.push(&text[start..index]);
-                start = index + ch.len_utf8();
+    for token in crate::syntax::Lexer::new(text) {
+        match token.kind {
+            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
+            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+            }
+            kind if depth == 0
+                && (separator == ';' && kind == TokenKind::Semicolon
+                    || separator == ',' && kind == TokenKind::Comma) =>
+            {
+                segments.push(&text[start..token.span.start]);
+                start = token.span.end;
             }
             _ => {}
         }
@@ -860,7 +836,17 @@ pub(super) fn binding_text(
     }
     let native = check::binding_detail(workspace, file, source, locals, binding)
         .or_else(|| workspace.binding_type(file, source, locals, binding))
-        .map(|text| normalize_type(&text));
+        .map(|text| {
+            if binding.annotation().is_none()
+                && text.starts_with("func(")
+                && let Some((signature, _)) =
+                    workspace.binding_signature(file, source, locals, binding)
+                && let Some(parameters) = signature.label.strip_prefix(&binding.name)
+            {
+                return normalize_signature(&format!("func{parameters}"));
+            }
+            normalize_type(&text)
+        });
     if binding.declaration == DeclarationKind::Variadic {
         return native.map(|text| {
             if text.trim_start().starts_with("[]") {
@@ -2279,6 +2265,22 @@ pub(super) fn function_value_type(
     text: &str,
 ) -> Option<String> {
     let workspace = context.workspace();
+    if text.len() > MAX_SIGNATURE_BYTES {
+        return None;
+    }
+    let parsed = crate::syntax::parse_expression(text);
+    if !parsed.diagnostics.is_empty() {
+        return None;
+    }
+    let locals = Locals::empty();
+    let inference = check::Inference::new(workspace, origin, text, &locals, &parsed.nodes, 0);
+    if let Some((signature, _)) = inference.explicit_function_signature(parsed.root) {
+        let opening = signature.label.find('(')?;
+        let ty = format!("func{}", &signature.label[opening..]);
+        return workspace
+            .signature_type(context.file(), origin, &ty)
+            .map(|text| normalize_signature(&text));
+    }
     let tokens: Vec<_> = crate::syntax::Lexer::new(text.trim())
         .filter(|token| !token.inserted)
         .collect();

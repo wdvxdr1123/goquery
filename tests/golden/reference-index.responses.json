@@ -105,12 +105,12 @@
   {
     "id": 1,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 2,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 3,
@@ -153,22 +153,22 @@
   {
     "id": 5,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 6,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 7,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 8,
     "jsonrpc": "2.0",
-    "result": null
+    "result": []
   },
   {
     "id": 9,

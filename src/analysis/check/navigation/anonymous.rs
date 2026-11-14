@@ -10,6 +10,7 @@
 //! inline struct fields without retaining any cross-request state.
 use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::scope::{Binding, CursorScope, Locals};
+use crate::analysis::source::{Name, Role, SourceAnalysis};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{ExprKind, Lexer, MemberKind, TokenKind};
 use crate::workspace::Workspace;
@@ -46,6 +47,54 @@ pub(crate) struct InlineField {
     pub(crate) name: String,
 }
 
+/// Typed occurrence resolution shared by reference seeds and candidate scans.
+pub(crate) fn occurrence_field(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    analysis: &SourceAnalysis,
+    occurrence: &Name,
+    index: &InlineIndex,
+) -> Option<InlineField> {
+    match &occurrence.role {
+        Role::LiteralKey(annotation) => {
+            literal_field_declaration(workspace, file, source, &occurrence.span, annotation, &[])
+        }
+        Role::LiteralElementKey(context) => {
+            let (annotation, projections) = analysis.literal_element_projection(*context)?;
+            literal_field_declaration(
+                workspace,
+                file,
+                source,
+                &occurrence.span,
+                &annotation,
+                &projections,
+            )
+        }
+        Role::Member(Some(operand)) | Role::ExpressionMember(operand) => {
+            field_declaration_with_scope(
+                workspace,
+                file,
+                source,
+                &occurrence.span,
+                &analysis.locals,
+                Some(operand.clone()),
+                index,
+            )
+        }
+        Role::Field => field_declaration_with_scope(
+            workspace,
+            file,
+            source,
+            &occurrence.span,
+            &analysis.locals,
+            None,
+            index,
+        ),
+        _ => None,
+    }
+}
+
 /// Returns the declaration selection for a cursor on an inline-struct field, or
 /// the field declaration selected by a keyed element of a composite literal
 /// whose head type is that inline struct (including elided nested literals).
@@ -66,6 +115,12 @@ pub(crate) fn field_target_in(
         }
     }
     // 2. Keyed element (`name:`) of a composite literal headed by the type.
+    if !Lexer::new(&source[selection.end..])
+        .next()
+        .is_some_and(|token| token.kind == TokenKind::Colon)
+    {
+        return None;
+    }
     let name = &source[selection.clone()];
     let mut best: Option<(usize, Range<usize>)> = None;
     for site in &index.structs {
@@ -86,20 +141,7 @@ pub(crate) fn field_target_in(
     best.map(|(_, member)| member)
 }
 
-/// Full inline-field resolution: declaration cursor, composite-literal key, or
-/// a selector chain that ends at an inline-struct field. `offset` is the cursor
-/// byte offset used to build the query-local lexical scope.
-pub(crate) fn field_declaration(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    selection: &Range<usize>,
-    offset: usize,
-) -> Option<InlineField> {
-    let index = InlineIndex::new(source);
-    field_declaration_in(workspace, file, source, selection, offset, &index)
-}
-
+/// Full inline-field resolution using a prepared source-site index.
 pub(crate) fn field_declaration_in(
     workspace: &Workspace,
     file: &Path,
@@ -115,8 +157,29 @@ pub(crate) fn field_declaration_in(
             selection,
         });
     }
-    let (base, fields) = selector_chain(source, selection)?;
     let scope = cursor_scope(workspace, file, source, offset);
+    if let Some(body) = scope.as_ref().and_then(|scope| scope.body.as_ref())
+        && let Some(operand) = body.tree.expressions.iter().find_map(|expression| {
+            let ExprKind::Selector { operand, field } = &expression.kind else {
+                return None;
+            };
+            ((body.base + field.start..body.base + field.end) == *selection).then(|| {
+                let span = &body.tree.expressions[operand.0].span;
+                body.base + span.start..body.base + span.end
+            })
+        })
+    {
+        return field_declaration_with_scope(
+            workspace,
+            file,
+            source,
+            selection,
+            &scope.as_ref()?.locals,
+            Some(operand),
+            index,
+        );
+    }
+    let (base, fields) = selector_chain(source, selection)?;
     let locals = scope.as_ref().map(|scope| &scope.locals);
     let context = Context {
         workspace,
@@ -141,6 +204,89 @@ pub(crate) fn field_declaration_in(
         ty = member.annotation;
     }
     None
+}
+
+/// Resolve a prepared occurrence without rebuilding its lexical body scope.
+pub(crate) fn field_declaration_with_scope(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    selection: &Range<usize>,
+    locals: &Locals,
+    operand: Option<Range<usize>>,
+    index: &InlineIndex,
+) -> Option<InlineField> {
+    if let Some(selection) = field_target_in(source, index, selection) {
+        return Some(InlineField {
+            file: file.to_path_buf(),
+            name: source[selection.clone()].to_owned(),
+            selection,
+        });
+    }
+    let operand = operand?;
+    let context = Context {
+        workspace,
+        file,
+        source,
+        locals: Some(locals),
+    };
+    let ty = expression_type(&context, source.get(operand.clone())?, operand.start, 0)?;
+    if !matches!(classify(&ty), Some(TypeKind::Inline(_))) {
+        return None;
+    }
+    let name = source.get(selection.clone())?;
+    let member = field_member(workspace, &ty, name)?;
+    Some(InlineField {
+        file: member.file,
+        selection: member.selection,
+        name: name.to_owned(),
+    })
+}
+
+/// A direct field conflict in the same anonymous aggregate.
+pub(crate) fn field_conflict(
+    index: &InlineIndex,
+    selection: &Range<usize>,
+    new_name: &str,
+) -> Option<Range<usize>> {
+    let owner = index
+        .structs
+        .iter()
+        .find(|site| site.members.iter().any(|(_, span)| span == selection))?;
+    owner
+        .members
+        .iter()
+        .find(|(name, span)| name == new_name && span != selection)
+        .map(|(_, span)| span.clone())
+}
+
+/// Project a literal's expected type without losing its declaration byte origin.
+pub(crate) fn literal_field_declaration(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    selection: &Range<usize>,
+    annotation: &Range<usize>,
+    projections: &[bool],
+) -> Option<InlineField> {
+    if annotation.len() > 16 * 1024 || projections.len() > 64 {
+        return None;
+    }
+    let mut ty = TypeSyntax {
+        file: file.to_path_buf(),
+        start: annotation.start,
+        text: source.get(annotation.clone())?.to_owned(),
+    };
+    for key in projections.iter().rev() {
+        ty = project(workspace, &ty, usize::from(!key), 2, 0)?;
+    }
+    let name = source.get(selection.clone())?;
+    let member = field_member(workspace, &ty, name)?;
+    Some(InlineField {
+        file: member.file,
+        selection: member.selection,
+        name: name.to_owned(),
+    })
 }
 
 /// Final field declaration of a selector chain, named or inline owner.
@@ -183,7 +329,7 @@ fn inline_structs(source: &str) -> Vec<InlineStruct> {
         let start = token.span.start;
         let mut depth = 0usize;
         let mut end = None;
-        for token in tokens.by_ref() {
+        for token in tokens.clone() {
             match token.kind {
                 TokenKind::LBrace => depth += 1,
                 TokenKind::RBrace => {
@@ -383,6 +529,20 @@ fn expression_type(
         ExprKind::Name => name_type(context, text, base, &expression.span, depth),
         ExprKind::Selector { operand, field } => {
             let operand = &parsed.nodes[operand.0];
+            if matches!(operand.kind, ExprKind::Name)
+                && context
+                    .locals
+                    .and_then(|locals| {
+                        locals.resolve_at(base + operand.span.start, &text[operand.span.clone()])
+                    })
+                    .is_none()
+                && let Some((file, symbol)) = context
+                    .workspace
+                    .imported_symbol_iter(context.file, &text[operand.span.clone()])
+                    .find(|(_, symbol)| symbol.name == text[field.clone()] && symbol.is_value())
+            {
+                return symbol_type(context, file, symbol, depth + 1);
+            }
             let receiver = expression_type(
                 context,
                 &text[operand.span.clone()],
@@ -470,8 +630,30 @@ fn name_type(
     {
         return binding_type(context, binding, depth + 1);
     }
-    let (_, symbol) = context.workspace.unqualified_symbol(context.file, name)?;
-    declaration_type(context, symbol, depth + 1)
+    let (file, symbol) = context.workspace.unqualified_symbol(context.file, name)?;
+    symbol_type(context, file, symbol, depth + 1)
+}
+
+fn symbol_type(
+    context: &Context<'_>,
+    file: &Path,
+    symbol: &Symbol,
+    depth: usize,
+) -> Option<TypeSyntax> {
+    if file == context.file {
+        return declaration_type(context, symbol, depth);
+    }
+    let source = context.workspace.source(file)?;
+    declaration_type(
+        &Context {
+            workspace: context.workspace,
+            file,
+            source: &source,
+            locals: None,
+        },
+        symbol,
+        depth,
+    )
 }
 
 fn binding_type(context: &Context<'_>, binding: &Binding, depth: usize) -> Option<TypeSyntax> {
@@ -569,6 +751,19 @@ fn call_result(
         }
         ExprKind::Selector { operand, field } => {
             let operand = &parsed.nodes[operand.0];
+            if matches!(operand.kind, ExprKind::Name)
+                && context
+                    .locals
+                    .and_then(|locals| {
+                        locals.resolve_at(base + operand.span.start, &text[operand.span.clone()])
+                    })
+                    .is_none()
+                && let Some((file, symbol)) = workspace
+                    .imported_symbol_iter(context.file, &text[operand.span.clone()])
+                    .find(|(_, symbol)| symbol.name == text[field.clone()] && symbol.is_function())
+            {
+                return signature_result(workspace, file, symbol);
+            }
             let receiver = expression_type(
                 context,
                 &text[operand.span.clone()],
@@ -591,7 +786,8 @@ fn call_result(
 
 fn signature_result(workspace: &Workspace, file: &Path, symbol: &Symbol) -> Option<TypeSyntax> {
     let declaration = symbol.declaration()?;
-    let header = workspace.source_slice(file, declaration.start..declaration.end)?;
+    let end = symbol.body().map_or(declaration.end, |body| body.start);
+    let header = workspace.source_slice(file, declaration.start..end)?;
     if header.len() > 16 * 1024 {
         return None;
     }

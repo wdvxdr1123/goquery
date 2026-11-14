@@ -1,9 +1,12 @@
 //! Signature-based format calls, shared by tokens and document highlights.
 use super::{FormatDirective, MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
 use crate::analysis::check::Inference;
+use crate::analysis::query::budget::{MEMO_BYTES, MEMO_ENTRIES};
 use crate::analysis::scope::Locals;
 use crate::syntax::{Expr, ExprKind, Lexer, Token, TokenKind};
 use crate::workspace::Workspace;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::Path;
 
 // Only one active body's expressions and locals survive between candidates.
@@ -15,6 +18,8 @@ struct CallScope {
     locals: Locals,
     expressions: Vec<Expr>,
     base: usize,
+    arities: RefCell<HashMap<(usize, String), Option<usize>>>,
+    arity_bytes: Cell<usize>,
 }
 
 impl CallScope {
@@ -25,6 +30,8 @@ impl CallScope {
                 locals: scope.locals,
                 expressions: body.tree.expressions,
                 base: body.base,
+                arities: RefCell::new(HashMap::new()),
+                arity_bytes: Cell::new(0),
             });
         }
         // Package-level initializers have no enclosing statement body.
@@ -44,6 +51,8 @@ impl CallScope {
             locals: scope.locals,
             expressions: parsed.nodes,
             base,
+            arities: RefCell::new(HashMap::new()),
+            arity_bytes: Cell::new(0),
         })
     }
 
@@ -58,6 +67,65 @@ impl CallScope {
                     .get(self.base + function.span.end..open)
                     .is_some_and(|gap| Lexer::new(gap).next().is_none())
         })
+    }
+
+    /// Repeated calls through one lexical binding have the same signature arity.
+    /// Cache only name/selector chains: evaluated receivers keep full inference.
+    fn format_parameter(
+        &self,
+        workspace: &Workspace,
+        file: &Path,
+        source: &str,
+        function: crate::syntax::ExprId,
+    ) -> Option<usize> {
+        let mut root = function;
+        let mut binding = None;
+        for _ in 0..32 {
+            match &self.expressions[root.0].kind {
+                ExprKind::Name => {
+                    let span = &self.expressions[root.0].span;
+                    let offset = self.base + span.start;
+                    binding = self
+                        .locals
+                        .resolve_at(offset, source.get(offset..self.base + span.end)?);
+                    break;
+                }
+                ExprKind::Selector { operand, .. } => root = *operand,
+                ExprKind::Parenthesized { expression } => root = *expression,
+                _ => break,
+            }
+        }
+        let span = &self.expressions[function.0].span;
+        let text = source.get(self.base + span.start..self.base + span.end)?;
+        let key = binding
+            .filter(|_| text.len() <= MEMO_BYTES)
+            .map(|binding| (binding.selection.start, text.to_owned()));
+        if let Some(key) = &key
+            && let Some(value) = self.arities.borrow().get(key)
+        {
+            return *value;
+        }
+        let value = Inference::new(
+            workspace,
+            file,
+            source,
+            &self.locals,
+            &self.expressions,
+            self.base,
+        )
+        .format_parameter(function);
+        if let Some(key) = key
+            && self.arities.borrow().len() < MEMO_ENTRIES
+            && let Some(bytes) = self
+                .arity_bytes
+                .get()
+                .checked_add(key.1.len() + std::mem::size_of_val(&value))
+            && bytes <= MEMO_BYTES
+        {
+            self.arity_bytes.set(bytes);
+            self.arities.borrow_mut().insert(key, value);
+        }
+        value
     }
 }
 
@@ -76,6 +144,9 @@ fn calls(
     source: &str,
     cursor: Option<usize>,
 ) -> Vec<PrintfCall> {
+    let trace = workspace.trace.queries.then(std::time::Instant::now);
+    let mut scope_time = std::time::Duration::ZERO;
+    let mut signature_time = std::time::Duration::ZERO;
     let tokens: Vec<_> = Lexer::new(source).collect();
     let mut active: Option<CallScope> = None;
     let mut scopes = 0usize;
@@ -129,7 +200,11 @@ fn calls(
             // Drop the previous arena before parsing another body.
             drop(active.take());
             scopes += 1;
+            let phase = workspace.trace.queries.then(std::time::Instant::now);
             active = CallScope::at(workspace, file, source, token.span.start);
+            if let Some(phase) = phase {
+                scope_time += phase.elapsed();
+            }
         }
         let Some(scope) = active.as_ref() else {
             continue;
@@ -145,15 +220,12 @@ fn calls(
         else {
             continue;
         };
-        let inference = Inference::new(
-            workspace,
-            file,
-            source,
-            &scope.locals,
-            &scope.expressions,
-            scope.base,
-        );
-        let Some(format_index) = inference.format_parameter(*function) else {
+        let phase = workspace.trace.queries.then(std::time::Instant::now);
+        let format_index = scope.format_parameter(workspace, file, source, *function);
+        if let Some(phase) = phase {
+            signature_time += phase.elapsed();
+        }
+        let Some(format_index) = format_index else {
             continue;
         };
         let Some(literal) = arguments
@@ -181,6 +253,13 @@ fn calls(
             format_span,
             format_index,
         });
+    }
+    if let Some(trace) = trace {
+        eprintln!(
+            "format calls: candidates {candidates}; scopes {scopes} {scope_time:?}; signatures {signature_time:?}; argument tokens {}; total {:?}",
+            MAX_ARGUMENT_TOKEN_VISITS - argument_visits,
+            trace.elapsed(),
+        );
     }
     out
 }

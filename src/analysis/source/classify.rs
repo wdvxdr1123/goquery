@@ -130,12 +130,20 @@ impl SourceAnalysis {
                     literal_type: Some(ty),
                     elements,
                 } => {
-                    // Map/array keys are expressions; syntactically named struct
-                    // literals use field labels whose names are not package refs.
+                    // Named types need type-directed field/expression lookup.
+                    // An anonymous struct's key is a field label too; map and
+                    // array syntax keeps ordinary key-expression name roles.
+                    let annotation = &expressions[ty.0];
+                    let anonymous_struct = matches!(annotation.kind, ExprKind::Type)
+                        && source
+                            .get(base + annotation.span.start..base + annotation.span.end)
+                            .and_then(|text| Lexer::new(text).next())
+                            .is_some_and(|token| token.kind == TokenKind::Struct);
                     if matches!(
                         expressions[ty.0].kind,
                         ExprKind::Name | ExprKind::Selector { .. } | ExprKind::Index { .. }
-                    ) {
+                    ) || anonymous_struct
+                    {
                         for element in elements {
                             if let ExprKind::KeyValue { key, .. } = &expressions[element.0].kind
                                 && matches!(expressions[key.0].kind, ExprKind::Name)

@@ -1,11 +1,12 @@
 //! Navigation and reference seeds share the request's immutable source view.
 use super::Context;
 use crate::analysis::check::navigation::Target;
+use crate::analysis::check::navigation::anonymous;
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::resolve::NameIndex;
 use crate::analysis::scope::universe;
 use crate::analysis::scope::{Identity, Locals, Resolver};
-use crate::analysis::source::SourceAnalysis;
+use crate::analysis::source::{Role, SourceAnalysis};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{Lexer, TokenKind};
 use crate::text::SourceMap;
@@ -29,6 +30,7 @@ pub(crate) enum ReferenceTarget<'a> {
     Global(&'a PathBuf, &'a Symbol),
     Member(MemberDeclaration<'a>),
     Local(Vec<Range<usize>>),
+    AnonymousField(anonymous::InlineField),
     Unresolved,
 }
 
@@ -568,12 +570,14 @@ impl<'a> Context<'a> {
         let mut resolver = Resolver::for_name(self.workspace, self.view.file, index);
         let analysis =
             SourceAnalysis::for_name(source, &self.workspace.files[self.view.file], index.name())?;
-        let target = match analysis
+        let Some(occurrence) = analysis
             .names
             .iter()
             .find(|name| name.span.start <= offset && offset <= name.span.end)
-            .and_then(|name| resolver.resolve(&analysis, source, name))
-        {
+        else {
+            return Ok(ReferenceTarget::Unresolved);
+        };
+        let target = match resolver.resolve(&analysis, source, occurrence) {
             Some(Identity::Global(file, symbol)) => ReferenceTarget::Global(file, symbol),
             Some(Identity::Member(member)) => ReferenceTarget::Member(member),
             Some(Identity::Local(selection)) => {
@@ -592,6 +596,26 @@ impl<'a> Context<'a> {
                     }
                 }
                 ReferenceTarget::Local(locations)
+            }
+            None if matches!(
+                occurrence.role,
+                Role::Field
+                    | Role::LiteralKey(_)
+                    | Role::LiteralElementKey(_)
+                    | Role::Member(Some(_))
+                    | Role::ExpressionMember(_)
+            ) =>
+            {
+                let inline = anonymous::InlineIndex::new(source);
+                anonymous::occurrence_field(
+                    self.workspace,
+                    self.view.file,
+                    source,
+                    &analysis,
+                    occurrence,
+                    &inline,
+                )
+                .map_or(ReferenceTarget::Unresolved, ReferenceTarget::AnonymousField)
             }
             None => ReferenceTarget::Unresolved,
         };

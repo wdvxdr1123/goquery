@@ -264,22 +264,12 @@ impl<'a> Context<'a> {
                     .unwrap_or_else(|| ident.clone());
                 Some(Target::Local { selection, spans })
             }
+            ReferenceTarget::AnonymousField(field) => Some(Target::AnonymousField {
+                file: field.file,
+                selection: field.selection,
+                name: field.name,
+            }),
             ReferenceTarget::Unresolved => {
-                if let Some(field) =
-                    crate::analysis::check::navigation::anonymous::field_declaration(
-                        self.workspace(),
-                        file,
-                        source,
-                        ident,
-                        ident.start,
-                    )
-                {
-                    return Ok(Some(Target::AnonymousField {
-                        file: field.file,
-                        selection: field.selection,
-                        name: field.name,
-                    }));
-                }
                 if let Some(label) = self.label_target(source, ident)? {
                     return Ok(Some(label));
                 }
@@ -828,18 +818,54 @@ impl<'a> Context<'a> {
             Target::AnonymousField {
                 file: decl_file,
                 selection,
-                ..
+                name,
             } => {
-                // The declaration is the identity. Selector/keyed occurrences of
-                // inline-struct fields are not yet collected; prepareRename and
-                // definition use this target without edit expansion.
-                let Some(source) = self.workspace().source(decl_file) else {
-                    return Ok(rows);
+                let range = {
+                    let source = self.workspace().source(decl_file).ok_or_else(|| {
+                        (
+                            crate::error::REQUEST_FAILED,
+                            "anonymous field declaration unavailable".to_owned(),
+                        )
+                    })?;
+                    let map = SourceMap::new(&source);
+                    let inline =
+                        crate::analysis::check::navigation::anonymous::InlineIndex::new(&source);
+                    if let Some(conflict) =
+                        crate::analysis::check::navigation::anonymous::field_conflict(
+                            &inline, selection, new_name,
+                        )
+                    {
+                        let declaration = position_text_in(
+                            &source,
+                            decl_file,
+                            SourceRange::new(&map, selection.clone()).start,
+                        )?;
+                        let conflict = position_text_in(
+                            &source,
+                            decl_file,
+                            SourceRange::new(&map, conflict).start,
+                        )?;
+                        return Err((
+                            0,
+                            format!(
+                                "{declaration}: renaming this field {old_name:?} to {new_name:?}\n{conflict}:\twould conflict with this field"
+                            ),
+                        ));
+                    }
+                    SourceRange::new(&map, selection.clone())
                 };
-                let map = SourceMap::new(&source);
+                for location in
+                    self.inline_field_references(decl_file, selection, name, file, true)?
+                {
+                    rows.push(RenameEdit {
+                        file: location.file.to_path_buf(),
+                        range: location.range,
+                        text: RenameText::Name,
+                    });
+                }
                 rows.push(RenameEdit {
                     file: decl_file.clone(),
-                    range: SourceRange::new(&map, selection.clone()),
+                    range,
                     text: RenameText::Name,
                 });
             }
@@ -1179,6 +1205,20 @@ impl<'a> Context<'a> {
                     return Ok(());
                 };
                 (member.file.as_path(), range)
+            }
+            Target::AnonymousField {
+                file, selection, ..
+            } => {
+                let source = self.workspace().source(file).ok_or_else(|| {
+                    (
+                        crate::error::REQUEST_FAILED,
+                        "anonymous field declaration unavailable".to_owned(),
+                    )
+                })?;
+                (
+                    file.as_path(),
+                    SourceRange::new(&SourceMap::new(&source), selection.clone()),
+                )
             }
             _ => return Ok(()),
         };
@@ -1964,6 +2004,14 @@ fn position_text(
     let source = workspace
         .source(file)
         .ok_or((crate::error::INVALID_PARAMS, "file unavailable".to_string()))?;
+    position_text_in(&source, file, position)
+}
+
+fn position_text_in(
+    source: &str,
+    file: &Path,
+    position: SourcePosition,
+) -> Result<String, (i32, String)> {
     let line = usize::try_from(position.line)
         .map_err(|_| (crate::error::INVALID_PARAMS, "bad line".to_string()))?;
     let mut start = 0;

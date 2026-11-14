@@ -2,6 +2,13 @@
 
 - Navigation: definition, declaration, type definition, references,
   implementation and document highlights from resolved symbol identity.
+  Highlight candidates include literal keys whose expected container type makes
+  them expressions; field labels still require their own field identity.
+  Type-switch guard declarations remain in the reference's nil-object group,
+  while implicit variables retain separate clause identities.
+  Anonymous-field references share rename's declaration provenance and honor
+  `includeDeclaration`. Resolved targets with no references return `[]`;
+  unavailable targets return `null`.
 - Symbols: document symbols (flat and hierarchical), and fuzzy workspace symbol
   search with gopls-style query syntax (`^prefix`, `'substring`, `suffix$`).
 - Completion and signature help: gopls-derived scoring, scoped locals and
@@ -14,11 +21,23 @@
   constraint/assignment checks with result inference, including imported calls,
   partial explicit arguments and variadic expansion within existing budgets.
   Unavailable inference retains the declaration signature.
+  Fully explicit generic function values also use native argument-count and
+  constraint proofs, including package initializers. Hover and callable labels
+  retain declaration parameter/result names without adding them to type nodes;
+  package function variables share the bounded callable-value presentation path.
+  File-wide classification shares identical elided-literal type projections;
+  field/expression facts are reused while expression-key identities resolve at
+  their own positions. Format-call arity uses a bounded per-scope memo keyed by
+  the lexical binding and exact simple callee text (256 entries, 16 KiB payload).
   Type-declaration hover shares bounded syntax-based presentation across globals,
   local types and alias targets. Supported inline declarations normalize field
   layout, generic parameters and expression spacing while preserving literal
   contents. Existing multiline layout and unsupported/over-budget forms retain
   their source presentation; this is not a complete Go formatter.
+  Anonymous type/signature normalization uses lexer literal boundaries: struct
+  tags retain spaces, newlines, escapes and syntax-looking text while their
+  values are rendered as interpreted Go strings. Grouped fields preserve the
+  original type/tag suffix instead of splitting its literal contents.
 - Inferred array literal extents (`[...]T{...}`) follow constant keyed indices
   and implicit successors, including imported constants and supported `iota`
   groups. The same facts feed local inference and hover/array-length rendering.
@@ -29,6 +48,11 @@
 - Rename and prepare-rename with scope/shadowing checks and versioned workspace
   edits across identifiers, imports, fields, methods, receivers, labels and doc
   comments/links.
+  Anonymous struct fields collect keys and selectors by the original declaration
+  position, including copied bindings, nested/container fields and imported
+  values or function results. Rename checks direct field-name conflicts and
+  prevents unexporting fields still used by another package; equal type shapes
+  do not merge distinct declaration sites.
 - Call hierarchy (incoming/outgoing) and type hierarchy by structural method sets,
   with separate `goquery/embedding/{supertypes,subtypes}` extensions for explicit
   named embedding.

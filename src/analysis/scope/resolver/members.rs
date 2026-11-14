@@ -7,6 +7,7 @@ use crate::syntax::{MemberKind, TokenKind};
 use crate::text::SourceMap;
 use std::ops::Range;
 
+#[derive(Clone, Copy)]
 pub(super) enum LiteralKey<'a> {
     Field(MemberDeclaration<'a>),
     Expression,

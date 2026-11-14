@@ -191,3 +191,79 @@ hover replays under `benchmarks/declaration-layout-cow/`. No replayed corpus
 hover or test-view request exceeded 100 ms. These checks overlapped other work;
 they do not establish a controlled speedup or general latency acceptance. The
 previously listed slow semantic-token and implementation requests remain open.
+
+## Anonymous type literal checkpoint
+
+`target/hover-literal-safe.exe` preserves struct-tag contents during semantic
+type/signature normalization. The six same-plan corpus hover replays under
+`benchmarks/hover-literal-safe/` have no request above 100 ms and no new failed
+rows. The 36-case raw/interpreted tag fixture matches complete pinned gopls
+responses. This is a correctness checkpoint, not a controlled speed comparison;
+the earlier slow full-token and implementation requests remain unresolved.
+
+## Explicit function-value checkpoint
+
+`target/generic-function-values.exe` has no >100 ms request in the focused
+31-query function-value comparison or six-corpus hover replays. The fresh SDK
+six-file semantic-token comparison matches 6/6 complete responses; the
+`os/root_test.go` request still takes 272.1 ms. External token comparisons match
+3/3 per corpus without >100 ms requests. Reports are under
+`benchmarks/generic-function-values-regression/`,
+`benchmarks/generic-function-values-tokens/`, and
+`benchmarks/generic-function-values-tokens-sdk6.json`. These overlapped other
+verification workloads and do not establish a controlled latency change; the
+slow SDK token request remains unresolved.
+
+## Bounded token-query reuse A/B
+
+`benchmarks/sdk-token-phases/settled-ab.json` alternates two fresh settled runs
+each of `target/generic-function-values.exe` and `target/token-reuse.exe`, before
+starting the broader regression/memory workloads. All four complete decoded
+`os/root_test.go` token responses match the retained fresh pinned reference.
+
+| Binary | Run 1 ms | Run 2 ms | Median ms |
+| --- | ---: | ---: | ---: |
+| Baseline | 270.7 | 267.8 | 269.2 |
+| Bounded reuse | 208.8 | 215.4 | 212.1 |
+
+This supports an approximately 21% reduction for this finite query, which still
+exceeds 100 ms. It does not establish overall token-query latency acceptance.
+Trace-only phase runs isolate the repeated format-signature and literal-type
+projection costs; those instrumented times are not the controlled A/B above.
+
+The broader verification overlapped the memory and other regression workloads.
+The same SDK token request took 372.7 ms there
+(`benchmarks/token-reuse-sdk-tokens.json`); it remains an explicitly slow sample.
+Concurrent measurements cannot establish a change relative to the settled A/B.
+
+## Literal-key identity checkpoint
+
+`target/literal-key-identities.exe` matches all 40 focused expression-key/field/
+type-switch highlight responses and 17/19 expanded mixed-feature responses.
+These focused requests and the six-corpus hover replays have no >100 ms sample.
+The SDK full-token request for `os/root_test.go` takes 215.9 ms in the concurrent
+regression (`benchmarks/literal-key-sdk-tokens.json`) and remains explicitly slow.
+This correctness checkpoint is not a controlled speed comparison. The previous
+settled token-reuse A/B remains the evidence for that separate optimization.
+
+## Anonymous-field rename checkpoint
+
+`target/anonymous-field-rename.exe` matches all 24 focused complete rename
+responses without >100 ms requests. The concurrent corpus verification retains
+these explicitly slow samples:
+
+| Feature/project | Request | ms |
+| --- | --- | ---: |
+| Rename/SDK | `runtime/mgcpacer.go:init@method.rename` | 118.8 |
+| Rename/Ollama | `api/client.go:Client@rename` | 276.4 |
+| Rename/Prometheus | `util/fuzzing/corpus_protobuf.go:Data@field.rename` | 221.4 |
+| Full tokens/SDK | `os/root_test.go` | 209.8 |
+| Full tokens/Prometheus | `promql/parser/generated_parser.y.go` | 108.2 |
+| Hover/SDK | `bytes/boundary_test.go:PROT_WRITE@861` | 100.2 |
+
+All other requests in these corpus groups stay below 100 ms. Reports are under
+`benchmarks/anonymous-rename-corpus/`, `anonymous-rename-regression/`,
+`anonymous-rename-hover/` and the associated `anonymous-rename-*-rename.json`
+and `anonymous-rename-sdk-tokens.json` files. These workloads overlapped and
+are correctness evidence, not a controlled latency-change comparison. Rename
+latency remains lower priority; the SDK token target is still unmet.

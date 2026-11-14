@@ -376,7 +376,13 @@ fn cursor<'a>(
     inline: &anonymous::InlineIndex,
 ) -> Cursor<'a> {
     let spelling = &source[name.span.clone()];
-    let identity = Resolver::new(workspace, file).resolve(analysis, source, name);
+    // The guard identifier has no go/types object; each clause declares its
+    // own implicit variable. Keep the declaration in gopls' nil-object group.
+    let identity = if type_switch_guard_declaration(analysis, source, name) {
+        None
+    } else {
+        Resolver::new(workspace, file).resolve(analysis, source, name)
+    };
     let member = workspace.member_declaration_target(file, source, &name.span, map);
     let imported = scope::universe::imported_name(workspace, file, spelling);
     // Embedded struct fields resolve to their implicit field variable, while an
@@ -524,15 +530,10 @@ fn role_tag_str(role: &Role) -> &'static str {
 
 /// Cheap role prefilter: the spelling filter already bounds candidates, and a
 /// selector role can never resolve to a local or a non-method global identity,
-/// so those candidate sets never need a full resolution.
+/// so those candidate sets never need a full resolution. Literal keys may be
+/// map/array expressions and must reach the type-directed resolver.
 fn candidate_role_plausible(cursor: &Cursor<'_>, name: &Name) -> bool {
-    let selector = matches!(
-        name.role,
-        Role::Member(_)
-            | Role::ExpressionMember(_)
-            | Role::LiteralKey(_)
-            | Role::LiteralElementKey(_)
-    );
+    let selector = matches!(name.role, Role::Member(_) | Role::ExpressionMember(_));
     match &cursor.canonical {
         Canonical::Local(_) | Canonical::Case { .. } => !selector,
         Canonical::Global(_, _) => {
@@ -904,6 +905,7 @@ fn occurrence_matches(
                 return false;
             }
             resolver.resolve(analysis, source, name).is_none()
+                || type_switch_guard_declaration(analysis, source, name)
         }
         Canonical::Global(path, start) => {
             // A struct-embedded type identifier defines the implicit field
@@ -952,14 +954,26 @@ fn occurrence_matches(
             // selection span; the containing clause scope separates them. Only
             // clause-body uses resolve, so the shared declaration itself stays
             // out of the highlighted set, matching the reference server.
-            analysis
-                .locals
-                .resolve_at(name.span.start, &source[name.span.clone()])
-                .is_some_and(|binding| {
-                    binding.selection.start == *selection && binding.scope_start() == *scope_start
-                })
+            matches!(resolver.resolve(analysis, source, name),
+                Some(Identity::Local(other)) if other.start == *selection)
+                && analysis
+                    .locals
+                    .resolve_at(name.span.start, &source[name.span.clone()])
+                    .is_some_and(|binding| {
+                        binding.selection.start == *selection
+                            && binding.scope_start() == *scope_start
+                    })
         }
     }
+}
+
+fn type_switch_guard_declaration(analysis: &SourceAnalysis, source: &str, name: &Name) -> bool {
+    analysis
+        .locals
+        .definition_at(&name.span, &source[name.span.clone()])
+        .is_some_and(|binding| {
+            binding.selection == name.span && analysis.locals.switch_case(binding).is_some()
+        })
 }
 
 fn occurrence_kind(name: &Name, cursor: &Cursor<'_>, writes: &[Range<usize>]) -> HighlightKind {

@@ -125,6 +125,22 @@ impl Callable<'_> {
         }
         let expression = &expressions[id.0];
         match &expression.kind {
+            ExprKind::Index { .. } => {
+                let inference = Inference::new(
+                    self.workspace,
+                    self.file,
+                    self.source,
+                    self.locals,
+                    expressions,
+                    base,
+                );
+                if inference
+                    .callee(id)
+                    .is_some_and(|(_, symbol)| symbol.generic)
+                {
+                    return inference.explicit_function_signature(id);
+                }
+            }
             ExprKind::Unary { operator, .. }
                 if &self.source[base + operator.start..base + operator.end] == "<-" =>
             {
@@ -281,6 +297,9 @@ impl Callable<'_> {
             base,
             self.locals,
         )?;
+        if symbol.is_value() {
+            return self.global(origin, symbol, depth + 1);
+        }
         symbol
             .is_callable()
             .then(|| {
@@ -288,6 +307,59 @@ impl Callable<'_> {
                     .signature_information(self.file, origin, symbol)
             })
             .flatten()
+    }
+
+    /// Follow a package value through the same bounded binding presentation as
+    /// a local. The wrapper is query-local and keeps the declaring import scope.
+    fn global(
+        &self,
+        origin: &Path,
+        symbol: &crate::index::IndexedSymbol,
+        depth: usize,
+    ) -> Option<Information> {
+        if depth >= 32 || symbol.is_const() {
+            return None;
+        }
+        let declaration = symbol.declaration()?;
+        if declaration.len() > super::render::MAX_LABEL_BYTES {
+            return None;
+        }
+        let spec = self.workspace.source_slice(origin, declaration.clone())?;
+        let wrapped = format!("{{var {spec}\n}}");
+        let parsed = crate::syntax::parse_block(&wrapped);
+        if !parsed.diagnostics.is_empty() {
+            return None;
+        }
+        let locals = Locals::from_body(&wrapped, 0, &parsed);
+        let binding = locals.visible_bindings(wrapped.len() - 1).find(|binding| {
+            binding.name == symbol.name
+                && binding
+                    .selection
+                    .start
+                    .checked_sub(5)
+                    .and_then(|offset| declaration.start.checked_add(offset))
+                    == Some(symbol.start)
+        })?;
+        let (signature, _) = Callable {
+            workspace: self.workspace,
+            file: origin,
+            source: &wrapped,
+            locals: &locals,
+        }
+        .binding(binding, None, depth + 1)?;
+        let parameters = signature.label.strip_prefix(&symbol.name)?;
+        let ty = format!("func{parameters}");
+        self.type_information(
+            TypeSource {
+                file: origin,
+                source: &ty,
+                span: 0..ty.len(),
+                locals: None,
+            },
+            &symbol.name,
+            None,
+            depth + 1,
+        )
     }
 
     fn binding(&self, binding: &Binding, field: Option<&str>, depth: usize) -> Option<Information> {

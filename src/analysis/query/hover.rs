@@ -4,6 +4,7 @@ mod builtin;
 mod content;
 mod declaration;
 mod doc;
+mod generic;
 mod package;
 mod promote;
 mod render;
@@ -128,7 +129,7 @@ pub(crate) fn execute(
             if let Some(content_ref) = content.as_mut()
                 && content_ref.code.is_some()
                 && let Some(instantiated) =
-                    instantiated_generic(context, &scope, &span, path, symbol)
+                    generic::instantiated(context, &scope, &span, path, symbol)
             {
                 content_ref.code = Some(instantiated);
             }
@@ -548,6 +549,24 @@ fn anonymous_struct_field(
     Some(content)
 }
 
+/// Package initializers share the same source span across hover consumers.
+fn value_initializer<'a>(context: &'a Context<'_>, offset: usize) -> Option<(usize, &'a str)> {
+    let source = context.source();
+    let stub = context.workspace().files.get(context.file())?;
+    let declaration = stub.symbols.iter().find_map(|symbol| {
+        let declaration = symbol.declaration()?;
+        (symbol.is_value()
+            && symbol.end < offset
+            && declaration.start <= offset
+            && offset <= declaration.end)
+            .then_some(declaration)
+    })?;
+    let text = source.get(declaration.clone())?;
+    let assign = Lexer::new(text).find(|token| token.kind == TokenKind::Assign)?;
+    let base = declaration.start + assign.span.end;
+    Some((base, source.get(base..declaration.end)?))
+}
+
 /// References inside package-level value initializers: gopls resolves them with
 /// the file's package scope, while the body-only navigation path does not.
 fn package_initializer_target(
@@ -556,220 +575,47 @@ fn package_initializer_target(
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> Result<Option<HoverContent>, (i32, String)> {
-    let workspace = context.workspace();
-    let file = context.file();
-    let source = context.source();
-    let Some(stub) = workspace.files.get(file) else {
+    let Some((base, text)) = value_initializer(context, offset) else {
         return Ok(None);
     };
-    for symbol in &stub.symbols {
-        if !symbol.is_value() || offset <= symbol.end {
-            continue;
-        }
-        let Some(declaration) = symbol.declaration() else {
-            continue;
-        };
-        if !(declaration.start <= offset && offset <= declaration.end) {
-            continue;
-        }
-        let Some(text) = source.get(declaration.start..declaration.end) else {
-            continue;
-        };
-        let Some(assign) = Lexer::new(text).find(|token| token.kind == TokenKind::Assign) else {
-            continue;
-        };
-        let base = declaration.start + assign.span.end;
-        let Some(expression_text) = source.get(base..declaration.end) else {
-            continue;
-        };
-        let parsed = crate::syntax::parse_expression(expression_text);
-        if !parsed.diagnostics.is_empty() {
-            continue;
-        }
-        for (index, expression) in parsed.nodes.iter().enumerate() {
-            let selected = match &expression.kind {
-                crate::syntax::ExprKind::Name => expression.span.clone(),
-                crate::syntax::ExprKind::Selector { field, .. } => field.clone(),
-                _ => continue,
-            };
-            if (base + selected.start..base + selected.end) != *span {
-                continue;
-            }
-            let locals = crate::analysis::scope::Locals::empty();
-            let inference = crate::analysis::check::Inference::new(
-                workspace,
-                file,
-                source,
-                &locals,
-                &parsed.nodes,
-                base,
-            );
-            let Some(selection) = inference.selection(crate::syntax::ExprId(index)) else {
-                return Ok(None);
-            };
-            return Ok(Some(match selection {
-                crate::analysis::check::Selection::Global(path, symbol) => {
-                    let Some(content) = symbol::reference(context, path, symbol, range)? else {
-                        return Ok(None);
-                    };
-                    content
-                }
-                crate::analysis::check::Selection::Member(member) => {
-                    render::member(context, member, None, span, range)
-                }
-            }));
-        }
+    let parsed = crate::syntax::parse_expression(text);
+    if !parsed.diagnostics.is_empty() {
+        return Ok(None);
     }
-    Ok(None)
-}
-
-const MAX_GENERIC_HEADER: usize = 16 * 1024;
-
-/// gopls' call-site instantiation note: the substituted signature followed by
-/// the generic declaration signature as a comment.
-fn instantiated_generic(
-    context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
-    span: &Range<usize>,
-    path: &Path,
-    symbol: &crate::index::IndexedSymbol,
-) -> Option<String> {
-    if !symbol.generic || !symbol.is_function() {
-        return None;
-    }
-    let body = scope.body.as_ref()?;
-    let expressions = &body.tree.expressions;
-    let base = body.base;
-    let (function, arguments, variadic) = expressions.iter().find_map(|entry| {
-        let crate::syntax::ExprKind::Call {
-            function,
-            arguments,
-            variadic,
-        } = &entry.kind
-        else {
-            return None;
-        };
-        let selected = call_name_span(expressions, *function)?;
-        ((base + selected.start..base + selected.end) == *span).then_some((
-            *function,
-            arguments.as_slice(),
-            *variadic,
-        ))
-    })?;
-    let source_text = render::declaration_source(context, path)?;
-    let declaration = symbol.declaration()?;
-    let end = symbol.body().map_or(declaration.end, |body| body.start);
-    if end.checked_sub(declaration.start)? > MAX_GENERIC_HEADER {
-        return None;
-    }
-    let header = source_text.text().get(declaration.start..end)?;
-    let signature = crate::syntax::parse_signature(header);
+    let locals = crate::analysis::scope::Locals::empty();
     let inference = crate::analysis::check::Inference::new(
         context.workspace(),
         context.file(),
         context.source(),
-        &scope.locals,
-        expressions,
+        &locals,
+        &parsed.nodes,
         base,
     );
-    let instantiated = inference.instantiated_call_signature(
-        (path, header, &signature),
-        function,
-        arguments,
-        variadic,
-    )?;
-    let code = format!(
-        "func {}{}",
-        import_qualifier(context, context.file(), path)?,
-        render::normalize_signature(&instantiated.label),
-    );
-    let comment = generic_signature_comment(header, &signature)?;
-    let separator = if code.len() > 60 { "\n" } else { " " };
-    Some(format!("{code}{separator}// {comment}"))
-}
-
-/// The selected name keeps its own span through qualification, explicit type
-/// arguments and parenthesized callees.
-fn call_name_span(
-    expressions: &[crate::syntax::Expr],
-    mut function: crate::syntax::ExprId,
-) -> Option<Range<usize>> {
-    for _ in 0..32 {
-        let expression = expressions.get(function.0)?;
-        match &expression.kind {
-            crate::syntax::ExprKind::Name => return Some(expression.span.clone()),
-            crate::syntax::ExprKind::Selector { field, .. } => return Some(field.clone()),
-            crate::syntax::ExprKind::Index { operand, .. }
-            | crate::syntax::ExprKind::Parenthesized {
-                expression: operand,
-            } => {
-                function = *operand;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
-/// The generic declaration rendered as gopls' trailing comment.
-fn generic_signature_comment(header: &str, signature: &crate::syntax::Signature) -> Option<String> {
-    let mut type_parameters = Vec::new();
-    for (index, parameter) in signature.type_parameters.iter().enumerate() {
-        let name = header.get(parameter.name.as_ref()?.clone())?.trim();
-        let constraint = header.get(parameter.annotation.clone())?.trim();
-        let grouped = signature
-            .type_parameters
-            .get(index + 1)
-            .is_some_and(|next| {
-                header.get(next.annotation.clone()).map(str::trim) == Some(constraint)
-            });
-        type_parameters.push(if grouped {
-            name.to_owned()
-        } else {
-            format!("{name} {}", render::normalize_type(constraint))
-        });
-    }
-    let parameters = parameter_list(header, &signature.parameters)?;
-    let results = result_list(header, &signature.results)?;
-    let mut comment = format!("func[{}]({parameters})", type_parameters.join(", "));
-    if !results.is_empty() {
-        comment.push(' ');
-        comment.push_str(&results);
-    }
-    Some(comment)
-}
-
-fn parameter_list(header: &str, parameters: &[crate::syntax::Parameter]) -> Option<String> {
-    let mut parts = Vec::with_capacity(parameters.len());
-    for parameter in parameters {
-        let annotation = render::normalize_type(header.get(parameter.annotation.clone())?);
-        let annotation = if parameter.variadic {
-            format!("...{annotation}")
-        } else {
-            annotation
+    for (index, expression) in parsed.nodes.iter().enumerate() {
+        let selected = match &expression.kind {
+            crate::syntax::ExprKind::Name => expression.span.clone(),
+            crate::syntax::ExprKind::Selector { field, .. } => field.clone(),
+            _ => continue,
         };
-        match parameter
-            .name
-            .as_ref()
-            .and_then(|name| header.get(name.clone()))
-        {
-            Some(name) => parts.push(format!("{} {annotation}", name.trim())),
-            None => parts.push(annotation),
+        if (base + selected.start..base + selected.end) != *span {
+            continue;
         }
+        let Some(selection) = inference.selection(crate::syntax::ExprId(index)) else {
+            return Ok(None);
+        };
+        return Ok(Some(match selection {
+            crate::analysis::check::Selection::Global(path, symbol) => {
+                let Some(content) = symbol::reference(context, path, symbol, range)? else {
+                    return Ok(None);
+                };
+                content
+            }
+            crate::analysis::check::Selection::Member(member) => {
+                render::member(context, member, None, span, range)
+            }
+        }));
     }
-    Some(parts.join(", "))
-}
-
-fn result_list(header: &str, results: &[crate::syntax::Parameter]) -> Option<String> {
-    if results.is_empty() {
-        return Some(String::new());
-    }
-    if results.len() == 1 && results[0].name.is_none() {
-        return Some(render::normalize_type(
-            header.get(results[0].annotation.clone())?,
-        ));
-    }
-    Some(format!("({})", parameter_list(header, results)?))
+    Ok(None)
 }
 
 /// Resolve a selector whose navigation target inference failed by typing the

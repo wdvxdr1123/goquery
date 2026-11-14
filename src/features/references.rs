@@ -31,10 +31,6 @@ pub(super) fn execute(
                     range: SourceRange::new(&map, span),
                 })
                 .collect();
-            if rows.is_empty() {
-                // gopls serializes an absent location list as null.
-                return Ok(Value::Null);
-            }
             return Ok(Value::Array(rows.into_iter().map(location).collect()));
         }
         ReferenceTarget::Global(target_file, symbol) => {
@@ -58,6 +54,19 @@ pub(super) fn execute(
                 true,
             )
         }
+        ReferenceTarget::AnonymousField(field) => {
+            drop(source);
+            (
+                query.inline_field_references(
+                    &field.file,
+                    &field.selection,
+                    &field.name,
+                    file,
+                    include_declaration,
+                )?,
+                true,
+            )
+        }
     };
     let mut locations: Vec<_> = locations.into_iter().map(location).collect();
     locations.sort_by(|a, b| {
@@ -78,10 +87,8 @@ pub(super) fn execute(
     if dedup {
         locations.dedup();
     }
-    if locations.is_empty() {
-        // gopls serializes an absent location list as null.
-        return Ok(Value::Null);
-    }
+    // A resolved query returns an allocated list, including [] for no uses.
+    // Unavailable targets return null before this path.
     Ok(Value::Array(locations))
 }
 fn location(location: SourceLocation<'_>) -> Value {

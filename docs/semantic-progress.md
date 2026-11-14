@@ -769,6 +769,319 @@ working set is 58,269,696 bytes and sampled private bytes 48,746,496, both below
 samples do not prove a memory reduction. Report:
 `benchmarks/declaration-layout-cow-ollama-session.json`.
 
+## Literal-safe anonymous type and signature presentation
+
+Anonymous type/signature hover previously applied aggregate spacing, array-length
+and function-parameter rewrites inside struct tags. Multiline raw tags were split
+as field lines, and grouped-field expansion collapsed spaces inside tags. The
+shared normalization now uses existing lexer spans to preserve literal tokens,
+skip literal delimiters when splitting fields/parameters and matching parentheses,
+and retain the original grouped-field type/tag suffix. Comment removal and tag
+decoding also reuse the lexer and shared string decoder. No dependency or retained
+source/AST/type cache was added; the source-declaration printer remains separate
+from semantic `types.TypeString` presentation.
+
+The independent raw/interpreted tag fixture improves from 3/36 to 36/36 complete
+hover responses against pinned gopls v0.24.0 / Go 1.27.3. It covers variable types,
+function results and grouped fields with aggregate/function/array-looking text,
+separators, unmatched literal braces/parentheses, repeated spaces, multiline raw
+strings and escaped quotes. Reports and source/binary hashes:
+`benchmarks/hover-tag-literals/expanded-baseline.json` and `fixed.json`.
+The centralized stdio e2e checks literal preservation in grouped anonymous fields
+and function results; no new unit tests were added.
+
+Same-plan complete hover replays remain SDK 92/99, Hugo 51/51, Tile38 36/36,
+Ollama 58/59, typescript-go 44/44 and Prometheus 50/50. No previously matched
+row failed, and no sampled request exceeded 100 ms. The audited declaration
+fixture remains 29/29 against its unchanged full reference; the production/test
+view fixture remains 11/11 against a fresh reference (including three full token
+responses). Reports: `benchmarks/hover-literal-safe/`; corpus reference chains
+are retained in each report. These finite samples do not establish broad parity.
+
+`cargo fmt --check`, `cargo test`, `cargo clippy --all-targets -- -D warnings`
+and release build pass for `target/hover-literal-safe.exe`.
+
+The measured Ollama 1068-file open/edit/restore/close session passes the
+100,000,000-byte gate with type shapes and type definitions enabled and no
+consistency failures. Root OS peak working set is 58,703,872 bytes; sampled root
+private bytes peak at 47,947,776. Driver and Go tooling children are excluded
+and unmeasured. This independent sample does not establish a memory reduction.
+Report: `benchmarks/hover-literal-safe-ollama-session.json`.
+
+## Explicit generic function-value presentation
+
+Generic-function hover now handles fully explicit instantiations used as values,
+including package initializers and parenthesized expressions. It shares the
+native `instantiated_signature` argument-count/constraint proof and the existing
+signature-label renderer with call-site hover. Explicit-argument parsing is also
+shared with call inference. Parameter/result names stay in query-local labels;
+the compact structural signature nodes still carry only type identities.
+
+Callable-value presentation follows explicit instantiations through local and
+package variable initializers. Package variables use the existing local-binding
+presentation over one query-local declaration wrapper, then requalify types for
+the consuming file. This enables signature help through those variables and
+preserves hover names/single-result presentation. The new package traversal caps
+declarations at 16 KiB and depth at 32; labels reuse 16 KiB limits and explicit
+type arguments remain capped at 32. No persistent source/AST/type cache or new
+dependency was added. Generic hover code moved into `hover/generic.rs`, with the
+package-initializer source-span lookup shared by the hover paths.
+
+The authoritative focused comparison is
+`benchmarks/generic-function-values/final.json`, compared with `final-baseline.json`
+from the preceding literal-safe binary. All 20 complete hover responses now match
+the pinned reference, versus 0/20 before. Cases include imported/local functions,
+import aliases, parentheses, multiple type parameters, variadic and zero-input
+functions, named results, constraints, local/global values and cross-package
+consumers. All 11 explicit signature-help requests now return non-null signatures
+with matching labels, parameters and active selections. Complete signature-help
+responses still match 0/11: empty markdown documentation is omitted; the zero-input
+case also emits an empty parameters list. These metadata differences remain open
+and are retained as failures. No result was dropped or normalized to hide them.
+Earlier experimental signature reports used missing/incomplete request context
+and are superseded by these audited non-null, explicit-invocation samples.
+
+Centralized stdio e2e verifies instantiated references, local/global variable
+hover and signature-help labels. Incomplete/excess type arguments and a failing
+`~int` constraint retain unknown rather than inventing function values. The
+existing Go/types differential remains 1162 body matches, 1 unknown and no
+incorrect/rejected/unverified results; declaration scope remains 1 match and
+5 unknown. Report: `benchmarks/generic-function-values-type-oracle.json`.
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass
+for `target/generic-function-values.exe`.
+
+Same-plan hover replays remain SDK 92/99, Hugo 51/51, Tile38 36/36, Ollama 58/59,
+typescript-go 44/44 and Prometheus 50/50, with no newly failed rows. The audited
+type-declaration fixture remains 29/29, fresh package/test-view comparison 11/11,
+and literal-safe tag comparison 36/36. Fresh full semantic-token responses match
+SDK 6/6 and each external corpus 3/3 (21 distinct corpus requests total).
+Reports: `benchmarks/generic-function-values-regression/`,
+`benchmarks/generic-function-values-tokens/`,
+`benchmarks/generic-function-values-tokens-sdk6.json`, and
+`benchmarks/hover-tag-literals/generic-regression.json`.
+
+The Ollama 1068-file one-cycle open/edit/restore/close session, with type
+shapes/definitions and all 47 pinned feature consistency requests, has no
+failures. Root OS peak working set is 58,138,624 bytes and sampled private bytes
+peak at 47,845,376, below the 100,000,000-byte gate. Driver and Go tooling children
+are excluded/unmeasured. This independent sample does not prove a reduction.
+Report: `benchmarks/generic-function-values-ollama-session.json`.
+
+## Bounded token-query inference reuse
+
+Tracing `os/root_test.go` separated a repeated-work cost from parsing: one traced
+baseline spent 68.8 ms collecting format calls, including 63.8 ms finding their
+signature-derived format parameter and only 3.3 ms building scopes. Literal
+element-key resolution separately spent about 31 ms on repeated table elements.
+The existing `GOQUERY_TRACE_QUERIES` switch now reports aggregate format-call
+candidate/scope/signature costs without adding another environment option.
+
+The format collector keeps a per-active-scope memo for simple name/selector
+callees, keyed by the resolved lexical binding selection and exact source text.
+Both known arities and unknown outcomes are bounded by the existing query memo
+limits (256 entries, 16 KiB key/value payload, plus bounded map metadata).
+Shadowed bindings remain separate; evaluated receivers and other expressions
+keep the uncached inference path. Dropping the active body also drops its memo;
+no whole-file syntax or type graph is retained by this scan.
+
+Source analysis interns identical elided-literal projections by parent context
+and map-key/element direction, under the existing 4096-context/64-depth limits.
+The resolver's existing 4096-entry literal-key memo now stores type-directed
+field/expression facts for explicit and elided contexts. Map/array expression
+keys still resolve their identities at every occurrence's own lexical position.
+The temporary interning table is bounded by the same context budget; no cache
+survives the query and no dependency was added.
+
+Two settled fresh server runs per binary, alternated before the broader
+verification workloads, reduce the SDK full-token request median from 269.2 ms
+to 212.1 ms (about 21%). All four complete decoded responses match the retained
+fresh pinned gopls reference. This finite request remains above the approximately
+100 ms target; it does not establish broader latency acceptance. Evidence:
+`benchmarks/sdk-token-phases/settled-ab.json` (full responses, hashes and reference
+chain), with diagnostic phase reports alongside it. A traced optimized run
+reduces the literal-element-key phase to 4.3 ms; trace timings are diagnostic,
+not a separate controlled speed claim.
+
+The expanded centralized stdio e2e checks repeated format calls across shadowed
+bindings, returning to an outer binding, nested slice/struct literals, distinct
+map key/value projections and expression keys. The separate focused comparison
+retains 11/15 full matches with every native response unchanged from baseline:
+`benchmarks/token-reuse-fixture/baseline.json` and `final.json`. Its four existing
+residuals remain explicit: anonymous callable-field initializer keys are styled
+as variables, generic-field highlights include instantiated uses absent from
+gopls, and index/label highlights miss uses as elided map expression keys. No
+case was removed to improve the score. The prior directive-cursor fixture remains
+257/257 complete matches (`benchmarks/signature-format-fixture/token-reuse.json`).
+
+Fmt check, full Rust tests, Clippy with warnings denied and release build pass
+for `target/token-reuse.exe`.
+
+Fresh six-corpus token/highlight comparisons retain all complete matches:
+SDK tokens 6/6 and highlights 72/72; Hugo 3/3 and 36/36; Tile38 3/3 and 25/25;
+Ollama 3/3 and 36/36; typescript-go 3/3 and 36/36; Prometheus 3/3 and 36/36.
+This is 21 distinct full-token requests and 241 highlights, not counting the
+smaller overlapping SDK checks. Reports:
+`benchmarks/token-reuse-regression/`, `benchmarks/token-reuse-sdk-tokens.json`
+and `benchmarks/token-reuse-sdk-highlights.json`. The concurrent SDK root-test
+token sample took 372.7 ms; no other sampled request in these groups exceeded
+100 ms. This concurrent run is separate from the settled A/B above.
+
+The measured Ollama 1068-file one-cycle open/edit/restore/close workload, with
+type shapes/definitions and all 47 pinned feature consistency requests, has no
+failures. Root OS peak working set is 58,118,144 bytes and sampled private bytes
+peak at 47,181,824, below the 100,000,000-byte gate. Driver and Go tooling children
+are excluded/unmeasured; this independent sample is not a memory-reduction
+comparison. Report: `benchmarks/token-reuse-ollama-session.json`.
+
+## Literal expression keys and guard declaration identities
+
+Document highlight's cheap role filter incorrectly rejected every literal key
+for local and non-method global cursors, including keys of elided map/array
+literals that are ordinary expressions. Literal keys now reach the existing
+type-directed resolver. Type-switch clause matches also require a resolved local
+identity before checking the clause scope, so a same-spelling struct field label
+does not become a use of the implicit clause variable.
+
+The type-switch guard declaration itself has no go/types object. Highlight now
+keeps it in the pinned gopls nil-object group, independently of the distinct
+implicit variables declared in each case. Multiple same-spelling guard
+declarations match one another without including the case-body variables. This
+uses existing switch-binding metadata; no inference or spelling guess was added.
+
+Source analysis also marks anonymous struct initializer keys as literal field
+labels using the parsed type expression and `struct` token. Anonymous callable
+field keys now receive property tokens. A same-spelling package variable's
+highlight/rename no longer includes those labels. Map/array type syntax retains
+ordinary key-expression name roles. No dependency, retained cache or new budget
+was introduced; existing bounded analysis and resolution paths are reused.
+
+The dedicated local/global/constant/shadowed/key/field/type-switch fixture improves
+from 11/40 to 40/40 complete highlight responses against pinned gopls v0.24.0 / Go
+1.27.3. Reports: `benchmarks/literal-key-highlights/expanded-baseline.json` and
+`final.json`. Its plans cover every occurrence of the four selected identifiers,
+including both guard declarations and all case/field/key uses, without prefix
+overlap positions. The expanded mixed token/highlight/definition/rename fixture
+improves from 12/19 to 17/19 complete responses:
+`benchmarks/token-reuse-fixture/expanded-key-baseline.json` and
+`literal-key-final.json`. Remaining full-response failures are the generic-field
+highlight identity difference and anonymous field rename missing its initializer
+key and selector uses. They remain recorded rather than excluded.
+
+Centralized stdio e2e checks complete highlight ranges for parameter keys,
+same-spelling struct fields, shadowing, type-switch clauses and guard declarations;
+it also checks anonymous callable-key token style and the complete edit set for
+renaming a package variable independently of a same-spelling anonymous field.
+No new unit tests were added. Fmt check, full Rust tests, Clippy with warnings
+denied and release build pass for `target/literal-key-identities.exe`.
+
+Fresh complete-response corpus comparisons remain SDK tokens 6/6 and highlights
+72/72; Hugo 3/3 and 36/36; Tile38 3/3 and 25/25; Ollama 3/3 and 36/36;
+typescript-go 3/3 and 36/36; Prometheus 3/3 and 36/36. That is 21 distinct
+full-token and 241 highlight requests, excluding overlapping smaller SDK checks.
+Reports: `benchmarks/literal-key-regression/`,
+`benchmarks/literal-key-sdk-highlights.json` and
+`benchmarks/literal-key-sdk-tokens.json`. The SDK root-test token request remains
+slow at 215.9 ms; no other sampled request in these groups exceeds 100 ms.
+
+The same-plan hover replays retain SDK 92/99, Hugo 51/51, Tile38 36/36,
+Ollama 58/59, typescript-go 44/44 and Prometheus 50/50 without newly failed rows;
+the audited type-declaration fixture remains 29/29. Reports:
+`benchmarks/literal-key-hover-regression/` (retained complete reference chains).
+
+The Ollama 1068-file one-cycle open/edit/restore/close workload, with type
+shapes/definitions and all 47 pinned feature consistency requests, passes without
+failures. Root OS peak working set is 58,507,264 bytes and sampled private bytes
+peak at 49,082,368, below the 100,000,000-byte gate. Driver and Go tooling children
+are excluded/unmeasured; independent samples do not establish a memory change.
+Report: `benchmarks/literal-key-ollama-session.json`.
+
+## Anonymous field rename edit expansion
+
+The explicit `AnonymousField` edit branch previously returned only the field's
+declaration. It now uses a reference collector in the existing query/reference
+layer, sharing anonymous-field declaration resolution with navigation. Candidate
+files use the existing dependency/package/reference scope and identifier-domain
+filter. Each candidate is analyzed once for the selected name and keeps only
+bounded coordinate rows; the existing 4096-reference limit rejects overflow.
+Analysis/read failures abort this collection instead of returning its prefix.
+
+Resolution preserves the written type's file and byte origin through local
+copies, package values, imported selectors, function results and container
+projections. A prepared occurrence reuses source analysis's locals rather than
+reparsing its enclosing body. Expression-member spans handle call/index
+receivers. Inline indexing now includes nested struct declarations, and a key
+must actually be followed by `:` before using literal-key lookup. Elided literal
+contexts expose their existing bounded projection path so declaration queries
+do not lose provenance by rendering/reparsing a type string. Map keys and
+different same-shaped anonymous type expressions remain separate identities.
+
+Rename also rejects a direct field-name conflict in the same anonymous owner
+and applies the existing cross-package unexport check. Protocol position/error
+formatting shares the existing helper, now accepting an already-read source.
+Declaration text is dropped before scanning reference candidates. Existing
+16 KiB type/projection input, depth/projection and reference budgets remain;
+there is no new dependency or persistent source/AST/type cache.
+
+The corrected, offline-compiled 24-request fixture improves from 1/24 to 24/24
+complete responses against pinned gopls v0.24.0 / Go 1.27.3. It covers global,
+local/copy, nested/slice fields, same-package/cross-package consumers, returned
+anonymous types, mixed map/struct keys, distinct declarations, two direct
+conflicts and unexport refusal. Reports:
+`benchmarks/anonymous-field-rename/expanded-baseline.json` and `final.json`, with
+source/binary hashes and full plans. The original experimental baseline had an
+invalid nested-field type elision and is superseded; the corrected fixture passes
+offline `go test -run '^$' ./...` (compile preparation, not a corpus build).
+
+The earlier expanded mixed fixture improves from 17/19 to 18/19, including the
+previously incomplete anonymous callable-field rename:
+`benchmarks/token-reuse-fixture/anonymous-rename-final.json`. Its remaining
+generic-field highlight identity difference stays recorded. Centralized stdio
+e2e checks the full anonymous-field edit sets across two files, copy propagation,
+distinct declaration exclusion and conflict rejection. No new unit tests were
+added. Fmt check, full Rust tests, Clippy with warnings denied and release build
+pass for `target/anonymous-field-rename.exe`.
+
+Fresh corpus prepare/rename comparisons retain SDK 29/30, Hugo 15/15, Tile38
+57/57, Ollama 19/19, typescript-go 51/51 and Prometheus 55/55 complete matches.
+The SDK `runtime/mgcpacer.go:init@method.rename` residual is also present in the
+preceding binary's same-plan replay, with no newly failed row. The first
+`--limit 1` plans were empty for SDK/Tile38/typescript-go/Prometheus and are not
+acceptance evidence; the nonempty SDK/Tile38/typescript-go/Prometheus runs use
+`--limit 6`. Reports: `benchmarks/anonymous-rename-corpus/`,
+`benchmarks/anonymous-rename-{sdk,tile38,typescript,prometheus}-rename.json` and
+`benchmarks/anonymous-rename-sdk-baseline.json`.
+
+Fresh tokens/highlights remain SDK 6/6 and 72/72; Hugo 3/3 and 36/36; Tile38 3/3
+and 25/25; Ollama 3/3 and 36/36; typescript-go 3/3 and 36/36; Prometheus 3/3 and
+36/36. This is 21 distinct full-token and 241 highlight requests, excluding
+smaller overlapping SDK checks. Reports: `benchmarks/anonymous-rename-regression/`
+and `benchmarks/anonymous-rename-sdk-{tokens,highlights}.json`. Hover replays remain
+SDK 92/99, Hugo 51/51, Tile38 36/36, Ollama 58/59, typescript-go 44/44 and
+Prometheus 50/50, with no newly failed row, under
+`benchmarks/anonymous-rename-hover/`; the audited declaration fixture remains
+29/29. These finite comparisons do not prove overall semantic parity.
+
+The Ollama 1068-file one-cycle open/edit/restore/close workload, with type
+shapes/definitions and all 47 pinned feature consistency requests, passes with
+no failures. Root OS peak working set is 58,232,832 bytes and sampled private
+bytes peak at 48,508,928, below the 100,000,000-byte gate. Driver and Go tooling
+children are excluded/unmeasured. Independent samples do not establish a memory
+reduction. Report: `benchmarks/anonymous-rename-ollama-session.json`.
+
+## Anonymous-field references
+
+References and rename now share anonymous-field target resolution and the
+bounded provenance collector. Declaration filtering happens before collecting
+locations. The focused fixture matches 46/46 complete responses against pinned
+gopls, including both includeDeclaration settings, unused fields and an unused
+function (`benchmarks/anonymous-field-rename/references-commit-check.json`).
+Resolved empty reference lists return `[]`, while unavailable targets retain
+`null`; five protocol goldens intentionally update 17 empty results. Centralized
+stdio e2e covers declaration filtering and exact anonymous-field reference sets.
+Fmt check, full Rust tests and Clippy with warnings denied pass. These focused
+comparisons do not establish whole-corpus reference parity or a memory reduction.
+
 ## Remaining work
 
 - Offline module-graph enumeration now succeeds. Verify matching package scope
@@ -780,12 +1093,17 @@ samples do not prove a memory reduction. Report:
   remaining dependency-error hover. Keep all full responses.
 - Broaden format/directive highlight coverage beyond the now-matched finite
   fixture while preserving parser/association budgets.
+- Broaden anonymous-field rename coverage beyond the now-matched finite
+  provenance fixture; investigate generic-field highlight identity against the
+  pinned reference. The expanded token-reuse fixture retains that difference.
 - Complete declaration-presentation coverage beyond the supported inline path;
   preserve complex multiline layouts and literals while extending it.
 - Investigate native arena test-view identity and general constant array-length
   expressions, preserving bounded inference.
 - Expand native generic-call hover coverage beyond the now-matched focused
-  fixtures, including generic function values and unsupported type projections.
+  fixtures, including contextual/partial function-value instantiation and
+  unsupported type projections. Complete signature-help documentation and
+  empty-parameter wire parity.
 - Extend syntax/type/LSP differential coverage across all existing projects;
   these small samples do not establish overall parity.
 - Run the measured Ollama memory gate for any changes affecting allocations or

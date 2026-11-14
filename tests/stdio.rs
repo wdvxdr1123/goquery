@@ -3311,6 +3311,7 @@ fn watched_file_changes_refresh_cross_package_state() {
             concat!(
                 "package outer\nfunc Wrap[A, B any](f func() (A, B)) func() (A, B) { return f }\nvar Wrapped = Wrap(func() (int, string) { return 0, \"\" })\nvar Explicit = Wrap[int, string](func() (int, string) { return 0, \"\" })\n",
                 "type T struct{}\nfunc Identity[T any](value T) T { return value }\n",
+                "func Constrained[T ~int](value T) T { return value }\n",
                 "func Pair[A, B any](a A, b B) (first A, second B) { return a, b }\n",
                 "func Many[T any](values ...T) []T { return values }\n",
                 "func Shape[T any](value T) struct { T T `label:\"T\"` } { return struct { T T `label:\"T\"` }{value} }\n",
@@ -3390,10 +3391,10 @@ fn watched_file_changes_refresh_cross_package_state() {
         "return formal resolved to the package-level T: {reply}"
     );
     let calls = concat!(
-        "package client\nimport \"example.test/outer\"\nfunc genericCalls() {\n",
+        "package client\nimport \"example.test/outer\"\nvar GlobalIdentity = outer.Identity[int]\nfunc genericCalls() {\n",
         "_ = outer.Identity[int](1)\n_ = outer.Identity(1)\n",
         "_, _ = outer.Pair[int](1, \"value\")\n_ = outer.Many([]int{1}...)\n",
-        "_ = outer.Shape(1)\n}\n",
+        "_ = outer.Shape(1)\ncopied := outer.Identity[string]\n_ = copied(\"value\")\n_ = GlobalIdentity(1)\n}\n",
     );
     let calls_uri = url::Url::from_file_path(nested_root.join("client/generic.go")).unwrap();
     nested_server.notify(
@@ -3414,6 +3415,10 @@ fn watched_file_changes_refresh_cross_package_state() {
             "Shape(",
             "func outer.Shape(value int) struct{T int \"label:\\\"T\\\"\"}",
         ),
+        (
+            "Identity[string]",
+            "func outer.Identity(value string) string // func[T any](value T) T",
+        ),
     ] {
         let reply = nested_server.request("textDocument/hover", serde_json::json!({
             "textDocument": {"uri": calls_uri}, "position": position(calls, calls.find(needle).unwrap()),
@@ -3425,6 +3430,62 @@ fn watched_file_changes_refresh_cross_package_state() {
             "instantiated signature lost native types or declaration names: {reply}"
         );
     }
+    for (needle, expected) in [
+        ("copied(", "var copied func(value string) string"),
+        ("GlobalIdentity(", "var GlobalIdentity func(value int) int"),
+    ] {
+        let start = calls.find(needle).unwrap();
+        let reply = nested_server.request(
+            "textDocument/hover",
+            serde_json::json!({
+                "textDocument": {"uri": calls_uri}, "position": position(calls, start),
+            }),
+        );
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "function value lost its instantiated signature: {reply}"
+        );
+        let reply = nested_server.request("textDocument/signatureHelp", serde_json::json!({
+            "textDocument": {"uri": calls_uri}, "position": position(calls, start + needle.len()),
+            "context": {"triggerKind": 1, "isRetrigger": false},
+        }));
+        let expected = expected
+            .strip_prefix("var ")
+            .unwrap()
+            .replace(" func(", "(");
+        assert_eq!(
+            reply["result"]["signatures"][0]["label"], expected,
+            "function value was not callable through its original declaration: {reply}"
+        );
+    }
+    let invalid_values = concat!(
+        "package client\nimport \"example.test/outer\"\nfunc invalidValues() {\n",
+        "missing := outer.Pair[int]\nextra := outer.Identity[int, string]\n",
+        "constraint := outer.Constrained[string]\n_, _, _ = missing, extra, constraint\n}\n",
+    );
+    let invalid_values_uri =
+        url::Url::from_file_path(nested_root.join("client/invalid_values.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": invalid_values_uri, "languageId": "go", "version": 1, "text": invalid_values,
+        }}),
+    );
+    for name in ["missing", "extra", "constraint"] {
+        let reply = nested_server.request("textDocument/hover", serde_json::json!({
+            "textDocument": {"uri": invalid_values_uri}, "position": position(invalid_values, invalid_values.rfind(name).unwrap()),
+        }));
+        assert!(
+            reply["result"].is_null(),
+            "invalid type argument arity invented a function type: {reply}"
+        );
+    }
+    nested_server.notify(
+        "textDocument/didClose",
+        serde_json::json!({"textDocument": {"uri": invalid_values_uri}}),
+    );
     let format_source = concat!(
         "package client\nfunc emit(prefix, format string, args ...any) {}\n",
         "func misleadingf(format string, value any) {}\ntype Named func(string, ...any)\n",
@@ -3432,7 +3493,14 @@ fn watched_file_changes_refresh_cross_package_state() {
         "emit(\"%d prefix\", \"%d emit\", value)\nmisleadingf(\"%d ordinary\", value)\n",
         "named(\"%d named\", value)\ndirect(\"%d direct\", value)\ndirect(\"\\x25d escaped\", value)\ndirect(\"\\u0025d unicode\", value)\n",
         "func(format string, args ...any) {}(\"%d literal\", value)\n",
+        "{ direct := func(format string, value any) {}; direct(\"%d shadow ordinary\", value); direct(\"%d shadow repeat\", value) }\n",
+        "direct(\"%d resumed\", value)\n",
         "emit(\"prefix\", \"%[2]*.[1]*[3]f dynamic\", value, value, 1.5)\n}\n",
+        "type LiteralRow struct{ RowField int }\ntype LiteralKey struct{ KeyField int }\n",
+        "func tables(index int) {\n_ = [][]LiteralRow{{{RowField: index}, {RowField: index}}, {{RowField: 1}}}\n",
+        "_ = map[LiteralKey][]LiteralRow{{KeyField: 1}: {{RowField: 2}}, {KeyField: 3}: {{RowField: 4}}}\n",
+        "_ = []map[int]int{{index: 1}, {index: 2}}\n}\n",
+        "func anonymousKeys() { _ = struct{ RowField func(int) int }{RowField: func(value int) int { return value }} }\n",
     );
     let format_uri = url::Url::from_file_path(nested_root.join("client/format.go")).unwrap();
     nested_server.notify(
@@ -3451,6 +3519,7 @@ fn watched_file_changes_refresh_cross_package_state() {
     let mut line = 0;
     let mut character = 0;
     let mut starts = Vec::new();
+    let mut styles = Vec::new();
     for token in data.chunks_exact(5) {
         let delta = token[0].as_u64().unwrap();
         line += delta;
@@ -3459,7 +3528,12 @@ fn watched_file_changes_refresh_cross_package_state() {
         } else {
             token[1].as_u64().unwrap()
         };
-        starts.push(serde_json::json!({"line": line, "character": character}));
+        let start = serde_json::json!({"line": line, "character": character});
+        styles.push((
+            start.clone(),
+            semantic_types[token[3].as_u64().unwrap() as usize].clone(),
+        ));
+        starts.push(start);
     }
     for (literal, split) in [
         ("%d prefix", false),
@@ -3470,6 +3544,9 @@ fn watched_file_changes_refresh_cross_package_state() {
         ("\\x25d escaped", true),
         ("\\u0025d unicode", true),
         ("%d literal", true),
+        ("%d shadow ordinary", false),
+        ("%d shadow repeat", false),
+        ("%d resumed", true),
     ] {
         let at = position(format_source, format_source.find(literal).unwrap());
         assert_eq!(
@@ -3478,10 +3555,26 @@ fn watched_file_changes_refresh_cross_package_state() {
             "format parameter was guessed for {literal}: {reply}"
         );
     }
+    for (needle, kind) in [
+        ("RowField:", "property"),
+        ("KeyField:", "property"),
+        ("index:", "parameter"),
+    ] {
+        for (offset, _) in format_source.match_indices(needle) {
+            let at = position(format_source, offset);
+            assert!(
+                styles
+                    .iter()
+                    .any(|(start, style)| *start == at && style == kind),
+                "elided literal mixed field and expression contexts for {needle}: {reply}"
+            );
+        }
+    }
     for (literal, width) in [
         ("%d emit", 2),
         ("%d direct", 2),
         ("%d literal", 2),
+        ("%d resumed", 2),
         ("\\x25d escaped", 5),
         ("\\u0025d unicode", 7),
     ] {
@@ -3531,11 +3624,273 @@ fn watched_file_changes_refresh_cross_package_state() {
             "indexed width or argument end boundary was lost: {reply}"
         );
     }
+    let key_source = concat!(
+        "package client\nvar shared = 1\ntype KeyRow struct{ key int }\n",
+        "func keyTables(key int) {\n_ = []map[int]int{{key: shared}, {key: shared}}\n",
+        "_ = []KeyRow{{key: key}}\n{ key := 2; _ = []map[int]int{{key: 1}}; _ = []KeyRow{{key: key}} }\n",
+        "_ = struct{ shared int }{shared: shared}\n}\n",
+        "func switchKeys(input any) {\nswitch key := input.(type) {\ncase int:\n",
+        "_ = []map[any]int{{key: 1}, {key: 2}}\n_ = []KeyRow{{key: key}}\n_ = key\n",
+        "case string:\n_ = []map[any]int{{key: 3}}\n_ = key\n}\n}\n",
+        "func another(input any) { switch key := input.(type) { case int: _ = key } }\n",
+    );
+    let key_uri = url::Url::from_file_path(nested_root.join("client/keys.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": key_uri, "languageId": "go", "version": 1, "text": key_source,
+        }}),
+    );
+    let outer = key_source.find("keyTables(key").unwrap() + "keyTables(".len();
+    let first_key = key_source.find("{{key: shared}").unwrap() + 2;
+    let second_key = key_source.find("{key: shared}}").unwrap() + 1;
+    let field_value = key_source.find("{{key: key}}").unwrap() + "{{key: ".len();
+    let first_case = key_source.find("{{key: 1}, {key: 2}}").unwrap() + 2;
+    let second_case_key = key_source.find("{key: 2}}").unwrap() + 1;
+    let case_value =
+        first_case + key_source[first_case..].find("{{key: key}}").unwrap() + "{{key: ".len();
+    let case_read = case_value + key_source[case_value..].find("_ = key").unwrap() + 4;
+    let guards: Vec<_> = key_source
+        .match_indices("key := input.(type)")
+        .map(|(offset, _)| (offset, 3))
+        .collect();
+    for (cursor, expected) in [
+        (
+            outer,
+            vec![
+                (outer, 1),
+                (first_key, 2),
+                (second_key, 2),
+                (field_value, 2),
+            ],
+        ),
+        (
+            first_key,
+            vec![
+                (outer, 1),
+                (first_key, 2),
+                (second_key, 2),
+                (field_value, 2),
+            ],
+        ),
+        (
+            first_case,
+            vec![
+                (first_case, 2),
+                (second_case_key, 2),
+                (case_value, 2),
+                (case_read, 2),
+            ],
+        ),
+        (guards[0].0, guards.clone()),
+    ] {
+        let expected: Vec<_> = expected.into_iter().map(|(start, kind)| serde_json::json!({
+            "kind": kind, "range": {"start": position(key_source, start), "end": position(key_source, start + 3)},
+        })).collect();
+        let reply = nested_server.request(
+            "textDocument/documentHighlight",
+            serde_json::json!({
+                "textDocument": {"uri": key_uri}, "position": position(key_source, cursor),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            serde_json::json!(expected),
+            "literal keys confused variables, fields or switch-clause identities: {reply}"
+        );
+    }
+    let shared = key_source.find("var shared").unwrap() + 4;
+    let reply = nested_server.request("textDocument/rename", serde_json::json!({
+        "textDocument": {"uri": key_uri}, "position": position(key_source, shared), "newName": "renamedShared",
+    }));
+    let changes = reply["result"]["documentChanges"]
+        .as_array()
+        .expect("shared rename");
+    assert_eq!(
+        changes.len(),
+        1,
+        "global rename touched unrelated documents: {reply}"
+    );
+    assert_eq!(changes[0]["textDocument"]["uri"], key_uri.as_str());
+    let mut edits = changes[0]["edits"].as_array().unwrap().clone();
+    let mut offsets = vec![shared];
+    offsets.extend(
+        key_source
+            .match_indices("key: shared")
+            .map(|(offset, _)| offset + 5),
+    );
+    offsets.push(key_source.find("{shared: shared}").unwrap() + "{shared: ".len());
+    let mut expected: Vec<_> = offsets.into_iter().map(|start| serde_json::json!({
+        "newText": "renamedShared", "range": {"start": position(key_source, start), "end": position(key_source, start + 6)},
+    })).collect();
+    edits.sort_by_key(Value::to_string);
+    expected.sort_by_key(Value::to_string);
+    assert_eq!(
+        edits, expected,
+        "anonymous field labels were renamed as package variables: {reply}"
+    );
+    let anonymous_source = concat!(
+        "package client\nvar Anonymous = struct{ Field int; Other int }{Field: 1}\n",
+        "func anonymousUse() {\nvalue := struct{ Field int }{Field: 2}\ncopied := value\n_ = copied.Field\n_ = Anonymous.Field\n}\n",
+    );
+    let anonymous_other = "package client\nfunc elsewhere() { _ = Anonymous.Field }\n";
+    let anonymous_uri = url::Url::from_file_path(nested_root.join("client/anonymous.go")).unwrap();
+    let anonymous_other_uri =
+        url::Url::from_file_path(nested_root.join("client/anonymous_other.go")).unwrap();
+    for (uri, text) in [
+        (&anonymous_uri, anonymous_source),
+        (&anonymous_other_uri, anonymous_other),
+    ] {
+        nested_server.notify(
+            "textDocument/didOpen",
+            serde_json::json!({"textDocument": {
+                "uri": uri, "languageId": "go", "version": 1, "text": text,
+            }}),
+        );
+    }
+    let global_field = anonymous_source.find("struct{ Field").unwrap() + "struct{ ".len();
+    let local_field =
+        anonymous_source.find("value := struct{ Field").unwrap() + "value := struct{ ".len();
+    let copied = anonymous_source.find("copied.Field").unwrap() + "copied.".len();
+    for (cursor, expected) in [
+        (
+            global_field,
+            vec![
+                (&anonymous_uri, anonymous_source, global_field),
+                (
+                    &anonymous_uri,
+                    anonymous_source,
+                    anonymous_source.find("{Field: 1}").unwrap() + 1,
+                ),
+                (
+                    &anonymous_uri,
+                    anonymous_source,
+                    anonymous_source.find("Anonymous.Field").unwrap() + "Anonymous.".len(),
+                ),
+                (
+                    &anonymous_other_uri,
+                    anonymous_other,
+                    anonymous_other.find("Anonymous.Field").unwrap() + "Anonymous.".len(),
+                ),
+            ],
+        ),
+        (
+            copied,
+            vec![
+                (&anonymous_uri, anonymous_source, local_field),
+                (
+                    &anonymous_uri,
+                    anonymous_source,
+                    anonymous_source.find("{Field: 2}").unwrap() + 1,
+                ),
+                (&anonymous_uri, anonymous_source, copied),
+            ],
+        ),
+    ] {
+        let declaration = if cursor == global_field {
+            global_field
+        } else {
+            local_field
+        };
+        for include_declaration in [false, true] {
+            let mut expected_locations: Vec<_> = expected
+                .iter()
+                .filter(|(uri, _, start)| {
+                    include_declaration || **uri != anonymous_uri || *start != declaration
+                })
+                .map(|(uri, source, start)| {
+                    serde_json::json!({"uri": uri, "range": {
+                        "start": position(source, *start), "end": position(source, start + 5),
+                    }})
+                })
+                .collect();
+            let reply = nested_server.request("textDocument/references", serde_json::json!({
+                "textDocument": {"uri": anonymous_uri}, "position": position(anonymous_source, cursor),
+                "context": {"includeDeclaration": include_declaration},
+            }));
+            let mut actual = reply["result"]
+                .as_array()
+                .expect("anonymous-field references")
+                .clone();
+            actual.sort_by_key(Value::to_string);
+            expected_locations.sort_by_key(Value::to_string);
+            assert_eq!(
+                actual, expected_locations,
+                "references and rename disagreed on field identity: {reply}"
+            );
+        }
+        let reply = nested_server.request("textDocument/rename", serde_json::json!({
+            "textDocument": {"uri": anonymous_uri}, "position": position(anonymous_source, cursor), "newName": "RenamedField",
+        }));
+        let changes = reply["result"]["documentChanges"]
+            .as_array()
+            .expect("anonymous-field rename");
+        let mut edits: Vec<_> = changes
+            .iter()
+            .flat_map(|change| {
+                change["edits"].as_array().unwrap().iter().map(|edit| {
+                    serde_json::json!({
+                        "uri": change["textDocument"]["uri"], "edit": edit,
+                    })
+                })
+            })
+            .collect();
+        let mut expected: Vec<_> = expected
+            .into_iter()
+            .map(|(uri, source, start)| {
+                serde_json::json!({
+                    "uri": uri, "edit": {"newText": "RenamedField", "range": {
+                        "start": position(source, start), "end": position(source, start + 5),
+                    }},
+                })
+            })
+            .collect();
+        edits.sort_by_key(Value::to_string);
+        expected.sort_by_key(Value::to_string);
+        assert_eq!(
+            edits, expected,
+            "anonymous fields merged distinct declarations or lost references: {reply}"
+        );
+    }
+    let other_field = anonymous_source.find("Other int").unwrap();
+    for include_declaration in [false, true] {
+        let reply = nested_server.request("textDocument/references", serde_json::json!({
+            "textDocument": {"uri": anonymous_uri}, "position": position(anonymous_source, other_field),
+            "context": {"includeDeclaration": include_declaration},
+        }));
+        let expected = if include_declaration {
+            serde_json::json!([{"uri": anonymous_uri, "range": {
+                "start": position(anonymous_source, other_field), "end": position(anonymous_source, other_field + 5),
+            }}])
+        } else {
+            serde_json::json!([])
+        };
+        assert_eq!(
+            reply["result"], expected,
+            "unused field did not preserve declaration/empty-list semantics: {reply}"
+        );
+    }
+    let reply = nested_server.request("textDocument/rename", serde_json::json!({
+        "textDocument": {"uri": anonymous_uri}, "position": position(anonymous_source, global_field), "newName": "Other",
+    }));
+    assert_eq!(
+        reply["error"]["code"], 0,
+        "field conflict produced edits: {reply}"
+    );
+    assert!(
+        reply["error"]["message"]
+            .as_str()
+            .is_some_and(|text| text.contains("would conflict with this field")),
+        "field conflict was not identified: {reply}"
+    );
     let declarations = concat!(
         "package client\ntype InlineData struct{ LongName int; X string }\n",
         "type RawTag struct{ Value string `first\n// keep literal text\n\nlast` }\n",
         "type AliasData = InlineData\nvar _ InlineData\nvar _ RawTag\nvar _ AliasData\n",
         "func localDeclaration() { type LocalRaw struct{ Value string `first\n// keep local text\nlast` }; var _ LocalRaw }\n",
+        "var LiteralValue struct { A, B string `struct { keep; } [0x10] func(a, b int)\ntwo  spaces` }\n",
+        "func LiteralResult() struct { S string `interface { keep; }` } { panic(\"unused\") }\n",
+        "var _ = LiteralValue\nvar _ = LiteralResult\n",
     );
     let declarations_uri =
         url::Url::from_file_path(nested_root.join("client/declarations.go")).unwrap();
@@ -3561,6 +3916,14 @@ fn watched_file_changes_refresh_cross_package_state() {
         (
             "LocalRaw",
             "type LocalRaw struct {\n\tValue string `first\n// keep local text\nlast`\n}",
+        ),
+        (
+            "LiteralValue",
+            r#"var LiteralValue struct{A string "struct { keep; } [0x10] func(a, b int)\ntwo  spaces"; B string "struct { keep; } [0x10] func(a, b int)\ntwo  spaces"}"#,
+        ),
+        (
+            "LiteralResult",
+            r#"func LiteralResult() struct{S string "interface { keep; }"}"#,
         ),
     ] {
         let reply = nested_server.request("textDocument/hover", serde_json::json!({

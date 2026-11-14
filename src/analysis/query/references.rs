@@ -1,6 +1,7 @@
 //! Cross-file reference checking keeps only bounded semantic location rows.
 use super::locations;
 use super::{Context, SourceLocation, SourceRange};
+use crate::analysis::check::navigation::anonymous;
 use crate::analysis::member::MemberDeclaration;
 use crate::analysis::resolve::{self, NameIndex};
 use crate::analysis::scope::{Identity, Resolver};
@@ -12,6 +13,67 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 impl<View> Context<'_, View> {
+    /// Anonymous fields keep declaration-site identity across copies and files.
+    pub(crate) fn inline_field_references<'query>(
+        &'query self,
+        target_file: &Path,
+        selection: &std::ops::Range<usize>,
+        name: &str,
+        origin: &Path,
+        include_declaration: bool,
+    ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
+        let workspace = self.workspace();
+        let Some(target_stub) = workspace.files.get(target_file) else {
+            return Ok(Vec::new());
+        };
+        let mut candidates = if resolve::exported(name) {
+            workspace.dependent_candidates(target_file)
+        } else {
+            workspace
+                .files
+                .iter()
+                .filter(|(file, stub)| {
+                    file.parent() == target_file.parent() && stub.package == target_stub.package
+                })
+                .collect()
+        };
+        let scope = workspace.reference_scope(origin);
+        candidates.retain(|(file, _)| scope.contains(file, target_file));
+        let fingerprint = Fingerprint::new(name.as_bytes());
+        let mut locations = Vec::new();
+        for (file, stub) in candidates {
+            if !stub.identifiers.may_contain_fingerprint(fingerprint) {
+                continue;
+            }
+            let source = workspace.source(file).ok_or_else(|| {
+                (
+                    crate::error::REQUEST_FAILED,
+                    "unable to read anonymous-field reference candidate".to_owned(),
+                )
+            })?;
+            let analysis = SourceAnalysis::for_name(&source, stub, name)?;
+            let inline = anonymous::InlineIndex::new(&source);
+            let map = SourceMap::new(&source);
+            for occurrence in &analysis.names {
+                if source[occurrence.span.clone()] != *name {
+                    continue;
+                }
+                if !include_declaration && file == target_file && occurrence.span == *selection {
+                    continue;
+                }
+                let field = anonymous::occurrence_field(
+                    workspace, file, &source, &analysis, occurrence, &inline,
+                );
+                if field
+                    .is_some_and(|field| field.file == target_file && field.selection == *selection)
+                {
+                    locations::push(&mut locations, file, &map, occurrence.span.clone())?;
+                }
+            }
+        }
+        Ok(locations)
+    }
+
     pub(crate) fn global_references<'query>(
         &'query self,
         file: &Path,

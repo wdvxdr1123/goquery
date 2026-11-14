@@ -24,6 +24,12 @@ type Symbols<'a> = HashMap<&'a str, (&'a PathBuf, &'a Symbol)>;
 type SelectorKindMap = HashMap<(usize, String), Option<ObjectKind>>;
 type RangeKey = (usize, usize, usize, usize);
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum LiteralContext {
+    Explicit(usize),
+    Element(usize),
+}
+
 /// Bounded by the packages and receiver types actually used by one file query.
 pub(crate) struct Resolver<'a> {
     workspace: &'a Workspace,
@@ -59,9 +65,9 @@ pub(crate) struct Resolver<'a> {
     /// Native selector kinds for unresolved selectors, shared with the
     /// classification fallback under the same key.
     selector_kinds: RefCell<SelectorKindMap>,
-    /// Explicit literal-key field identities keyed by the written type span and
-    /// field name; table literals repeat the same key against one type syntax.
-    literal_keys: RefCell<HashMap<(usize, String), Option<Identity<'a>>>>,
+    /// Type-directed field/expression facts, shared by sibling elided literals.
+    /// Expression-key identities still resolve at each occurrence's own scope.
+    literal_keys: RefCell<HashMap<(LiteralContext, String), members::LiteralKey<'a>>>,
     /// Range/call-chain native projection shared by every occurrence in the
     /// request; other bindings keep the existing resolver paths.
     native_types: NativeTypeCache,
@@ -474,27 +480,40 @@ impl<'a> Resolver<'a> {
                 .field_declaration(*owner, spelling)
                 .map(Identity::Member),
             Role::LiteralKey(_) | Role::LiteralElementKey(_) => {
-                let cache_key = match &name.role {
-                    Role::LiteralKey(ty) => Some((ty.start, spelling.to_owned())),
-                    _ => None,
-                };
-                if let Some(key) = &cache_key
-                    && let Some(value) = self.literal_keys.borrow().get(key)
-                {
-                    return value.clone();
-                }
-                let literal = match &name.role {
-                    Role::LiteralKey(ty) => {
-                        self.literal_key(source, &analysis.locals, ty, spelling)
-                    }
-                    Role::LiteralElementKey(id) => analysis
-                        .literal_element_type(self.workspace, self.file, source, *id)
-                        .map_or(members::LiteralKey::Unknown, |(ty, offset)| {
-                            self.literal_key_type(source, &analysis.locals, &ty, offset, spelling)
-                        }),
+                let context = match &name.role {
+                    Role::LiteralKey(ty) => LiteralContext::Explicit(ty.start),
+                    Role::LiteralElementKey(id) => LiteralContext::Element(*id),
                     _ => unreachable!("literal key role"),
                 };
-                let identity = match literal {
+                let key = (context, spelling.to_owned());
+                let cached = self.literal_keys.borrow().get(&key).copied();
+                let literal = match cached {
+                    Some(literal) => literal,
+                    None => {
+                        let literal = match &name.role {
+                            Role::LiteralKey(ty) => {
+                                self.literal_key(source, &analysis.locals, ty, spelling)
+                            }
+                            Role::LiteralElementKey(id) => analysis
+                                .literal_element_type(self.workspace, self.file, source, *id)
+                                .map_or(members::LiteralKey::Unknown, |(ty, offset)| {
+                                    self.literal_key_type(
+                                        source,
+                                        &analysis.locals,
+                                        &ty,
+                                        offset,
+                                        spelling,
+                                    )
+                                }),
+                            _ => unreachable!("literal key role"),
+                        };
+                        if self.literal_keys.borrow().len() < 4_096 {
+                            self.literal_keys.borrow_mut().insert(key, literal);
+                        }
+                        literal
+                    }
+                };
+                match literal {
                     members::LiteralKey::Field(member) => Some(Identity::Member(member)),
                     members::LiteralKey::Expression => {
                         if let Some(binding) = analysis.locals.definition_at(&name.span, spelling) {
@@ -505,13 +524,7 @@ impl<'a> Resolver<'a> {
                         }
                     }
                     members::LiteralKey::Unknown => None,
-                };
-                if let Some(key) = cache_key
-                    && self.literal_keys.borrow().len() < 4_096
-                {
-                    self.literal_keys.borrow_mut().insert(key, identity.clone());
                 }
-                identity
             }
             Role::Namespace
             | Role::Field

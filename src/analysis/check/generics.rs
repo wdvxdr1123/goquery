@@ -38,14 +38,13 @@ impl<'workspace> Inference<'workspace, '_> {
         )
     }
 
-    /// Hover and result inference share native unification, constraint proofs
-    /// and assignment checks; signature labels only add declaration names.
-    pub(crate) fn instantiated_call_signature(
+    /// Presentation reuses native instantiation proofs; names stay out of the
+    /// compact structural type arena. Calls additionally infer missing arguments.
+    pub(crate) fn instantiated_function_signature(
         &self,
         declaration: (&Path, &str, &Signature),
         function: ExprId,
-        arguments: &[ExprId],
-        variadic: bool,
+        call: Option<(&[ExprId], bool)>,
     ) -> Option<CallableSignature> {
         let (origin, header, signature) = declaration;
         let (resolved, symbol) = self.callee(function)?;
@@ -56,17 +55,26 @@ impl<'workspace> Inference<'workspace, '_> {
             return None;
         }
         let mut arena = TypeArena::new(self.workspace);
-        let (actuals, explicit) =
-            self.generic_call_operands(&mut arena, function, arguments, variadic)?;
-        let inferred = arena.infer_call_arguments(
-            origin,
-            header,
-            signature,
-            &actuals,
-            &explicit,
-            self.workspace.integer_bits()?,
-            variadic,
-        )?;
+        let inferred = match call {
+            Some((arguments, variadic)) => {
+                let (actuals, explicit) =
+                    self.generic_call_operands(&mut arena, function, arguments, variadic)?;
+                arena.infer_call_arguments(
+                    origin,
+                    header,
+                    signature,
+                    &actuals,
+                    &explicit,
+                    self.workspace.integer_bits()?,
+                    variadic,
+                )?
+            }
+            None => {
+                let explicit = self.explicit_type_arguments(&mut arena, function)?;
+                arena.instantiated_signature(origin, header, signature, &explicit)?;
+                explicit
+            }
+        };
         let environment: Vec<_> = signature
             .type_parameters
             .iter()
@@ -82,6 +90,32 @@ impl<'workspace> Inference<'workspace, '_> {
         .map(|(signature, _)| signature)
     }
 
+    /// Fully explicit function values have no call operands to infer from.
+    pub(crate) fn explicit_function_signature(
+        &self,
+        function: ExprId,
+    ) -> Option<(CallableSignature, bool)> {
+        let (origin, symbol) = self.callee(function)?;
+        if !symbol.is_function() || !symbol.generic {
+            return None;
+        }
+        let declaration = symbol.declaration()?;
+        let end = symbol.body().map_or(declaration.end, |body| body.start);
+        if end.checked_sub(declaration.start)? > 16 * 1024 {
+            return None;
+        }
+        let header = self
+            .workspace
+            .source_slice(origin, declaration.start..end)?;
+        let signature = crate::syntax::parse_signature(&header);
+        let label =
+            self.instantiated_function_signature((origin, &header, &signature), function, None)?;
+        Some((
+            label,
+            signature.parameters.last().is_some_and(|p| p.variadic),
+        ))
+    }
+
     fn generic_call_operands(
         &self,
         arena: &mut TypeArena<'_>,
@@ -89,20 +123,7 @@ impl<'workspace> Inference<'workspace, '_> {
         arguments: &[ExprId],
         variadic: bool,
     ) -> Option<(Vec<Operand>, Vec<TypeId>)> {
-        let mut explicit = Vec::new();
-        if let ExprKind::Index { arguments, .. } = &self.unparenthesized(function).kind {
-            if arguments.len() > 32 {
-                return None;
-            }
-            for argument in arguments {
-                let span = &self.expressions[argument.0].span;
-                let annotation = self.text(span);
-                if !self.concrete_spelling(annotation, self.base + span.start) {
-                    return None;
-                }
-                explicit.push(arena.parse(self.file, annotation)?);
-            }
-        }
+        let explicit = self.explicit_type_arguments(arena, function)?;
         let actuals = self.next().call_operands(arena, arguments, variadic)?;
         for (index, operand) in actuals.iter().enumerate() {
             let argument = arguments.get(index).or_else(|| arguments.first())?;
@@ -117,6 +138,28 @@ impl<'workspace> Inference<'workspace, '_> {
             }
         }
         Some((actuals, explicit))
+    }
+
+    fn explicit_type_arguments(
+        &self,
+        arena: &mut TypeArena<'_>,
+        function: ExprId,
+    ) -> Option<Vec<TypeId>> {
+        let mut explicit = Vec::new();
+        if let ExprKind::Index { arguments, .. } = &self.unparenthesized(function).kind {
+            if arguments.len() > 32 {
+                return None;
+            }
+            for argument in arguments {
+                let span = &self.expressions[argument.0].span;
+                let annotation = self.text(span);
+                if !self.concrete_spelling(annotation, self.base + span.start) {
+                    return None;
+                }
+                explicit.push(arena.parse(self.file, annotation)?);
+            }
+        }
+        Some(explicit)
     }
 
     pub(super) fn concrete_spelling(&self, text: &str, offset: usize) -> bool {
