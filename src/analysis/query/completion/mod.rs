@@ -1,11 +1,22 @@
 //! Completion semantic facts remain independent of snippets and wire items.
 mod presentation;
+mod signatures;
+mod type_position;
 use super::Context;
+pub(crate) use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
+pub(crate) use crate::analysis::query::signatures::label::{CallableSignature, ParameterLabel};
 use crate::analysis::scope::CursorScope;
+pub(crate) use crate::analysis::scope::{Binding, Locals};
 use crate::syntax::{Expr, ExprId, ExprKind, Lexer, StmtKind, TokenKind};
 use crate::text::SourceMap;
+pub(crate) use signatures::{PreparedMethods, SignatureSource};
+pub(in crate::analysis::query) use type_position::type_position;
 
-use crate::analysis::check::callable_signature::CallableSignature;
+#[derive(Clone)]
+pub(crate) struct CompletionReceiver<'a> {
+    pub(crate) scope: &'a std::path::Path,
+    pub(crate) text: String,
+}
 
 pub(crate) enum Kind {
     Struct,
@@ -19,7 +30,26 @@ pub(crate) struct Presentation {
     pub(crate) kind: Option<Kind>,
 }
 
-impl Context<'_> {
+impl<'a> Context<'a> {
+    pub(crate) fn trace_queries(&self) -> bool {
+        self.workspace.trace.queries
+    }
+
+    pub(crate) fn imported_symbols(
+        &self,
+        alias: &str,
+    ) -> impl Iterator<Item = (&'a std::path::PathBuf, &'a crate::index::IndexedSymbol)> + use<'a>
+    {
+        crate::analysis::resolve::imported_symbol_iter(self.workspace, self.file(), alias)
+    }
+
+    pub(crate) fn file_symbols_in_scope(
+        &self,
+    ) -> impl Iterator<Item = (&'a std::path::PathBuf, &'a crate::index::IndexedSymbol)> + use<'a>
+    {
+        crate::analysis::resolve::file_symbol_iter(self.workspace, self.file())
+    }
+
     pub(crate) fn function_value_context(&self, offset: usize, scope: &CursorScope) -> bool {
         let file = self.file();
         let source = self.source();
@@ -44,8 +74,13 @@ impl Context<'_> {
                     let assignment = symbol.end + assignment.span.start;
                     offset > assignment
                         && self
-                            .workspace
-                            .callable_type(file, &source[symbol.end..assignment])
+                            .with_sema(|sema| {
+                                let arena = sema.arena_mut();
+                                let ty =
+                                    arena.parse(file, source[symbol.end..assignment].trim())?;
+                                arena.is_callable(ty)
+                            })
+                            .unwrap_or(false)
                 });
         };
         for statement in &body.tree.statements {
@@ -60,12 +95,27 @@ impl Context<'_> {
                     values,
                     ..
                 } if direct_value(&body.tree.expressions, values, body.base, offset) => {
-                    if self.workspace.callable_annotation(
-                        file,
-                        source,
-                        &scope.locals,
-                        body.base + annotation.start..body.base + annotation.end,
-                    ) {
+                    let ann_slice =
+                        source[body.base + annotation.start..body.base + annotation.end].trim();
+                    let is_callable = self
+                        .with_sema(|sema| {
+                            if let (Ok(off), Ok(ann_pos)) = (
+                                u32::try_from(offset),
+                                u32::try_from(body.base + annotation.start),
+                            ) && let Some((region, arena)) =
+                                sema.region_and_arena_at(file, source, off, Some(offset))
+                            {
+                                let env =
+                                    super::signatures::visible_local_env(region, source, ann_pos);
+                                let ty = arena.parse_in(file, ann_slice, &env)?;
+                                return arena.is_callable(ty);
+                            }
+                            let arena = sema.arena_mut();
+                            let ty = arena.parse(file, ann_slice)?;
+                            arena.is_callable(ty)
+                        })
+                        .unwrap_or(false);
+                    if is_callable {
                         return true;
                     }
                 }
@@ -85,8 +135,11 @@ impl Context<'_> {
                                 ..body.base + expression.span.end],
                         )
                         && self
-                            .workspace
-                            .binding_signature(file, source, &scope.locals, binding)
+                            .local_binding_signature(
+                                &binding.selection,
+                                binding.scope_start(),
+                                &binding.name,
+                            )
                             .is_some()
                     {
                         return true;
@@ -95,7 +148,7 @@ impl Context<'_> {
                 _ => {}
             }
         }
-        self.expects_callable_argument(offset, &scope.locals, (&body.tree.expressions, body.base))
+        self.expects_callable_argument(offset, (&body.tree.expressions, body.base))
     }
 }
 

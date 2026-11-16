@@ -1,5 +1,5 @@
 //! Go basic kinds and untyped/default-type rules, shared by operand checking.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum BasicKind {
     Bool,
     Int,
@@ -20,6 +20,7 @@ pub(crate) enum BasicKind {
     String,
     Byte,
     Rune,
+    UnsafePointer,
     UntypedBool,
     UntypedInt,
     UntypedRune,
@@ -29,8 +30,19 @@ pub(crate) enum BasicKind {
     UntypedNil,
 }
 
+impl BasicKind {
+    pub(super) const COUNT: usize = 27;
+
+    pub(super) const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+const _: () = assert!((BasicKind::UntypedNil as usize) == BasicKind::COUNT - 1);
+
 const BASICS: &[(BasicKind, &str)] = &[
     (BasicKind::UntypedNil, "untyped nil"),
+    (BasicKind::UnsafePointer, "Pointer"),
     (BasicKind::Bool, "bool"),
     (BasicKind::Int, "int"),
     (BasicKind::Int8, "int8"),
@@ -62,7 +74,9 @@ impl BasicKind {
     pub(crate) fn named(name: &str) -> Option<Self> {
         BASICS
             .iter()
-            .find(|(kind, spelling)| !kind.untyped() && *spelling == name)
+            .find(|(kind, spelling)| {
+                !kind.untyped() && *kind != Self::UnsafePointer && *spelling == name
+            })
             .map(|(kind, _)| *kind)
     }
     pub(crate) fn name(self) -> &'static str {

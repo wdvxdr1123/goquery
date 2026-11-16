@@ -1,31 +1,153 @@
 //! Bounded call inference: typed unification, untyped defaulting, substitution.
-use super::constraints;
+use super::constraints::{self, Constraint};
 use super::{BasicKind, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
 use crate::syntax::Signature;
+use crate::workspace::Workspace;
 use std::path::Path;
 
-impl TypeArena<'_> {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn infer_call(
-        &mut self,
-        origin: &Path,
-        header: &str,
-        signature: &Signature,
-        actuals: &[Operand],
-        explicit: &[TypeId],
-        result: usize,
-        int_bits: u32,
-        spread: bool,
-    ) -> Option<TypeId> {
-        let arguments = self.infer_call_arguments(
-            origin, header, signature, actuals, explicit, int_bits, spread,
-        )?;
-        let names = constraints::parameter_names(header, signature)?;
-        let environment: Vec<_> = names.into_iter().zip(arguments).collect();
-        let result = &header[signature.results.get(result)?.annotation.clone()];
-        self.parse_in(origin, result, &environment)
+pub(crate) fn completion_inferable(
+    workspace: &Workspace,
+    file: &Path,
+    parameters: &[(&str, &str)],
+    inputs: &[&str],
+) -> Option<Vec<bool>> {
+    if parameters.len() > 32 {
+        return None;
     }
+    let mut arena = TypeArena::new_symbolic(workspace);
+    let mut environment = Vec::with_capacity(parameters.len());
+    for (name, _) in parameters {
+        let ty = arena.push_symbolic_parameter(file, name)?;
+        if *name != "_" {
+            environment.push((*name, ty));
+        }
+    }
+    let mut inferred = vec![false; parameters.len()];
+    for input in inputs {
+        let ty = arena.parse_in(file, input, &environment)?;
+        collect_free_params(&mut arena, ty, &mut inferred, 0)?;
+    }
+    for _ in 0..=parameters.len() {
+        let before = inferred.clone();
+        for (index, (_, constraint)) in parameters.iter().enumerate() {
+            if inferred[index] {
+                let constraint = arena.constraint(file, constraint, &environment)?;
+                collect_constraint_params(&mut arena, &constraint, &mut inferred, 0)?;
+            }
+        }
+        if before == inferred {
+            return Some(inferred);
+        }
+    }
+    None
+}
 
+fn collect_free_params(
+    arena: &mut TypeArena<'_>,
+    input: TypeId,
+    inferred: &mut [bool],
+    depth: usize,
+) -> Option<()> {
+    arena.step()?;
+    if depth >= MAX_DEPTH {
+        return None;
+    }
+    let input = arena.unalias(input)?;
+    match arena.nodes.get(usize::from(input.0))?.clone() {
+        Ty::Parameter(index) => {
+            if let Some(slot) = inferred.get_mut(index) {
+                *slot = true;
+            }
+            Some(())
+        }
+        Ty::Pointer(element)
+        | Ty::Slice(element)
+        | Ty::Array { element, .. }
+        | Ty::Chan { element, .. } => collect_free_params(arena, element, inferred, depth + 1),
+        Ty::Map { key, value } => {
+            collect_free_params(arena, key, inferred, depth + 1)?;
+            collect_free_params(arena, value, inferred, depth + 1)
+        }
+        Ty::Tuple(items) => {
+            let items = arena.arguments[items.range()].to_vec();
+            for item in items {
+                collect_free_params(arena, item, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+        Ty::Named { arguments, .. } => {
+            let arguments = arena.arguments[arguments.range()].to_vec();
+            for argument in arguments {
+                collect_free_params(arena, argument, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+        Ty::Signature {
+            parameters,
+            results,
+            ..
+        } => {
+            let items = arena.arguments[parameters]
+                .iter()
+                .chain(&arena.arguments[results])
+                .copied()
+                .collect::<Vec<_>>();
+            for item in items {
+                collect_free_params(arena, item, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+        Ty::Struct { fields, .. } => {
+            let field_tys: Vec<_> = arena.fields[fields].iter().map(|f| f.ty).collect();
+            for ty in field_tys {
+                collect_free_params(arena, ty, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+        Ty::Interface { methods, .. } => {
+            let sigs: Vec<_> = arena.methods[methods].iter().map(|m| m.signature).collect();
+            for sig in sigs {
+                collect_free_params(arena, sig, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+        Ty::Basic(_) | Ty::Error(_) | Ty::Alias { .. } | Ty::LocalDeclaration { .. } => Some(()),
+    }
+}
+
+fn collect_constraint_params(
+    arena: &mut TypeArena<'_>,
+    constraint: &Constraint,
+    inferred: &mut [bool],
+    depth: usize,
+) -> Option<()> {
+    if depth >= MAX_DEPTH {
+        return None;
+    }
+    match constraint {
+        Constraint::Any | Constraint::Comparable => Some(()),
+        Constraint::Exact(ty) | Constraint::Approximate(ty) => {
+            collect_free_params(arena, *ty, inferred, depth + 1)
+        }
+        Constraint::Set(set) => {
+            if let Some(terms) = &set.terms {
+                for term in terms {
+                    collect_free_params(arena, term.ty, inferred, depth + 1)?;
+                }
+            }
+            if let Some(methods) = set.methods {
+                collect_free_params(arena, methods, inferred, depth + 1)?;
+            }
+            for (nested, actual) in &set.checks {
+                collect_free_params(arena, *actual, inferred, depth + 1)?;
+                collect_constraint_params(arena, nested, inferred, depth + 1)?;
+            }
+            Some(())
+        }
+    }
+}
+
+impl TypeArena<'_> {
     /// Infer and prove the complete type argument list once, for result types
     /// and call-site signature presentation alike.
     #[allow(clippy::too_many_arguments)]
@@ -52,6 +174,11 @@ impl TypeArena<'_> {
             environment.push((name, self.push(Ty::Parameter(index))?));
         }
         let constraints = self.constraints(origin, header, signature, &environment)?;
+        for ((_, ty), constraint) in environment.iter().zip(&constraints) {
+            if self.parameter_constraints.len() < self.node_limit {
+                self.parameter_constraints.push((*ty, constraint.clone()));
+            }
+        }
         let variadic = signature.parameters.last().is_some_and(|p| p.variadic);
         let fixed = signature
             .parameters
@@ -278,12 +405,17 @@ impl TypeArena<'_> {
                 if a.symbol.generic && aa.is_empty() {
                     return None;
                 }
-                self.arguments[aa]
+                self.arguments[aa.range()]
                     .iter()
                     .copied()
-                    .zip(self.arguments[ba].iter().copied())
+                    .zip(self.arguments[ba.range()].iter().copied())
                     .collect()
             }
+            (Ty::Tuple(a), Ty::Tuple(b)) if a.len() == b.len() => self.arguments[a.range()]
+                .iter()
+                .copied()
+                .zip(self.arguments[b.range()].iter().copied())
+                .collect(),
             _ => return self.identical(formal, actual)?.then_some(()),
         };
         for (a, b) in pairs {
@@ -349,20 +481,31 @@ impl TypeArena<'_> {
                 declaration,
                 arguments,
             } => {
-                let arguments = self.arguments[arguments].to_vec();
-                let mut substituted = Vec::new();
+                let arguments = self.arguments[arguments.range()].to_vec();
+                let mut substituted = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     substituted.push(self.substitute(argument, bindings, depth + 1)?);
                 }
-                if self.arguments.len() + substituted.len() > MAX_NODES {
-                    return None;
+                return self.push_named(declaration, &substituted, false);
+            }
+            Ty::Alias {
+                declaration,
+                arguments,
+            } => {
+                let arguments = self.arguments[arguments.range()].to_vec();
+                let mut substituted = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    substituted.push(self.substitute(argument, bindings, depth + 1)?);
                 }
-                let start = self.arguments.len();
-                self.arguments.extend(substituted);
-                Ty::Named {
-                    declaration,
-                    arguments: start..self.arguments.len(),
+                return self.push_named(declaration, &substituted, true);
+            }
+            Ty::Tuple(elements) => {
+                let elements = self.arguments[elements.range()].to_vec();
+                let mut substituted = Vec::with_capacity(elements.len());
+                for element in elements {
+                    substituted.push(self.substitute(element, bindings, depth + 1)?);
                 }
+                return self.tuple(&substituted);
             }
             Ty::Pointer(element) => Ty::Pointer(self.substitute(element, bindings, depth + 1)?),
             Ty::Slice(element) => Ty::Slice(self.substitute(element, bindings, depth + 1)?),

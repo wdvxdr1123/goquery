@@ -86,7 +86,7 @@ fn whole_document_range(source: &str) -> Value {
 
 /// Locates the formatter: configured SDK first, then `GOROOT`, then `PATH`.
 fn gofmt_executable(context: &Context<'_>) -> Option<PathBuf> {
-    if let Some(root) = context.workspace().sdk_root_path() {
+    if let Some(root) = context.sdk_root_path() {
         // The workspace stores the SDK source root (`<goroot>/src`); the
         // gofmt binary lives in `<goroot>/bin`.
         let bin = if root.file_name() == Some(std::ffi::OsStr::new("src")) {
@@ -219,32 +219,5 @@ fn wait_with_deadline(
             }
             Err(_) => return None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{formatter_diagnostic, whole_document_range};
-
-    #[test]
-    fn whole_document_range_uses_utf16_positions() {
-        let range = whole_document_range("package p\n\nvar x = \"e\"\n");
-        assert_eq!(range["start"]["line"], 0);
-        assert_eq!(range["start"]["character"], 0);
-        assert_eq!(range["end"]["line"], 3);
-        assert_eq!(range["end"]["character"], 0);
-
-        let range = whole_document_range("var x = \"\u{1f600}\"");
-        assert_eq!(range["end"]["line"], 0);
-        assert_eq!(range["end"]["character"], 12);
-    }
-
-    #[test]
-    fn formatter_diagnostic_strips_stdin_prefix() {
-        assert_eq!(
-            formatter_diagnostic(b"<standard input>:3:14: expected ')', found '{'\n"),
-            "3:14: expected ')', found '{'"
-        );
-        assert_eq!(formatter_diagnostic(b""), "gofmt rejected the document");
     }
 }

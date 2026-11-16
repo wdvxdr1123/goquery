@@ -11,6 +11,26 @@ pub(super) struct Declaration {
     pub(super) symbol: Symbol,
 }
 
+impl<View> Context<'_, View> {
+    pub(crate) fn builtin_symbol_location(
+        &self,
+        name: &str,
+        types_only: bool,
+    ) -> Option<(PathBuf, super::SourceRange)> {
+        let file = self.workspace.builtin_file()?;
+        let source = self.workspace.source(&file)?;
+        let map = crate::text::SourceMap::new(&source);
+        let stub = crate::syntax::stub(&source);
+        let symbol = stub.symbols.iter().find(|symbol| {
+            symbol.name == name && (!types_only || symbol.kind == crate::syntax::SymbolKind::Type)
+        })?;
+        Some((
+            file,
+            super::SourceRange::new(&map, symbol.selection.clone()),
+        ))
+    }
+}
+
 pub(super) fn declaration(context: &Context<'_>, name: &str) -> Option<Declaration> {
     let workspace = context.workspace();
     let file = workspace.builtin_file()?;

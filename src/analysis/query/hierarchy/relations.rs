@@ -1,11 +1,11 @@
 //! Request-local implementation search. Closed source/type trees are not cached.
 use super::candidates::Candidates;
 use super::{Context, SymbolTarget};
-use crate::analysis::member::MemberDeclaration;
-use crate::analysis::method_set::{MemberId, MethodIndex, ReceiverMember};
+use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
 use crate::analysis::scope::Locals;
-use crate::analysis::type_resolution::signature;
 use crate::analysis::types::TypeForm;
+use crate::analysis::types::fingerprint;
+use crate::analysis::types::lookup::{MemberId, MethodIndex};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::TypeConstructor;
 use crate::syntax::{Lexer, MemberKind, TokenKind};
@@ -53,7 +53,15 @@ impl<'a> MethodSet<'a> {
                     TypeForm::Struct
                 }
             })
-            .or_else(|| workspace.type_form(file, &owner.name, &Locals::empty(), 0));
+            .or_else(|| {
+                crate::analysis::types::type_form_in_scope(
+                    workspace,
+                    file,
+                    &owner.name,
+                    &Locals::empty(),
+                    0,
+                )
+            });
         let abstract_ = matches!(form, Some(TypeForm::Interface));
         let pointer_definition = owner
             .type_info
@@ -62,47 +70,50 @@ impl<'a> MethodSet<'a> {
             .is_some_and(|target| !target.alias)
             && matches!(form, Some(TypeForm::Pointer));
         let pointer_to_interface = matches!(form, Some(TypeForm::Pointer))
-            && workspace
-                .underlying_target(file, &owner.name)
+            && crate::analysis::types::lookup::underlying_target(workspace, file, &owner.name)
                 .is_some_and(|(_, owner)| {
                     owner
                         .type_info
                         .as_ref()
                         .is_some_and(|info| info.is_interface())
                 });
-        let spelling = workspace.implementation_spelling(file, owner);
+        let spelling =
+            crate::analysis::types::lookup::implementation_spelling(workspace, file, owner);
         let members = if let Some(spelling) = spelling
             && !pointer_definition
             && !pointer_to_interface
         {
-            workspace
-                .implementation_members(
-                    file,
-                    &spelling,
-                    required,
-                    methods,
-                    (!owner.alias)
-                        .then(|| {
-                            workspace
-                                .files
-                                .get_key_value(file)
-                                .map(|(file, _)| (file, owner))
-                        })
-                        .flatten(),
+            crate::analysis::types::lookup::implementation_members(
+                workspace,
+                file,
+                &spelling,
+                required,
+                methods,
+                (!owner.alias)
+                    .then(|| {
+                        workspace
+                            .files
+                            .get_key_value(file)
+                            .map(|(file, _)| (file, owner))
+                    })
+                    .flatten(),
+            )
+            .into_iter()
+            .map(|member| {
+                let (origin, name) = match member {
+                    ReceiverMember::Method(origin, method) => {
+                        (origin.as_path(), method.name.as_str())
+                    }
+                    ReceiverMember::Declaration(declaration) => {
+                        (declaration.file.as_path(), declaration.name)
+                    }
+                };
+                (
+                    crate::analysis::types::lookup::member_id(workspace, origin, name),
+                    member,
                 )
-                .into_iter()
-                .map(|member| {
-                    let (origin, name) = match member {
-                        ReceiverMember::Method(origin, method) => {
-                            (origin.as_path(), method.name.as_str())
-                        }
-                        ReceiverMember::Declaration(declaration) => {
-                            (declaration.file.as_path(), declaration.name)
-                        }
-                    };
-                    (workspace.member_id(origin, name), member)
-                })
-                .collect()
+            })
+            .collect()
         } else {
             BTreeMap::new()
         };
@@ -147,7 +158,7 @@ impl<'a> Search<'a> {
                 if !parsed.diagnostics.is_empty() {
                     return None;
                 }
-                let names = parsed
+                let names: Vec<String> = parsed
                     .receiver
                     .iter()
                     .flat_map(|receiver| {
@@ -155,20 +166,44 @@ impl<'a> Search<'a> {
                     })
                     .map(|span| header[span].to_owned())
                     .collect();
-                let mut types = self
-                    .workspace
-                    .implementation_types(set_file, set_owner, member, names)?;
-                types.signature_identity(&format!("func{}", header.get(method.end - start..)?))
-            }
-            ReceiverMember::Declaration(member) => {
-                let data = self.workspace.member_data(member)?;
-                let mut types = self.workspace.implementation_types(
+                let (owner_file, owner) = if file.parent() == set_file.parent()
+                    && self.workspace.files[file].package == self.workspace.files[set_file].package
+                    && method.receiver.as_deref() == Some(set_owner.name.as_str())
+                {
+                    (set_file, set_owner)
+                } else {
+                    let (f, s) = crate::analysis::resolve::resolve_type_declaration(
+                        self.workspace,
+                        file,
+                        method.receiver.as_deref()?,
+                    )?;
+                    (f.as_path(), s)
+                };
+                fingerprint::implementation_method_fingerprint(
+                    self.workspace,
                     set_file,
                     set_owner,
-                    ReceiverMember::Declaration(member),
-                    Vec::new(),
-                )?;
-                types.signature_identity(&format!("func{}", data.annotation?))
+                    file,
+                    owner_file,
+                    owner,
+                    true,
+                    &names,
+                    &format!("func{}", header.get(method.end - start..)?),
+                )
+            }
+            ReceiverMember::Declaration(member) => {
+                let data = member.data(self.workspace)?;
+                fingerprint::implementation_method_fingerprint(
+                    self.workspace,
+                    set_file,
+                    set_owner,
+                    member.file,
+                    member.file,
+                    member.owner,
+                    false,
+                    &[],
+                    &format!("func{}", data.annotation?),
+                )
             }
         };
         let size = signature.as_ref().map_or(0, String::len);
@@ -207,7 +242,7 @@ impl<'a> Search<'a> {
             self.signature(concrete_file, concrete_owner, concrete_member)
                 .is_some_and(|left| {
                     self.signature(interface_file, interface_owner, *required)
-                        .is_some_and(|right| signature::matches(&left, &right))
+                        .is_some_and(|right| fingerprint::fingerprints_match(&left, &right))
                 })
         });
         if !indexed_match {
@@ -227,7 +262,11 @@ impl<'a> Search<'a> {
                 && arena.interface_methods_covered(required, |origin, name| {
                     interface
                         .members
-                        .contains_key(&self.workspace.member_id(origin, name))
+                        .contains_key(&crate::analysis::types::lookup::member_id(
+                            self.workspace,
+                            origin,
+                            name,
+                        ))
                 }) == Some(false)
             {
                 // Missing indexed requirements need their signatures proved as
@@ -293,7 +332,7 @@ fn plain_interface_matches<'a>(
         return false;
     };
     for name in members {
-        let id = workspace.member_id(candidate_file, name);
+        let id = crate::analysis::types::lookup::member_id(workspace, candidate_file, name);
         let Some(expected) = target.members.get(&id) else {
             return false;
         };
@@ -308,7 +347,7 @@ fn plain_interface_matches<'a>(
         let right = search.signature(target_file, target.owner, *expected);
         if !left
             .zip(right)
-            .is_some_and(|(left, right)| signature::matches(&left, &right))
+            .is_some_and(|(left, right)| fingerprint::fingerprints_match(&left, &right))
         {
             return false;
         }
@@ -333,7 +372,9 @@ fn plain_interface_implements<'a>(
         if !members.iter().any(|name| name == target_id.name) {
             return Some(false);
         }
-        if workspace.member_id(candidate_file, target_id.name) != *target_id {
+        if crate::analysis::types::lookup::member_id(workspace, candidate_file, target_id.name)
+            != *target_id
+        {
             return Some(false);
         }
         let member = ReceiverMember::Declaration(MemberDeclaration {
@@ -347,7 +388,7 @@ fn plain_interface_implements<'a>(
         let right = search.signature(target.file, target.owner, *target_member);
         match (left, right) {
             (Some(left), Some(right)) => {
-                if !signature::matches(&left, &right) {
+                if !fingerprint::fingerprints_match(&left, &right) {
                     return Some(false);
                 }
             }
@@ -385,7 +426,7 @@ fn builtin_error_method(workspace: &Workspace, member: ReceiverMember<'_>) -> bo
             (parsed, header)
         }
         ReceiverMember::Declaration(declaration) => {
-            let Some(data) = workspace.member_data(declaration) else {
+            let Some(data) = declaration.data(workspace) else {
                 return false;
             };
             let Some(annotation) = data.annotation else {
@@ -701,9 +742,13 @@ impl<'a, View> Context<'a, View> {
                         info.is_interface()
                             && info.embeddings_complete
                             && info.members.iter().any(|name| {
-                                !target
-                                    .members
-                                    .contains_key(&self.workspace.member_id(path, name))
+                                !target.members.contains_key(
+                                    &crate::analysis::types::lookup::member_id(
+                                        self.workspace,
+                                        path,
+                                        name,
+                                    ),
+                                )
                             })
                     })
                 {
@@ -901,7 +946,12 @@ impl<'a, View> Context<'a, View> {
                                     }
                                     break;
                                 };
-                                if self.workspace.member_id(method_file, name) != *target_id {
+                                if crate::analysis::types::lookup::member_id(
+                                    self.workspace,
+                                    method_file,
+                                    name,
+                                ) != *target_id
+                                {
                                     rejected = true;
                                     break;
                                 }
@@ -936,10 +986,9 @@ impl<'a, View> Context<'a, View> {
                                 );
                                 let right =
                                     search.signature(target.file, target.owner, *target_member);
-                                if !left
-                                    .zip(right)
-                                    .is_some_and(|(left, right)| signature::matches(&left, &right))
-                                {
+                                if !left.zip(right).is_some_and(|(left, right)| {
+                                    fingerprint::fingerprints_match(&left, &right)
+                                }) {
                                     exact = false;
                                     break;
                                 }
@@ -1151,7 +1200,7 @@ fn resolve_named<'a>(
     cache: &mut ResolveCache<'a>,
 ) -> Option<(&'a PathBuf, &'a Symbol)> {
     if name.contains('.') {
-        return workspace.type_declaration(file, name);
+        return crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
     }
     let package = workspace.files.get(file)?.package.as_str();
     let directory = file.parent()?;
@@ -1159,7 +1208,7 @@ fn resolve_named<'a>(
     if let Some(value) = cache.get(&key) {
         return *value;
     }
-    let value = workspace.type_declaration(file, name);
+    let value = crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
     cache.insert(key, value);
     value
 }
@@ -1209,7 +1258,7 @@ fn receiver_shape(workspace: &Workspace, member: ReceiverMember<'_>) -> Option<M
     match member {
         ReceiverMember::Method(file, method) => method_shape(workspace, file.as_path(), method),
         ReceiverMember::Declaration(declaration) => {
-            let data = workspace.member_data(declaration)?;
+            let data = declaration.data(workspace)?;
             let annotation = data.annotation.as_deref()?;
             // Interface method annotations are written without the `func` keyword.
             let header = if declaration.kind == MemberKind::Method {

@@ -183,7 +183,7 @@ impl Workspace {
             })
     }
 
-    fn package_files<'a>(
+    pub(crate) fn package_files<'a>(
         &'a self,
         file: &Path,
     ) -> impl Iterator<Item = (&'a PathBuf, &'a IndexedFile)> + use<'a> {

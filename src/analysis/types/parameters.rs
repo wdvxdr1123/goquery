@@ -16,7 +16,32 @@ pub(super) struct LocalParameter<'a> {
     ready: bool,
 }
 
-impl TypeArena<'_> {
+impl<'a> TypeArena<'a> {
+    pub(crate) fn push_symbolic_parameter(
+        &mut self,
+        origin: &'a Path,
+        name: &str,
+    ) -> Option<TypeId> {
+        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
+        let index = self.local_parameters.len();
+        if index >= 32 {
+            return None;
+        }
+        let bytes: usize = self.local_parameters.iter().map(|p| p.name.len()).sum();
+        if bytes.checked_add(name.len())? > super::MAX_BYTES {
+            return None;
+        }
+        let ty = self.push(Ty::Parameter(index))?;
+        self.local_parameters.push(LocalParameter {
+            origin,
+            selection: index,
+            name: name.to_owned(),
+            ty,
+            ready: true,
+        });
+        Some(ty)
+    }
+
     pub(super) fn local_parameter(&self, ty: TypeId) -> Option<(&Path, usize, &str)> {
         let parameter = self
             .local_parameters
@@ -130,7 +155,7 @@ impl TypeArena<'_> {
             for (ty, text) in pending {
                 self.step()?;
                 if let Some(constraint) = self.constraint(origin, text, environment) {
-                    if self.parameter_constraints.len() >= 32 {
+                    if self.parameter_constraints.len() >= self.node_limit {
                         return None;
                     }
                     self.parameter_constraints.push((ty, constraint));

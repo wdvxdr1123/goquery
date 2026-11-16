@@ -1,30 +1,25 @@
 use crate::analysis::query::Context;
-use crate::analysis::scope::Identity;
-use crate::analysis::source::Role;
-mod config;
-mod encode;
-pub(crate) use config::SemanticConfig;
-mod comments;
-mod format;
-mod identity;
-mod lexical;
-use crate::analysis::check::shapes;
-use encode::Encoder;
 use serde_json::{Value, json};
-use std::collections::HashMap;
 
 /// gopls rejects semantic token requests whose byte span exceeds this size.
 const MAX_RANGE_BYTES: usize = 100_000;
 
-pub(super) fn execute(context: &Context<'_>) -> Result<Value, (i32, String)> {
-    let mut encoder = Encoder::new(context.source(), &context.workspace().semantic_config);
-    encode_tokens(context, &mut encoder)?;
+pub(super) fn execute(
+    context: &Context<'_>,
+    config: &SemanticConfig,
+) -> Result<Value, (i32, String)> {
+    let mut encoder = Encoder::new(context.source(), config);
+    encode_tokens(context, &mut encoder, None, config.type_shapes())?;
     Ok(json!({"data": encoder.data}))
 }
 
 /// Range requests reuse the full tokenizer and keep the tokens intersecting the
 /// requested range, exactly as gopls' `tokenVisitor.token` does.
-pub(super) fn execute_range(context: &Context<'_>, params: &Value) -> Result<Value, (i32, String)> {
+pub(super) fn execute_range(
+    context: &Context<'_>,
+    params: &Value,
+    config: &SemanticConfig,
+) -> Result<Value, (i32, String)> {
     let source = context.source();
     let lines = line_starts(source);
     let start = position_offset(source, &params["range"]["start"], &lines)?;
@@ -42,9 +37,13 @@ pub(super) fn execute_range(context: &Context<'_>, params: &Value) -> Result<Val
             ),
         ));
     }
-    let mut encoder =
-        Encoder::with_window(source, &context.workspace().semantic_config, start..end);
-    encode_tokens(context, &mut encoder)?;
+    let mut encoder = Encoder::with_window(source, config, start..end);
+    encode_tokens(
+        context,
+        &mut encoder,
+        Some(start..end),
+        config.type_shapes(),
+    )?;
     Ok(json!({"data": encoder.data}))
 }
 
@@ -107,328 +106,277 @@ fn position_offset(
     Ok(offset)
 }
 
-fn encode_tokens(context: &Context<'_>, encoder: &mut Encoder<'_>) -> Result<(), (i32, String)> {
-    let workspace = context.workspace();
-    let source = context.source();
-    let file = context.file();
-    let trace = workspace.trace.queries.then(std::time::Instant::now);
-    let analysis = context.semantic_analysis()?;
-    let mut resolver = context.resolver();
-    let analysis_time = trace.map(|phase| phase.elapsed());
-    let phase = workspace.trace.queries.then(std::time::Instant::now);
-    let builtin = workspace.builtin_file();
-    let builtin = builtin.as_deref();
-    let mut formatting: HashMap<std::ops::Range<usize>, Vec<std::ops::Range<usize>>> =
-        HashMap::new();
-    for literal in context.format_directives() {
-        formatting.insert(literal.literal, literal.directives);
-    }
-    let mut lexical = lexical::tokens(source)
-        .flat_map(|(span, kind)| match kind {
-            config::SemanticType::Comment => comments::split(workspace, file, source, &span),
-            config::SemanticType::String => match formatting.get(&span) {
-                // gopls colors multiline strings as plain string tokens and
-                // skips printf splitting for them entirely.
-                Some(directives) if !source[span.clone()].contains('\n') => {
-                    format::split(span, directives)
-                }
-                _ => vec![(span, kind, 0)],
-            },
-            _ => vec![(span, kind, 0)],
-        })
-        .filter(|(span, _, _)| {
-            !matches!(&source[span.clone()], "=" | ":=")
-                || !analysis.declaration_operator(span.start)
-        })
-        .peekable();
-    let setup_time = phase.map(|phase| phase.elapsed());
-    let mut shapes = context.shapes(&analysis);
-    let mut resolve_time = std::time::Duration::ZERO;
-    let mut style_time = std::time::Duration::ZERO;
-    let mut shape_time = std::time::Duration::ZERO;
-    let mut lexical_time = std::time::Duration::ZERO;
-    let mut name_count = 0usize;
-    let mut slowest: Vec<(std::time::Duration, String)> = Vec::new();
-    let mut resolve_by_tag: HashMap<&'static str, (std::time::Duration, usize)> = HashMap::new();
-    let mut style_by_tag: HashMap<&'static str, (std::time::Duration, usize)> = HashMap::new();
-    let mut resolve_by_outcome: HashMap<
-        (&'static str, &'static str),
-        (std::time::Duration, usize),
-    > = HashMap::new();
-    let mut style_by_outcome: HashMap<(&'static str, &'static str), (std::time::Duration, usize)> =
-        HashMap::new();
-    for name in &analysis.names {
-        name_count += 1;
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        while lexical
-            .peek()
-            .is_some_and(|(span, _, _)| span.start < name.span.start)
-        {
-            let (span, kind, modifiers) = lexical.next().expect("peeked lexical token");
-            encoder.push(span, kind, modifiers);
-        }
-        if let Some(phase) = phase {
-            lexical_time += phase.elapsed();
-        }
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let identity = resolver.resolve(&analysis, source, name);
-        if let Some(phase) = phase {
-            let elapsed = phase.elapsed();
-            resolve_time += elapsed;
-            let tag = role_tag(&name.role);
-            let entry = resolve_by_tag.entry(tag).or_default();
-            entry.0 += elapsed;
-            entry.1 += 1;
-            if matches!(name.role, Role::Member(Some(_)) | Role::ExpressionMember(_)) {
-                let outcome = match &identity {
-                    Some(Identity::Local(_)) => "local",
-                    Some(Identity::Global(_, symbol)) => global_kind_name(symbol),
-                    Some(Identity::Member(_)) => "member",
-                    None => "none",
-                };
-                let entry = resolve_by_outcome.entry((tag, outcome)).or_default();
-                entry.0 += elapsed;
-                entry.1 += 1;
-            }
-            if elapsed > std::time::Duration::from_millis(1) {
-                let line = source[..name.span.start].matches('\n').count() + 1;
-                let role = match &name.role {
-                    Role::Name => "Name",
-                    Role::Type(_) => "Type",
-                    Role::EmbeddedType(_) => "EmbeddedType",
-                    Role::Member(_) => "Member",
-                    Role::ExpressionMember(_) => "ExpressionMember",
-                    Role::Field => "Field",
-                    Role::FieldDeclaration(_) => "FieldDeclaration",
-                    Role::LiteralKey(_) => "LiteralKey",
-                    Role::LiteralElementKey(_) => "LiteralElementKey",
-                    Role::BlankDeclaration { .. } => "BlankDeclaration",
-                    Role::Parameter => "Parameter",
-                    Role::Result => "Result",
-                    Role::Namespace => "Namespace",
-                    Role::Ignored => "Ignored",
-                };
-                slowest.push((
-                    elapsed,
-                    format!(
-                        "{}:{line} {} {role} -> {}",
-                        &source[name.span.clone()],
-                        name.span.start,
-                        match &identity {
-                            Some(Identity::Local(_)) => "local",
-                            Some(Identity::Global(_, symbol)) => global_kind_name(symbol),
-                            Some(Identity::Member(_)) => "member",
-                            None => "none",
-                        }
-                    ),
-                ));
-            }
-        }
-        if matches!(name.role, Role::Ignored)
-            || matches!(name.role, Role::Namespace) && &source[name.span.clone()] == "_"
-        {
-            continue;
-        }
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let (kind, modifiers) =
-            identity::style(&analysis, &resolver, file, source, name, &identity, builtin);
-        if let Some(phase) = phase {
-            let elapsed = phase.elapsed();
-            style_time += elapsed;
-            let tag = role_tag(&name.role);
-            let entry = style_by_tag.entry(tag).or_default();
-            entry.0 += elapsed;
-            entry.1 += 1;
-            if matches!(name.role, Role::Member(Some(_)) | Role::ExpressionMember(_)) {
-                let outcome = match &identity {
-                    Some(Identity::Local(_)) => "local",
-                    Some(Identity::Global(_, symbol)) => global_kind_name(symbol),
-                    Some(Identity::Member(_)) => "member",
-                    None => "none",
-                };
-                let entry = style_by_outcome.entry((tag, outcome)).or_default();
-                entry.0 += elapsed;
-                entry.1 += 1;
-            }
-            if elapsed > std::time::Duration::from_millis(5) {
-                let line = source[..name.span.start].matches('\n').count() + 1;
-                slowest.push((
-                    elapsed,
-                    format!(
-                        "style {}:{line} {} {:?}",
-                        &source[name.span.clone()],
-                        name.span.start,
-                        match &identity {
-                            Some(Identity::Local(_)) => "local",
-                            Some(Identity::Global(_, symbol)) => global_kind_name(symbol),
-                            Some(Identity::Member(_)) => "member",
-                            None => "none",
-                        }
-                    ),
-                ));
-            }
-        }
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let shape = if workspace.semantic_config.type_shapes() {
-            shape_modifiers(shapes.style(name, &identity))
-        } else {
-            0
-        };
-        if let Some(phase) = phase {
-            shape_time += phase.elapsed();
-        }
-        encoder.push(name.span.clone(), kind, modifiers | shape);
-    }
-    let phase = workspace.trace.queries.then(std::time::Instant::now);
-    for (span, kind, modifiers) in lexical {
-        encoder.push(span, kind, modifiers);
-    }
-    if let Some(phase) = phase {
-        lexical_time += phase.elapsed();
-    }
-    if let Some(start) = trace {
-        slowest.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-        slowest.truncate(20);
-        eprintln!(
-            "semantic tokens: analysis {analysis_time:?}; setup {setup_time:?}; lexical {lexical_time:?}; resolve {resolve_time:?} ({name_count} names); style {style_time:?}; shapes {shape_time:?}; total {:?}",
-            start.elapsed()
-        );
-        for (elapsed, label) in &slowest {
-            eprintln!("semantic tokens slow: {elapsed:?} {label}");
-        }
-        for (tag, (elapsed, count)) in &resolve_by_tag {
-            eprintln!("semantic tokens resolve {tag}: {elapsed:?} ({count})");
-        }
-        for (tag, (elapsed, count)) in &style_by_tag {
-            eprintln!("semantic tokens style {tag}: {elapsed:?} ({count})");
-        }
-        for ((tag, outcome), (elapsed, count)) in &resolve_by_outcome {
-            eprintln!("semantic tokens resolve {tag}/{outcome}: {elapsed:?} ({count})");
-        }
-        for ((tag, outcome), (elapsed, count)) in &style_by_outcome {
-            eprintln!("semantic tokens style {tag}/{outcome}: {elapsed:?} ({count})");
-        }
+fn encode_tokens(
+    context: &Context<'_>,
+    encoder: &mut Encoder<'_>,
+    window: Option<std::ops::Range<usize>>,
+    include_shapes: bool,
+) -> Result<(), (i32, String)> {
+    let tokens = context.semantic_tokens(window, include_shapes)?;
+    for token in tokens {
+        encoder.push(token.span, token.kind, token.modifiers);
     }
     Ok(())
 }
+// Maps supported semantic categories to the client's negotiated legend.
+use crate::analysis::query::semantic_tokens::{SemanticTokenKind, modifiers::DEFINITION};
+use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
 
-fn role_tag(role: &Role) -> &'static str {
-    match role {
-        Role::Name => "name",
-        Role::Type(_) => "type",
-        Role::EmbeddedType(_) => "embedded",
-        Role::Member(Some(_)) => "member-qualified",
-        Role::Member(None) => "member",
-        Role::ExpressionMember(_) => "expression-member",
-        Role::Field => "field",
-        Role::FieldDeclaration(_) => "field-declaration",
-        Role::LiteralKey(_) => "literal-key",
-        Role::LiteralElementKey(_) => "literal-element-key",
-        Role::BlankDeclaration { .. } => "blank",
-        Role::Parameter => "parameter",
-        Role::Result => "result",
-        Role::Namespace => "namespace",
-        Role::Ignored => "ignored",
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SemanticModifier {
+    Declaration,
+    Definition,
+    Readonly,
+    DefaultLibrary,
+    Static,
+    Signature,
+    Number,
+    Bool,
+    String,
+    Interface,
+    Struct,
+    Pointer,
+    Array,
+    Slice,
+    Map,
+    Chan,
+    Shadowing,
+    Format,
+}
+
+impl SemanticModifier {
+    const ALL: [Self; 18] = [
+        Self::Declaration,
+        Self::Definition,
+        Self::Readonly,
+        Self::DefaultLibrary,
+        Self::Static,
+        Self::Signature,
+        Self::Number,
+        Self::Bool,
+        Self::String,
+        Self::Interface,
+        Self::Struct,
+        Self::Pointer,
+        Self::Array,
+        Self::Slice,
+        Self::Map,
+        Self::Chan,
+        Self::Shadowing,
+        Self::Format,
+    ];
+    const SHAPES: [Self; 11] = [
+        Self::Signature,
+        Self::Number,
+        Self::Bool,
+        Self::String,
+        Self::Interface,
+        Self::Struct,
+        Self::Pointer,
+        Self::Array,
+        Self::Slice,
+        Self::Map,
+        Self::Chan,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Declaration => "declaration",
+            Self::Definition => "definition",
+            Self::Readonly => "readonly",
+            Self::DefaultLibrary => "defaultLibrary",
+            Self::Static => "static",
+            Self::Signature => "signature",
+            Self::Number => "number",
+            Self::Bool => "bool",
+            Self::String => "string",
+            Self::Interface => "interface",
+            Self::Struct => "struct",
+            Self::Pointer => "pointer",
+            Self::Array => "array",
+            Self::Slice => "slice",
+            Self::Map => "map",
+            Self::Chan => "chan",
+            Self::Shadowing => "shadowing",
+            Self::Format => "format",
+        }
+    }
+
+    const fn bit(self) -> u64 {
+        1 << self as usize
     }
 }
 
-/// Trace-only label for a resolved global declaration kind.
-fn global_kind_name(symbol: &crate::index::IndexedSymbol) -> &'static str {
-    if symbol.is_type() {
-        "global-type"
-    } else if symbol.is_method() {
-        "global-method"
-    } else if symbol.is_function() {
-        "global-func"
-    } else if symbol.is_var() {
-        "global-var"
-    } else {
-        "global-other"
+#[derive(Clone, Copy)]
+pub(crate) struct SemanticConfig {
+    types: [Option<u8>; SemanticTokenKind::ALL.len()],
+    modifiers: [Option<u8>; SemanticModifier::ALL.len()],
+}
+
+impl Default for SemanticConfig {
+    fn default() -> Self {
+        Self::from_initialize(&Value::Null)
     }
 }
 
-fn shape_modifiers(shape: shapes::ValueShape) -> u64 {
-    let mut result = 0;
-    if shape.forms & shapes::kinds::SIGNATURE != 0 {
-        result |= config::SIGNATURE;
+impl SemanticConfig {
+    pub(super) fn type_shapes(&self) -> bool {
+        SemanticModifier::SHAPES
+            .iter()
+            .any(|modifier| self.modifiers[*modifier as usize].is_some())
     }
-    if shape.forms & shapes::kinds::NUMBER != 0 {
-        result |= config::NUMBER;
+
+    pub(crate) fn from_initialize(params: &Value) -> Self {
+        let capabilities = &params["capabilities"]["textDocument"]["semanticTokens"];
+        let requested = capabilities["tokenTypes"].as_array();
+        let mut next = 0;
+        let types = SemanticTokenKind::ALL.map(|kind| {
+            requested
+                .is_none_or(|types| {
+                    types
+                        .iter()
+                        .any(|value| value.as_str() == Some(kind.name()))
+                })
+                .then(|| {
+                    let id = next;
+                    next += 1;
+                    id
+                })
+        });
+        let requested = capabilities["tokenModifiers"].as_array();
+        let mut next = 0;
+        let modifiers = SemanticModifier::ALL.map(|modifier| {
+            requested
+                .is_none_or(|values| {
+                    values
+                        .iter()
+                        .any(|value| value.as_str() == Some(modifier.name()))
+                })
+                .then(|| {
+                    let id = next;
+                    next += 1;
+                    id
+                })
+        });
+        Self { types, modifiers }
     }
-    if shape.forms & shapes::kinds::BOOL != 0 {
-        result |= config::BOOL;
+
+    pub(super) fn type_index(&self, kind: SemanticTokenKind) -> Option<u8> {
+        self.types[kind as usize].or_else(|| {
+            (kind == SemanticTokenKind::TypeParameter)
+                .then_some(self.types[SemanticTokenKind::Type as usize])
+                .flatten()
+        })
     }
-    if shape.forms & shapes::kinds::STRING != 0 {
-        result |= config::STRING;
+
+    pub(super) fn modifier_bits(&self, mut flags: u64) -> u64 {
+        if flags & DEFINITION != 0
+            && self.modifiers[SemanticModifier::Definition as usize].is_none()
+            && self.modifiers[SemanticModifier::Declaration as usize].is_some()
+        {
+            // Older clients only understand declaration; definitions retain
+            // that presentation when the more precise modifier is unavailable.
+            flags |= SemanticModifier::Declaration.bit();
+        }
+        SemanticModifier::ALL
+            .iter()
+            .zip(self.modifiers)
+            .fold(0, |bits, (modifier, id)| {
+                bits | id
+                    .filter(|_| flags & modifier.bit() != 0)
+                    .map_or(0, |id| 1 << id)
+            })
     }
-    if shape.forms & shapes::kinds::INTERFACE != 0 {
-        result |= config::INTERFACE;
+
+    pub(crate) fn legend(&self) -> SemanticTokensLegend {
+        SemanticTokensLegend {
+            token_types: SemanticTokenKind::ALL
+                .iter()
+                .zip(self.types)
+                .filter_map(|(kind, id)| {
+                    id.map(|_| SemanticTokenType::from(kind.name().to_owned()))
+                })
+                .collect(),
+            token_modifiers: SemanticModifier::ALL
+                .iter()
+                .zip(self.modifiers)
+                .filter_map(|(modifier, id)| {
+                    id.map(|_| SemanticTokenModifier::from(modifier.name().to_owned()))
+                })
+                .collect(),
+        }
     }
-    if shape.forms & shapes::kinds::STRUCT != 0 {
-        result |= config::STRUCT;
-    }
-    if shape.forms & shapes::kinds::POINTER != 0 {
-        result |= config::POINTER;
-    }
-    if shape.forms & shapes::kinds::ARRAY != 0 {
-        result |= config::ARRAY;
-    }
-    if shape.forms & shapes::kinds::SLICE != 0 {
-        result |= config::SLICE;
-    }
-    if shape.forms & shapes::kinds::MAP != 0 {
-        result |= config::MAP;
-    }
-    if shape.forms & shapes::kinds::CHAN != 0 {
-        result |= config::CHAN;
-    }
-    result
+}
+// Relative UTF-16 encoding emits single-line, nonempty semantic tokens.
+//
+// A range request installs a byte window; a token line segment is emitted only
+// when its half-open extent intersects the window, mirroring gopls'
+// `tokenVisitor.token` check (`start < end && end > start`). A zero-width
+// window therefore keeps exactly the tokens that strictly contain it.
+use crate::text::SourceMap;
+use std::ops::Range;
+
+pub(super) struct Encoder<'a> {
+    source: &'a str,
+    map: SourceMap<'a>,
+    previous: (u64, u64),
+    config: &'a SemanticConfig,
+    window: Option<Range<usize>>,
+    pub data: Vec<u64>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{line_starts, position_offset};
-
-    fn position(line: u64, character: u64) -> serde_json::Value {
-        serde_json::json!({"line": line, "character": character})
+impl<'a> Encoder<'a> {
+    pub fn new(source: &'a str, config: &'a SemanticConfig) -> Self {
+        Self {
+            source,
+            map: SourceMap::new(source),
+            previous: (0, 0),
+            data: Vec::new(),
+            config,
+            window: None,
+        }
     }
 
-    #[test]
-    fn line_starts_match_mapper_table() {
-        assert_eq!(line_starts(""), vec![0]);
-        assert_eq!(line_starts("a\nb\n"), vec![0, 2, 4]);
+    /// Restricts encoding to tokens intersecting `window` (byte offsets).
+    pub fn with_window(source: &'a str, config: &'a SemanticConfig, window: Range<usize>) -> Self {
+        Self {
+            window: Some(window),
+            ..Self::new(source, config)
+        }
     }
 
-    #[test]
-    fn position_offset_reports_gopls_errors() {
-        let source = "package p\n\nvar x = 1\n";
-        let lines = line_starts(source);
-        assert_eq!(position_offset(source, &position(0, 0), &lines), Ok(0));
-        assert_eq!(
-            position_offset(source, &position(4, 0), &lines),
-            Ok(source.len())
-        );
-        assert_eq!(
-            position_offset(source, &position(5, 0), &lines),
-            Err((0, "line number 5 out of range 0-4".to_string()))
-        );
-        assert_eq!(
-            position_offset(source, &position(0, 100), &lines),
-            Err((0, "column is beyond end of line".to_string()))
-        );
-    }
-
-    #[test]
-    fn position_offset_handles_utf16_surrogate_pairs() {
-        let source = "var s = \"\u{1f600}\"\n";
-        let lines = line_starts(source);
-        // The emoji starts at UTF-16 column 9 and occupies two units.
-        assert_eq!(position_offset(source, &position(0, 9), &lines), Ok(9));
-        assert_eq!(
-            position_offset(source, &position(0, 10), &lines),
-            Ok(9),
-            "a position inside the surrogate pair maps to the rune start"
-        );
-        assert_eq!(position_offset(source, &position(0, 11), &lines), Ok(13));
+    pub fn push(&mut self, span: Range<usize>, kind: SemanticTokenKind, modifiers: u64) {
+        let Some(kind) = self.config.type_index(kind) else {
+            return;
+        };
+        let modifiers = self.config.modifier_bits(modifiers);
+        let mut offset = span.start;
+        for part in self.source[span].split_inclusive('\n') {
+            let text = part.trim_end_matches(['\r', '\n']);
+            let end = offset + text.len();
+            if !text.is_empty()
+                && self
+                    .window
+                    .as_ref()
+                    .is_none_or(|window| offset < window.end && end > window.start)
+            {
+                let position = self.map.position(offset);
+                let line = u64::from(position.line);
+                let column = u64::from(position.character);
+                self.data.extend([
+                    line - self.previous.0,
+                    if line == self.previous.0 {
+                        column - self.previous.1
+                    } else {
+                        column
+                    },
+                    text.encode_utf16().count() as u64,
+                    u64::from(kind),
+                    modifiers,
+                ]);
+                self.previous = (line, column);
+            }
+            offset += part.len();
+        }
     }
 }

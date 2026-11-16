@@ -258,7 +258,7 @@ impl BodyScopes<'_> {
                             }
                         }
                     }
-                    self.switch_binding(*guard, case, cases.len(), case_scope.clone());
+                    self.switch_binding(*guard, case, case_scope.clone());
                     self.statement(case, case_scope);
                 }
             }
@@ -302,7 +302,7 @@ impl BodyScopes<'_> {
         }
     }
 
-    fn switch_binding(&mut self, guard: StmtId, case: StmtId, clauses: usize, scope: Range<usize>) {
+    fn switch_binding(&mut self, guard: StmtId, case: StmtId, scope: Range<usize>) {
         let StmtKind::Assignment {
             left,
             right,
@@ -318,10 +318,7 @@ impl BodyScopes<'_> {
         let ExprKind::TypeSwitchGuard { operand } = self.tree.expressions[right[0].0].kind else {
             return;
         };
-        let StmtKind::Case {
-            values, default, ..
-        } = &self.tree.statements[case.0].kind
-        else {
+        let StmtKind::Case { values, .. } = &self.tree.statements[case.0].kind else {
             return;
         };
         if !matches!(name.kind, ExprKind::Name) {
@@ -367,8 +364,6 @@ impl BodyScopes<'_> {
             selection: selection.start,
             scope_start: scope.start,
             operand: self.span(&self.tree.expressions[operand.0].span),
-            clauses,
-            default: *default,
             types: values
                 .iter()
                 .map(|id| self.span(&self.tree.expressions[id.0].span))

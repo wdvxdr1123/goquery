@@ -1,32 +1,10 @@
-//! Builtin signatures describe SDK type classes, with native shadow guards.
+//! Builtin signatures describe SDK type classes.
 use super::HelpInformation;
-use crate::analysis::check::{Inference, callable_signature::signature_label};
+use super::label::signature_label;
 use crate::analysis::query::{Context, builtin, documentation};
-use crate::analysis::scope::Locals;
-use crate::syntax::{Expr, ExprId, ExprKind, SymbolKind};
+use crate::syntax::SymbolKind;
 
-pub(super) fn for_function(
-    context: &Context<'_>,
-    locals: &Locals,
-    body: (&[Expr], usize),
-    function: ExprId,
-) -> Option<HelpInformation> {
-    let inference = Inference::new(
-        context.workspace(),
-        context.file(),
-        context.source(),
-        locals,
-        body.0,
-        body.1,
-    );
-    let name = inference.builtin_name(function)?;
-    // A parenthesized builtin has a specialized go/types signature rather than
-    // an object template. That projection is not represented here yet.
-    if !matches!(body.0.get(function.0)?.kind, ExprKind::Name)
-        || inference.constant_builtin_call(function)
-    {
-        return None;
-    }
+pub(super) fn for_name(context: &Context<'_>, name: &str) -> Option<HelpInformation> {
     let declaration = builtin::declaration(context, name)?;
     if declaration.symbol.kind != SymbolKind::Function {
         return None;

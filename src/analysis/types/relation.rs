@@ -3,7 +3,7 @@ use super::constraints;
 use super::{MAX_DEPTH, MAX_NODES, Tags, Ty, TypeArena, TypeId};
 use crate::analysis::types::declaration_body;
 
-impl TypeArena<'_> {
+impl<'a> TypeArena<'a> {
     /// Test-only structural projection; no JSON machinery enters runtime queries.
     #[cfg(test)]
     pub(crate) fn test_identity(&mut self, input: TypeId) -> Option<serde_json::Value> {
@@ -89,12 +89,21 @@ impl TypeArena<'_> {
             } => {
                 let package = self.workspace.import_path(declaration.file)?;
                 let name = declaration.symbol.name.clone();
-                let arguments = self.arguments[arguments.clone()].to_vec();
+                let arguments = self.arguments[arguments.range()].to_vec();
                 let arguments: Vec<_> = arguments
                     .into_iter()
                     .map(|argument| self.identity_projection(argument, depth + 1))
                     .collect::<Option<_>>()?;
                 json!(["named", package, name, arguments])
+            }
+            Ty::Alias { .. } => return None,
+            Ty::Tuple(elements) => {
+                let elements = self.arguments[elements.range()].to_vec();
+                let elements: Vec<_> = elements
+                    .into_iter()
+                    .map(|element| self.identity_projection(element, depth + 1))
+                    .collect::<Option<_>>()?;
+                json!(["tuple", elements])
             }
             Ty::Pointer(element) | Ty::Slice(element) => {
                 let (tag, element) = (
@@ -146,6 +155,25 @@ impl TypeArena<'_> {
         Some(())
     }
 
+    /// Test-only structural identity for a local defined type; aliases are already
+    /// transparent. Declarations keep their file/offset identity, never a spelling.
+    #[cfg(test)]
+    fn local_declaration_identity(&mut self, input: TypeId) -> Option<serde_json::Value> {
+        let (origin, selection, formal) = match self.nodes.get(usize::from(input.0))? {
+            Ty::LocalDeclaration {
+                origin,
+                selection,
+                formal,
+            } => (*origin, selection.clone(), *formal),
+            _ => return None,
+        };
+        if formal {
+            return None;
+        }
+        self.local_type_index(origin, &selection)?;
+        Some(serde_json::json!(["local", origin, selection.start, []]))
+    }
+
     pub(super) fn expand(&mut self, input: TypeId) -> Option<TypeId> {
         self.step()?;
         if let Some((_, target)) = self.expansions.iter().find(|(id, _)| *id == input) {
@@ -163,25 +191,34 @@ impl TypeArena<'_> {
     }
 
     fn expand_declaration(&mut self, input: TypeId) -> Option<TypeId> {
-        let Ty::Named {
-            declaration,
-            arguments,
-        } = self.nodes.get(usize::from(input.0))?
-        else {
-            return Some(input);
+        let (declaration, arguments) = match self.nodes.get(usize::from(input.0))? {
+            Ty::Named {
+                declaration,
+                arguments,
+            }
+            | Ty::Alias {
+                declaration,
+                arguments,
+            } => (*declaration, *arguments),
+            _ => return Some(input),
         };
         let (file, symbol) = (declaration.file, declaration.symbol);
-        let arguments = self.arguments[arguments.clone()].to_vec();
+        let arguments = self.arguments[arguments.range()].to_vec();
         // Read a bounded declaration slice, not the defining closed file.
-        let source = self
-            .workspace
-            .source_slice(file, symbol.end..symbol.declaration()?.end)?;
-        let header = super::named::parameter_header(&source, symbol.generic)?;
-        let signature = crate::syntax::parse_signature(&header);
+        let decl_span = symbol.end..symbol.declaration()?.end;
+        let source = if let Some(slice) = self.workspace.source_slice(file, decl_span.clone()) {
+            slice
+        } else if self.symbolic && symbol.alias {
+            let full = self.workspace.source(file)?;
+            full.get(decl_span)?.to_owned()
+        } else {
+            return None;
+        };
+        let (header, signature) = super::named::parse_type_parameters_of(&source, symbol.generic)?;
         if !signature.diagnostics.is_empty() {
             return None;
         }
-        let parameters = constraints::parameter_names(&header, &signature)?;
+        let parameters = constraints::parameter_names(header, &signature)?;
         if parameters.len() != arguments.len() || parameters.len() > MAX_NODES {
             return None;
         }
@@ -193,8 +230,12 @@ impl TypeArena<'_> {
         for (index, name) in parameters.into_iter().enumerate() {
             schema.push((name, self.push(Ty::Parameter(index))?));
         }
-        let result = self.parse_in(file, declaration_body(&source)?, &schema)?;
-        if matches!(self.nodes[usize::from(result.0)], Ty::Parameter(_)) {
+        let body = declaration_body(&source)?;
+        let body_offset = symbol.end + (source.len() - body.len());
+        let result = self.parse_in_at(file, body, body_offset, &schema)?;
+        if (!self.symbolic || !symbol.alias)
+            && matches!(self.nodes[usize::from(result.0)], Ty::Parameter(_))
+        {
             return None;
         }
         let result = if schema.is_empty() {
@@ -206,7 +247,7 @@ impl TypeArena<'_> {
         Some(result)
     }
 
-    pub(super) fn underlying(&mut self, mut input: TypeId) -> Option<TypeId> {
+    pub(crate) fn underlying(&mut self, mut input: TypeId) -> Option<TypeId> {
         for _ in 0..MAX_DEPTH {
             if matches!(
                 self.nodes.get(usize::from(input.0))?,
@@ -220,7 +261,10 @@ impl TypeArena<'_> {
             if let Ty::Error(interface) = self.nodes[usize::from(input.0)] {
                 return Some(interface);
             }
-            if !matches!(self.nodes.get(usize::from(input.0))?, Ty::Named { .. }) {
+            if !matches!(
+                self.nodes.get(usize::from(input.0))?,
+                Ty::Named { .. } | Ty::Alias { .. }
+            ) {
                 return Some(input);
             }
             input = self.expand(input)?;
@@ -228,20 +272,44 @@ impl TypeArena<'_> {
         None
     }
 
-    pub(super) fn unalias(&mut self, mut input: TypeId) -> Option<TypeId> {
+    pub(crate) fn unalias(&mut self, mut input: TypeId) -> Option<TypeId> {
         for _ in 0..MAX_DEPTH {
             // Local aliases are transparent too; a missing fact stays unknown.
             if let Some(expanded) = self.local_alias(input)? {
                 input = expanded;
                 continue;
             }
-            if !matches!(self.nodes.get(usize::from(input.0))?, Ty::Named { declaration, .. } if declaration.symbol.alias)
-            {
+            if !matches!(self.nodes.get(usize::from(input.0))?, Ty::Alias { .. }) {
                 return Some(input);
             }
             input = self.expand(input)?;
         }
         None
+    }
+
+    pub(crate) fn named_declaration(
+        &self,
+        input: TypeId,
+    ) -> Option<(crate::analysis::obj::DeclId<'a>, Vec<TypeId>, bool)> {
+        match self.nodes.get(usize::from(input.0))? {
+            Ty::Named {
+                declaration,
+                arguments,
+            } => Some((
+                *declaration,
+                self.arguments[arguments.range()].to_vec(),
+                false,
+            )),
+            Ty::Alias {
+                declaration,
+                arguments,
+            } => Some((
+                *declaration,
+                self.arguments[arguments.range()].to_vec(),
+                true,
+            )),
+            _ => None,
+        }
     }
 
     pub(crate) fn identical(&mut self, left: TypeId, right: TypeId) -> Option<bool> {
@@ -277,6 +345,11 @@ impl TypeArena<'_> {
                         ..
                     },
                 ) if a == b && aa == bb => Vec::new(),
+                (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. })
+                    if self.is_known_non_opaque(left) && self.is_known_non_opaque(right) =>
+                {
+                    return Some(false);
+                }
                 (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. }) => return None,
                 (Ty::Basic(a), Ty::Basic(b)) => {
                     if a.canonical() != b.canonical() {
@@ -308,10 +381,20 @@ impl TypeArena<'_> {
                     if a.symbol.generic && aa.is_empty() {
                         return None;
                     }
-                    self.arguments[aa.clone()]
+                    self.arguments[aa.range()]
                         .iter()
                         .copied()
-                        .zip(self.arguments[ba.clone()].iter().copied())
+                        .zip(self.arguments[ba.range()].iter().copied())
+                        .collect()
+                }
+                (Ty::Tuple(a), Ty::Tuple(b)) => {
+                    if a.len() != b.len() {
+                        return Some(false);
+                    }
+                    self.arguments[a.range()]
+                        .iter()
+                        .copied()
+                        .zip(self.arguments[b.range()].iter().copied())
                         .collect()
                 }
                 (Ty::Pointer(a), Ty::Pointer(b)) | (Ty::Slice(a), Ty::Slice(b)) => vec![(*a, *b)],

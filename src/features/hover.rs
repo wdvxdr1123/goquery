@@ -1,7 +1,7 @@
 //! Hover presents native type, signature and documentation facts as markdown.
 use crate::analysis::query::Context;
 use crate::analysis::query::hover::{self as hover_query, HoverContent};
-use crate::features::documentation;
+use crate::features::document;
 use serde_json::{Value, json};
 
 pub(super) fn execute(context: &Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
@@ -18,7 +18,7 @@ fn render(content: &HoverContent) -> Value {
     let doc = content
         .doc
         .as_deref()
-        .map(|text| documentation::markdown(text, &content.doc_links))
+        .map(|text| document::markdown(text, &content.doc_links))
         .unwrap_or_default();
     let mut sections: Vec<Vec<String>> = Vec::new();
     sections.push(vec![fenced(content.code.as_deref())]);

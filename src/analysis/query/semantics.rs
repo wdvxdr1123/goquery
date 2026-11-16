@@ -1,12 +1,15 @@
 //! Read-only semantic operations over the admitted request source and metadata.
+use super::completion::CompletionReceiver;
 use super::{Context, cursor_scope};
-use crate::analysis::check::callable_signature::CallableSignature;
-use crate::analysis::check::shapes::Shapes;
-use crate::analysis::check::{self, Inference, ScopedType};
-use crate::analysis::scope::{Binding, CursorScope, Locals, Resolver};
+use crate::analysis::budget::MAX_BYTES;
+use crate::analysis::obj::{
+    DeclId, LocalId, MethodOrigin, ObjectRef, ReceiverMember, SymbolOrigin,
+};
+use crate::analysis::scope::tree::LocalBindingKind;
+use crate::analysis::scope::{Binding, CursorScope, Locals, named_type};
 use crate::analysis::source::{Name, Role, SourceAnalysis};
-use crate::analysis::types::{TypeArena, TypeDeclaration};
-use crate::syntax::{Expr, ExprId, ExprKind, Lexer, TokenKind};
+use crate::analysis::types::{Mode, Qualifier, TypeDeclaration};
+use crate::syntax::{self, ExprKind, Lexer, TokenKind};
 
 impl<'a> Context<'a> {
     pub(crate) fn cursor_scope(&self, offset: usize) -> Result<CursorScope, (i32, String)> {
@@ -14,64 +17,369 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn type_position(&self, offset: usize, scope: &CursorScope) -> bool {
-        check::target::type_position(self.workspace, self.view.file, self.source(), offset, scope)
-    }
-
-    pub(crate) fn binding_type(&self, locals: &Locals, binding: &Binding) -> Option<String> {
-        self.workspace
-            .binding_type(self.view.file, self.source(), locals, binding)
-    }
-
-    pub(crate) fn completion_receiver(
-        &self,
-        scope: &CursorScope,
-        offset: usize,
-    ) -> Option<ScopedType<'a>> {
-        let body = scope.body.as_ref()?;
-        let (id, _) = body
-            .tree
-            .expressions
-            .iter()
-            .enumerate()
-            .find(|(_, expression)| {
-                matches!(&expression.kind, ExprKind::Selector { field, .. }
-                if (body.base + field.start..=body.base + field.end).contains(&offset))
-            })?;
-        Inference::new(
+        super::completion::type_position(
             self.workspace,
             self.view.file,
             self.source(),
-            &scope.locals,
-            &body.tree.expressions,
-            body.base,
+            offset,
+            scope,
         )
-        .scoped_receiver_type(ExprId(id))
     }
 
-    pub(crate) fn callable_information(
-        &self,
-        locals: &Locals,
-        body: (&[Expr], usize),
-        function: ExprId,
-    ) -> Option<(CallableSignature, bool)> {
-        self.workspace
-            .callable_information(self.view.file, self.source(), locals, body, function)
+    pub(crate) fn binding_type(&self, _locals: &Locals, binding: &Binding) -> Option<String> {
+        let s0 = u32::try_from(binding.selection.start).ok()?;
+        let s1 = u32::try_from(binding.selection.end).ok()?;
+        let file = self.view.file;
+        let source = self.source();
+        self.with_sema(|sema| {
+            let (region, arena) = sema.region_and_arena_at(file, source, s0, None)?;
+            let (id, _) = super::signatures::resolve_local_binding_id(
+                region,
+                [s0, s1],
+                binding.scope_start(),
+            )?;
+            let op = region.local_type(id)?;
+            let rendered = arena
+                .format_type(op.ty, Qualifier::RelativeTo(file))
+                .or_else(|| {
+                    arena
+                        .has_local_declaration(op.ty)
+                        .filter(|has| *has)
+                        .and_then(|_| arena.format_type(op.ty, Qualifier::Presentation(file)))
+                })?;
+            super::signatures::label::function_types(&rendered).or(Some(rendered))
+        })
     }
 
     pub(crate) fn type_declarations(
         &mut self,
         offset: usize,
     ) -> Result<Vec<TypeDeclaration<'a>>, (i32, String)> {
-        let arena = self
-            .arena
-            .get_or_insert_with(|| TypeArena::new(self.workspace));
-        check::type_definition::declarations(
-            self.workspace,
-            self.view.file,
-            self.view.source.text(),
-            offset,
-            arena,
-        )
+        let file = self.view.file;
+        let source = self.source();
+        let workspace = self.workspace;
+        if let Some(stub) = workspace.files.get(file) {
+            for symbol in &stub.symbols {
+                let Some(declaration) = symbol.declaration() else {
+                    continue;
+                };
+                if let Some(body) = symbol.body() {
+                    if declaration.start <= offset && offset <= body.start {
+                        let _ = source.get(declaration.start..body.start).ok_or((
+                            crate::error::INVALID_PARAMS,
+                            "stale function header".into(),
+                        ))?;
+                    } else if body.contains(&offset)
+                        || (offset == source.len() && body.end == offset)
+                    {
+                        let _ = body.start.checked_sub(declaration.start).ok_or((
+                            crate::error::INVALID_PARAMS,
+                            "stale function boundary".into(),
+                        ))?;
+                        let _ = source
+                            .get(declaration.start..body.end)
+                            .ok_or((crate::error::INVALID_PARAMS, "stale function range".into()))?;
+                    }
+                }
+            }
+        }
+        let Ok(off) = u32::try_from(offset) else {
+            return Ok(Vec::new());
+        };
+        let mut previous = TokenKind::Illegal;
+        let mut selected = None;
+        for token in Lexer::new(source).take_while(|token| token.span.start <= offset) {
+            if token.kind == TokenKind::Ident
+                && token.span.start <= offset
+                && offset <= token.span.end
+            {
+                selected = Some((token.span.clone(), previous == TokenKind::Period));
+                break;
+            }
+            previous = token.kind;
+        }
+        let cursor_offset = (offset == source.len()).then_some(offset);
+
+        self.with_sema(|sema| -> Result<Vec<TypeDeclaration<'a>>, (i32, String)> {
+            enum Action<'a> {
+                Done(Result<Vec<TypeDeclaration<'a>>, (i32, String)>),
+                TypeOfDecl(DeclId<'a>),
+                OperandOfDecl(DeclId<'a>),
+            }
+
+            let action = {
+                let Some((region, arena)) =
+                    sema.region_and_arena_at(file, source, off, cursor_offset)
+                else {
+                    return Ok(Vec::new());
+                };
+                if let Some((span, obj)) = region.object_at(off) {
+                    match obj {
+                        ObjectRef::PkgName { .. }
+                        | ObjectRef::Label { .. }
+                        | ObjectRef::Nil
+                        | ObjectRef::BuiltinFunction(_) => Action::Done(Ok(Vec::new())),
+                        ObjectRef::TypeParam { span: tp_span, .. } => {
+                            let msg = source
+                                .get(tp_span[0] as usize..tp_span[1] as usize)
+                                .map_or_else(
+                                    || Ok(Vec::new()),
+                                    |name| {
+                                        Err((
+                                            0,
+                                            format!("cannot find type name(s) from type {name}"),
+                                        ))
+                                    },
+                                );
+                            Action::Done(msg)
+                        }
+                        ObjectRef::Var {
+                            origin: SymbolOrigin::Local { id, .. },
+                            ..
+                        }
+                        | ObjectRef::Const(SymbolOrigin::Local { id, .. }) => Action::Done(
+                            region
+                                .local_type(id)
+                                .and_then(|op| arena.projected_type_declarations(op.ty))
+                                .unwrap_or_else(|| Ok(Vec::new())),
+                        ),
+                        ObjectRef::TypeName {
+                            origin:
+                                SymbolOrigin::Local {
+                                    file: f, span: s, ..
+                                },
+                            ..
+                        } => Action::Done(match workspace.files.get_key_value(f) {
+                            Some((file_buf, _)) => Ok(vec![TypeDeclaration::Local(
+                                file_buf,
+                                s[0] as usize..s[1] as usize,
+                            )]),
+                            None => Ok(Vec::new()),
+                        }),
+                        ObjectRef::TypeName {
+                            origin: SymbolOrigin::Package(decl),
+                            ..
+                        } => Action::Done(match workspace.files.get_key_value(decl.file) {
+                            Some((file_buf, _)) => {
+                                Ok(vec![TypeDeclaration::Named(file_buf, decl.symbol)])
+                            }
+                            None => Ok(Vec::new()),
+                        }),
+                        ObjectRef::BuiltinType(name) => Action::Done(
+                            arena
+                                .builtin_type(file, name)
+                                .and_then(|ty| arena.projected_type_declarations(ty))
+                                .unwrap_or_else(|| Ok(Vec::new())),
+                        ),
+                        ObjectRef::BuiltinConst(_) => Action::Done(
+                            region
+                                .expr_type(span)
+                                .and_then(|op| arena.projected_type_declarations(op.ty))
+                                .unwrap_or_else(|| Ok(Vec::new())),
+                        ),
+                        ObjectRef::Field(_) | ObjectRef::Method(_) => {
+                            if let Some(sel) = region.selection_by_span(span) {
+                                Action::Done(
+                                    arena
+                                        .projected_type_declarations(sel.ty)
+                                        .unwrap_or_else(|| Ok(Vec::new())),
+                                )
+                            } else if let ObjectRef::Method(MethodOrigin::Concrete(decl)) = obj {
+                                Action::TypeOfDecl(decl)
+                            } else {
+                                Action::Done(Ok(Vec::new()))
+                            }
+                        }
+                        ObjectRef::Func(decl) => {
+                            if let Some(inst) = region.instance_by_span(span) {
+                                Action::Done(
+                                    arena
+                                        .projected_type_declarations(inst.instantiated)
+                                        .unwrap_or_else(|| Ok(Vec::new())),
+                                )
+                            } else {
+                                Action::TypeOfDecl(decl)
+                            }
+                        }
+                        ObjectRef::Const(SymbolOrigin::Package(decl))
+                        | ObjectRef::Var {
+                            origin: SymbolOrigin::Package(decl),
+                            ..
+                        } => Action::OperandOfDecl(decl),
+                    }
+                } else if let Some((ident_span, false)) = selected.as_ref() {
+                    let key = [ident_span.start as u32, ident_span.end as u32];
+                    let guard_ty = region
+                        .scopes
+                        .bindings
+                        .iter()
+                        .enumerate()
+                        .find(|(_, b)| {
+                            b.kind == LocalBindingKind::TypeSwitchVar && b.name_span == key
+                        })
+                        .and_then(|(idx, _)| region.local_init(LocalId(idx as u32)))
+                        .and_then(|guard_span| region.expr_type(guard_span));
+                    Action::Done(
+                        guard_ty
+                            .and_then(|op| arena.projected_type_declarations(op.ty))
+                            .unwrap_or_else(|| Ok(Vec::new())),
+                    )
+                } else if selected.is_none() {
+                    let expr_cand = region.smallest_expr_at(off);
+                    let call_cand = region
+                        .calls
+                        .iter()
+                        .filter(|call| {
+                            !call.is_conversion
+                                && call.signature.is_some()
+                                && call.span[0] <= off
+                                && off <= call.span[1]
+                        })
+                        .min_by_key(|call| call.span[1].saturating_sub(call.span[0]));
+                    let target_ty = match (expr_cand, call_cand) {
+                        (Some((es, op)), Some(call)) => {
+                            let call_len = call.span[1].saturating_sub(call.span[0]);
+                            let expr_len = es[1].saturating_sub(es[0]);
+                            if call_len < expr_len {
+                                call.signature
+                            } else {
+                                Some(op.ty)
+                            }
+                        }
+                        (Some((_, op)), None) => Some(op.ty),
+                        (None, Some(call)) => call.signature,
+                        (None, None) => None,
+                    };
+                    Action::Done(
+                        target_ty
+                            .and_then(|ty| arena.projected_type_declarations(ty))
+                            .unwrap_or_else(|| Ok(Vec::new())),
+                    )
+                } else {
+                    Action::Done(Ok(Vec::new()))
+                }
+            };
+
+            match action {
+                Action::Done(result) => result,
+                Action::TypeOfDecl(decl) => {
+                    let ty = sema.type_of_decl(decl).or_else(|| {
+                        if !decl.symbol.is_callable() {
+                            return None;
+                        }
+                        let range = decl.symbol.declaration()?;
+                        let end = decl.symbol.body().map_or(range.end, |b| b.start);
+                        if end.checked_sub(range.start)? > MAX_BYTES {
+                            return None;
+                        }
+                        let header = if decl.file == file {
+                            std::borrow::Cow::Borrowed(source.get(range.start..end)?)
+                        } else {
+                            std::borrow::Cow::Owned(
+                                workspace.source_slice(decl.file, range.start..end)?,
+                            )
+                        };
+                        let parsed = syntax::parse_signature(&header);
+                        sema.arena_mut()
+                            .declaration_signature(decl.file, &header, &parsed)
+                    });
+                    ty.and_then(|ty| sema.arena_mut().projected_type_declarations(ty))
+                        .unwrap_or_else(|| Ok(Vec::new()))
+                }
+                Action::OperandOfDecl(decl) => sema
+                    .operand_of_decl(decl)
+                    .and_then(|op| sema.arena_mut().projected_type_declarations(op.ty))
+                    .unwrap_or_else(|| Ok(Vec::new())),
+            }
+        })
+    }
+
+    pub(crate) fn sema_local_var_type(&self, cursor_offset: usize) -> Option<String> {
+        let off = u32::try_from(cursor_offset).ok()?;
+        let file = self.view.file;
+        let source = self.source();
+        self.with_sema(|sema| {
+            let (region, arena) = sema.region_and_arena_at(file, source, off, None)?;
+            let (_, obj) = region.object_at(off)?;
+            let id = match obj {
+                ObjectRef::Var {
+                    origin: SymbolOrigin::Local { id, .. },
+                    ..
+                } => id,
+                _ => return None,
+            };
+            let op = region.local_type(id)?;
+            arena.render_presentation(op.ty, file)
+        })
+    }
+
+    pub(crate) fn completion_selector_members(
+        &self,
+        scope: &CursorScope,
+        offset: usize,
+    ) -> Option<(Vec<ReceiverMember<'a>>, Option<CompletionReceiver<'a>>)> {
+        let body = scope.body.as_ref()?;
+        let operand = body.tree.expressions.iter().find_map(|expression| {
+            matches!(&expression.kind, ExprKind::Selector { field, .. }
+                if (body.base + field.start..=body.base + field.end).contains(&offset))
+            .then(|| match &expression.kind {
+                ExprKind::Selector { operand, .. } => *operand,
+                _ => unreachable!(),
+            })
+        })?;
+        let op_expr = body.tree.expressions.get(operand.0)?;
+        let op_span = [
+            u32::try_from(body.base + op_expr.span.start).ok()?,
+            u32::try_from(body.base + op_expr.span.end).ok()?,
+        ];
+        let off = u32::try_from(offset).ok()?;
+        let file = self.view.file;
+        let source = self.source();
+        let workspace = self.workspace;
+
+        self.with_sema(|sema| {
+            let (region, arena) = sema.region_and_arena_at(file, source, off, Some(offset))?;
+            let recv_op = region.expr_type(op_span)?;
+            if recv_op.mode == Mode::TypeExpr {
+                return None;
+            }
+            let raw = arena.accessible_members(recv_op.ty, true, file)?;
+            let mut mapped = Vec::with_capacity(raw.len());
+            for (_, sel) in &raw {
+                match sel.obj {
+                    ObjectRef::Method(MethodOrigin::Concrete(decl)) => {
+                        let (path_buf, _) = workspace.files.get_key_value(decl.file)?;
+                        mapped.push(ReceiverMember::Method(path_buf, decl.symbol));
+                    }
+                    ObjectRef::Field(member)
+                    | ObjectRef::Method(MethodOrigin::Interface(member)) => {
+                        if let Some(decl) = member.to_member_declaration(workspace) {
+                            mapped.push(ReceiverMember::Declaration(decl));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !raw.is_empty() && mapped.is_empty() {
+                return None;
+            }
+            let scoped =
+                if let Some(text) = arena.render(recv_op.ty, file).and_then(|t| named_type(&t)) {
+                    Some(CompletionReceiver { scope: file, text })
+                } else if let Some((decl, _, _)) = arena.named_declaration(recv_op.ty)
+                    && let Some(text) = arena
+                        .render(recv_op.ty, decl.file)
+                        .and_then(|t| named_type(&t))
+                {
+                    Some(CompletionReceiver {
+                        scope: decl.file,
+                        text,
+                    })
+                } else {
+                    None
+                };
+            Some((mapped, scoped))
+        })
     }
     pub(crate) fn semantic_analysis(&self) -> Result<SourceAnalysis, (i32, String)> {
         let mut analysis =
@@ -88,14 +396,6 @@ impl<'a> Context<'a> {
         analysis.names.extend(self.import_names(self.source()));
         analysis.names.sort_unstable_by_key(|name| name.span.start);
         Ok(analysis)
-    }
-
-    pub(crate) fn resolver(&self) -> Resolver<'a> {
-        Resolver::new(self.workspace, self.view.file)
-    }
-
-    pub(crate) fn shapes<'query>(&'query self, analysis: &'query SourceAnalysis) -> Shapes<'query> {
-        Shapes::new(self.workspace, analysis, self.view.file, self.source())
     }
 
     // Match a default import's virtual declaration against the dependency's

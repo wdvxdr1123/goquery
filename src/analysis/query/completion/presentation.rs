@@ -1,14 +1,16 @@
 //! Checked completion labels/types share query scope, never protocol item edits.
-use super::{Context, Kind, Presentation};
-use crate::analysis::check;
-use crate::analysis::check::callable_signature::{
-    CallableSignature, PreparedMethods, SignatureSource,
+use super::signatures::signature_in_source;
+use super::{
+    CallableSignature, CompletionReceiver, Context, Kind, PreparedMethods, Presentation,
+    SignatureSource,
 };
-use crate::analysis::member::MemberDeclaration;
-use crate::analysis::method_set::ReceiverMember;
+use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
 use crate::analysis::scope::{Binding, Locals};
-use crate::analysis::type_resolution::MemberTypes;
-use crate::analysis::types::{TypeForm, TypePresentation};
+use crate::analysis::types::lookup::ScopedOwnerEnv;
+use crate::analysis::types::{
+    TypeForm, TypePresentation, completion_inferable, declared_type_presentation,
+    local_type_presentation,
+};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{AggregateMember, MemberKind, TokenKind};
 use crate::text::SourceMap;
@@ -49,9 +51,7 @@ impl Context<'_> {
             .map(|parameter| &header[parameter.annotation.clone()])
             .collect();
         // Inference uncertainty must keep explicit arguments, never erase them.
-        let inferred = self
-            .workspace
-            .completion_inferable(location.origin, &formals, &inputs)
+        let inferred = completion_inferable(self.workspace, location.origin, &formals, &inputs)
             .unwrap_or_else(|| vec![false; formals.len()]);
         let keep = inferred
             .iter()
@@ -63,7 +63,8 @@ impl Context<'_> {
             .map(|(name, constraint)| {
                 Some(format!(
                     "{name} {}",
-                    self.workspace.signature_type_scoped(
+                    crate::analysis::query::signatures::label::signature_type_scoped(
+                        self.workspace,
                         location.file,
                         location.origin,
                         constraint,
@@ -74,13 +75,16 @@ impl Context<'_> {
             .collect::<Option<_>>()?;
         Some(Presentation {
             detail: None,
-            signature: Some(self.workspace.declared_signature(
-                location.file,
-                location.origin,
-                header,
-                &signature,
-                &symbol.name,
-            )?),
+            signature: Some(
+                crate::analysis::query::signatures::label::declared_signature(
+                    self.workspace,
+                    location.file,
+                    location.origin,
+                    header,
+                    &signature,
+                    &symbol.name,
+                )?,
+            ),
             type_parameters: Some(type_parameters),
             kind: None,
         })
@@ -123,9 +127,7 @@ impl Context<'_> {
         map: &SourceMap<'_>,
     ) -> Option<Presentation> {
         let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-        let presentation = self
-            .workspace
-            .declared_type_presentation(file, origin, declaration)?;
+        let presentation = declared_type_presentation(self.workspace, file, origin, declaration)?;
         self.type_presentation(file, presentation)
     }
 
@@ -141,13 +143,15 @@ impl Context<'_> {
         };
         let detail = if matches!(presentation.form, TypeForm::Signature) {
             let parsed = crate::syntax::parse_literal_signature(&presentation.text);
-            let (information, _) = self.workspace.signature_from_parsed(
-                file,
-                file,
-                &presentation.text,
-                &parsed,
-                "",
-            )?;
+            let (information, _) =
+                crate::analysis::query::signatures::label::signature_from_parsed(
+                    self.workspace,
+                    file,
+                    file,
+                    &presentation.text,
+                    &parsed,
+                    "",
+                )?;
             format!("func{}", information.label)
         } else {
             presentation.text
@@ -164,7 +168,7 @@ impl Context<'_> {
 impl Context<'_> {
     pub(crate) fn member_presentation(
         &self,
-        types: Option<&MemberTypes<'_>>,
+        types: Option<&ScopedOwnerEnv<'_>>,
         member: &MemberDeclaration<'_>,
         declaration: &str,
         entries: &[AggregateMember],
@@ -200,9 +204,14 @@ impl Context<'_> {
         let header = instantiated.as_deref().unwrap_or(&header);
         if callable {
             let parsed = crate::syntax::parse_literal_signature(header);
-            let signature =
-                self.workspace
-                    .signature_from_parsed(file, origin, header, &parsed, member.name)?;
+            let signature = crate::analysis::query::signatures::label::signature_from_parsed(
+                self.workspace,
+                file,
+                origin,
+                header,
+                &parsed,
+                member.name,
+            )?;
             let opening = signature.0.label.find('(')?;
             let detail = Some(format!("func{}", &signature.0.label[opening..]));
             return Some(Presentation {
@@ -213,7 +222,12 @@ impl Context<'_> {
             });
         }
         Some(Presentation {
-            detail: self.workspace.signature_type(file, origin, header),
+            detail: crate::analysis::query::signatures::label::signature_type(
+                self.workspace,
+                file,
+                origin,
+                header,
+            ),
             signature: None,
             type_parameters: None,
             kind: None,
@@ -227,10 +241,14 @@ impl<'a> Context<'a> {
     }
     pub(crate) fn completion_members(
         &self,
-        receiver: &crate::analysis::check::ScopedType<'_>,
+        receiver: &CompletionReceiver<'_>,
     ) -> Vec<ReceiverMember<'a>> {
-        self.workspace
-            .scoped_receiver_members(self.file(), receiver.scope, &receiver.text)
+        crate::analysis::types::lookup::scoped_receiver_members(
+            self.workspace,
+            self.file(),
+            receiver.scope,
+            &receiver.text,
+        )
     }
     pub(crate) fn completion_member_types(
         &self,
@@ -238,23 +256,21 @@ impl<'a> Context<'a> {
         receiver: &str,
         member: MemberDeclaration<'_>,
         declaration: &str,
-    ) -> Option<MemberTypes<'a>> {
+    ) -> Option<ScopedOwnerEnv<'a>> {
         crate::syntax::Lexer::new(declaration)
             .next()
             .filter(|token| token.kind == TokenKind::LBrack)?;
-        self.workspace
-            .scoped_member_types(self.file(), scope, receiver, member)
+        ScopedOwnerEnv::for_member(self.workspace, self.file(), scope, receiver, member)
     }
     pub(crate) fn binding_signature(
         &self,
-        locals: &Locals,
+        _locals: &Locals,
         binding: &Binding,
     ) -> Option<(CallableSignature, bool)> {
-        self.workspace
-            .binding_signature(self.file(), self.source(), locals, binding)
+        self.local_binding_signature(&binding.selection, binding.scope_start(), &binding.name)
     }
     pub(crate) fn binding_detail(&self, locals: &Locals, binding: &Binding) -> Option<String> {
-        check::binding_detail(self.workspace, self.file(), self.source(), locals, binding)
+        self.binding_type(locals, binding)
     }
     pub(crate) fn local_completion_type(
         &self,
@@ -262,8 +278,7 @@ impl<'a> Context<'a> {
         binding: &Binding,
     ) -> Option<Presentation> {
         let presentation =
-            self.workspace
-                .local_type_presentation(self.file(), self.source(), locals, binding)?;
+            local_type_presentation(self.workspace, self.file(), self.source(), locals, binding)?;
         self.type_presentation(self.file(), presentation)
     }
     pub(crate) fn symbol_completion(
@@ -281,14 +296,14 @@ impl<'a> Context<'a> {
             {
                 return self.generic_completion(location, symbol);
             }
-            self.workspace
-                .signature_in_source(location, symbol, receiver, methods)
-                .map(|signature| Presentation {
+            signature_in_source(self.workspace, location, symbol, receiver, methods).map(
+                |signature| Presentation {
                     detail: None,
                     signature: Some(signature),
                     type_parameters: None,
                     kind: None,
-                })
+                },
+            )
         } else if symbol.is_type() {
             self.aggregate_type_completion(self.file(), symbol)
                 .or_else(|| {

@@ -131,7 +131,10 @@ impl TypeArena<'_> {
             if depth >= super::MAX_DEPTH || seen.len() >= super::MAX_NODES {
                 return None;
             }
-            if matches!(self.nodes[usize::from(ty.0)], Ty::Named { .. }) {
+            if matches!(
+                self.nodes[usize::from(ty.0)],
+                Ty::Named { .. } | Ty::Alias { .. }
+            ) {
                 self.check_named_arguments(ty)?;
                 continue;
             }
@@ -150,6 +153,7 @@ impl TypeArena<'_> {
                 | Ty::Slice(element)
                 | Ty::Array { element, .. }
                 | Ty::Chan { element, .. } => vec![element],
+                Ty::Tuple(elements) => self.arguments[elements.range()].to_vec(),
                 Ty::Struct { fields, .. } => {
                     self.fields[fields].iter().map(|field| field.ty).collect()
                 }

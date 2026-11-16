@@ -9,7 +9,7 @@ const MAX_GENERIC_HEADER: usize = 16 * 1024;
 /// the generic declaration signature as a comment.
 pub(super) fn instantiated(
     context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
+    _scope: &crate::analysis::scope::CursorScope,
     span: &Range<usize>,
     path: &Path,
     symbol: &crate::index::IndexedSymbol,
@@ -17,43 +17,100 @@ pub(super) fn instantiated(
     if !symbol.generic || !symbol.is_function() {
         return None;
     }
-    let initializer;
-    let (expressions, base) = if let Some(body) = scope.body.as_ref() {
-        (body.tree.expressions.as_slice(), body.base)
-    } else {
-        let (base, text) = super::value_initializer(context, span.start)?;
-        if text.len() > MAX_GENERIC_HEADER {
-            return None;
+    let decl_file = context
+        .workspace()
+        .files
+        .get_key_value(path)
+        .map(|(p, _)| p.as_path())?;
+    let s0 = u32::try_from(span.start).ok()?;
+    let s1 = u32::try_from(span.end).ok()?;
+    let type_args = context.with_sema(|sema| {
+        if let Some((region, arena)) =
+            sema.region_and_arena_at(context.file(), context.source(), s0, None)
+            && let Some(inst) = region.instance_by_span([s0, s1])
+            && matches!(
+                inst.target,
+                crate::analysis::obj::ObjectRef::Func(d)
+                    if d.file == decl_file && std::ptr::eq(d.symbol, symbol)
+            )
+        {
+            let args = inst.type_args.to_vec();
+            return crate::analysis::query::signatures::instantiated::format_instantiated_signature(
+                context.workspace(),
+                context.file(),
+                arena,
+                crate::analysis::obj::DeclId {
+                    file: decl_file,
+                    symbol,
+                },
+                &args,
+            );
         }
-        initializer = crate::syntax::parse_expression(text);
-        if !initializer.diagnostics.is_empty() {
-            return None;
-        }
-        (initializer.nodes.as_slice(), base)
-    };
-    let call = expressions.iter().find_map(|entry| {
-        let crate::syntax::ExprKind::Call {
-            function,
-            arguments,
-            variadic,
-        } = &entry.kind
-        else {
-            return None;
-        };
-        let selected = call_name_span(expressions, *function)?;
-        ((base + selected.start..base + selected.end) == *span)
-            .then_some((*function, Some((arguments.as_slice(), *variadic))))
+        None
     });
-    let (function, call) = call.or_else(|| {
-        expressions.iter().enumerate().find_map(|(index, entry)| {
-            if !matches!(entry.kind, crate::syntax::ExprKind::Index { .. }) {
+    let instantiated = match type_args {
+        Some(res) => Some(res),
+        None => {
+            let (base, text) = super::value_initializer(context, span.start)?;
+            if text.len() > MAX_GENERIC_HEADER {
                 return None;
             }
-            let id = crate::syntax::ExprId(index);
-            let selected = call_name_span(expressions, id)?;
-            ((base + selected.start..base + selected.end) == *span).then_some((id, None))
-        })
-    })?;
+            let prefix = "_ = ";
+            let wrapped = format!("{prefix}{text}");
+            let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Var);
+            if !tree.diagnostics().is_empty() {
+                return None;
+            }
+            let rel_start = span.start.checked_sub(base)?.checked_add(prefix.len())?;
+            let rel_end = span.end.checked_sub(base)?.checked_add(prefix.len())?;
+            let r0 = u32::try_from(rel_start).ok()?;
+            let r1 = u32::try_from(rel_end).ok()?;
+            let wrapped_end = u32::try_from(wrapped.len()).ok()?;
+            let consumer = context.file();
+            let scopes = crate::analysis::scope::tree::ScopeTree::from_top_level_decl(
+                &wrapped, 0, &tree, None,
+            );
+            let mut region =
+                crate::analysis::check::region::RegionInfo::new(None, [0, wrapped_end], scopes);
+            let mut arena =
+                crate::analysis::types::TypeArena::with_shared_budget(context.workspace());
+            let mut decls = crate::analysis::check::decls::DeclCache::new();
+            {
+                let mut checker = crate::analysis::check::RegionChecker::new(
+                    &mut arena,
+                    &mut decls,
+                    consumer,
+                    &wrapped,
+                    0,
+                    &tree,
+                    &mut region,
+                    None,
+                    None,
+                );
+                checker.check_decl_spec(false);
+            }
+            region.finalize();
+            let inst = region.instance_by_span([r0, r1])?;
+            if !matches!(
+                inst.target,
+                crate::analysis::obj::ObjectRef::Func(d)
+                    if d.file == decl_file && std::ptr::eq(d.symbol, symbol)
+            ) {
+                return None;
+            }
+            let args = inst.type_args.to_vec();
+            crate::analysis::query::signatures::instantiated::format_instantiated_signature(
+                context.workspace(),
+                consumer,
+                &mut arena,
+                crate::analysis::obj::DeclId {
+                    file: decl_file,
+                    symbol,
+                },
+                &args,
+            )
+        }
+    }?;
     let source_text = render::declaration_source(context, path)?;
     let declaration = symbol.declaration()?;
     let end = symbol.body().map_or(declaration.end, |body| body.start);
@@ -62,51 +119,14 @@ pub(super) fn instantiated(
     }
     let header = source_text.text().get(declaration.start..end)?;
     let signature = crate::syntax::parse_signature(header);
-    let inference = crate::analysis::check::Inference::new(
-        context.workspace(),
-        context.file(),
-        context.source(),
-        &scope.locals,
-        expressions,
-        base,
-    );
-    let instantiated = inference.instantiated_function_signature(
-        (path, header, &signature),
-        function,
-        call,
-        crate::analysis::check::SignaturePresentation::Display,
-    )?;
     let code = format!(
         "func {}{}",
         import_qualifier(context, context.file(), path)?,
-        render::normalize_signature(&instantiated.label),
+        render::normalize_signature(&instantiated.0.label),
     );
     let comment = generic_signature_comment(context, path, header, &signature, &symbol.name)?;
     let separator = if code.len() > 60 { "\n" } else { " " };
     Some(format!("{code}{separator}// {comment}"))
-}
-
-/// The selected name keeps its own span through qualification, explicit type
-/// arguments and parenthesized callees.
-fn call_name_span(
-    expressions: &[crate::syntax::Expr],
-    mut function: crate::syntax::ExprId,
-) -> Option<Range<usize>> {
-    for _ in 0..32 {
-        let expression = expressions.get(function.0)?;
-        match &expression.kind {
-            crate::syntax::ExprKind::Name => return Some(expression.span.clone()),
-            crate::syntax::ExprKind::Selector { field, .. } => return Some(field.clone()),
-            crate::syntax::ExprKind::Index { operand, .. }
-            | crate::syntax::ExprKind::Parenthesized {
-                expression: operand,
-            } => {
-                function = *operand;
-            }
-            _ => return None,
-        }
-    }
-    None
 }
 
 /// The generic declaration rendered as gopls' trailing comment.
@@ -133,7 +153,8 @@ fn generic_signature_comment(
             .is_some_and(|next| {
                 header.get(next.annotation.clone()).map(str::trim) == Some(constraint)
             });
-        let constraint = context.workspace().signature_type_scoped(
+        let constraint = crate::analysis::query::signatures::label::signature_type_scoped(
+            context.workspace(),
             context.file(),
             origin,
             constraint,
@@ -150,10 +171,14 @@ fn generic_signature_comment(
         }
         type_parameters.push(parameter);
     }
-    let (declaration, _) =
-        context
-            .workspace()
-            .declared_signature(context.file(), origin, header, signature, name)?;
+    let (declaration, _) = crate::analysis::query::signatures::label::declared_signature(
+        context.workspace(),
+        context.file(),
+        origin,
+        header,
+        signature,
+        name,
+    )?;
     let declaration = render::normalize_signature(&declaration.label);
     let (_, parameters) = declaration.split_once('(')?;
     let comment = format!("func[{}]({parameters}", type_parameters.join(", "));

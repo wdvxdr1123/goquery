@@ -13,7 +13,7 @@ pub struct Parameter {
 }
 
 /// A named function or method header, without its body or owned source text.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[non_exhaustive]
 pub struct Signature {
     pub receiver: Vec<Parameter>,

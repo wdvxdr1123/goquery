@@ -306,31 +306,28 @@ impl SourceAnalysis {
             return start;
         }
         let limit = start + parameters;
-        let header = format!("func Generic{}()", &source[start..limit]);
-        let signature: Signature = crate::syntax::parse_signature(&header);
+        let signature: Signature = crate::syntax::parse_type_parameters(&source[start..limit]);
         if !signature.diagnostics.is_empty() {
             return limit;
         }
-        let prefix = "func Generic".len();
         let mut literals = Vec::new();
         for parameter in &signature.type_parameters {
             self.annotate_type(
                 source,
-                start + parameter.annotation.start - prefix
-                    ..start + parameter.annotation.end - prefix,
+                start + parameter.annotation.start..start + parameter.annotation.end,
                 &mut literals,
             );
             if let Some(name) = &parameter.name {
-                let selection = start + name.start - prefix..start + name.end - prefix;
+                let selection = start + name.start..start + name.end;
                 self.locals.type_parameter(source, selection, start..end);
             }
         }
         for reference in &signature.type_references {
-            let span = start + reference.name.start - prefix..start + reference.name.end - prefix;
+            let span = start + reference.name.start..start + reference.name.end;
             let qualifier = reference
                 .qualifier
                 .as_ref()
-                .map(|q| start + q.start - prefix..start + q.end - prefix);
+                .map(|q| start + q.start..start + q.end);
             if let Some(q) = &qualifier {
                 self.mark(q.clone(), Role::Namespace);
             }

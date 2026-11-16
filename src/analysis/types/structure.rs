@@ -1,6 +1,6 @@
 //! Complete bounded struct fields, shared by identity, substitution and relations.
-use super::arena::DisplayScope;
-use super::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Tags, Ty, TypeArena, TypeId};
+use super::{MAX_BYTES, MAX_DEPTH, Tags, Ty, TypeArena, TypeId};
+use crate::analysis::obj::MemberDeclId;
 use crate::analysis::types::declaration_body;
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
@@ -12,13 +12,15 @@ pub(super) struct Field {
     pub(super) ty: TypeId,
     pub(super) embedded: bool,
     pub(super) tag: Vec<u8>,
+    pub(super) selection: [u32; 2],
 }
 
 impl<'a> TypeArena<'a> {
-    pub(super) fn read_struct(
+    pub(super) fn read_struct_at(
         &mut self,
         origin: &Path,
         source: &str,
+        file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
         depth: usize,
     ) -> Option<TypeId> {
@@ -35,7 +37,7 @@ impl<'a> TypeArena<'a> {
             .iter()
             .filter(|field| field.container == brace)
         {
-            if self.fields.len() + fields.len() >= MAX_NODES {
+            if self.fields.len() + fields.len() >= self.node_limit {
                 return None;
             }
             let annotation = &source[field.annotation.clone()];
@@ -54,7 +56,14 @@ impl<'a> TypeArena<'a> {
                 }
             }
             let mut tokens = Lexer::new(annotation).peekable();
-            let ty = self.read(origin, annotation, &mut tokens, environment, depth + 1)?;
+            let ty = self.read_at(
+                origin,
+                annotation,
+                file_offset.map(|base| base + field.annotation.start),
+                &mut tokens,
+                environment,
+                depth + 1,
+            )?;
             if !tokens.all(|token| token.kind == TokenKind::Semicolon) {
                 return None;
             }
@@ -71,8 +80,9 @@ impl<'a> TypeArena<'a> {
                 self.embedded_base(base, pointer, 0)?;
             }
             let raw_tag = field.tag.as_ref().map(|span| &source[span.clone()]);
+            let next_bytes = bytes + name.len() + raw_tag.map_or(0, str::len);
             // Preflight before decoding/duplicating a shared grouped-field tag.
-            if self.field_bytes + bytes + name.len() + raw_tag.map_or(0, str::len) > MAX_BYTES {
+            if next_bytes > MAX_BYTES || self.field_bytes + next_bytes > self.byte_limit {
                 return None;
             }
             let tag = match raw_tag {
@@ -80,11 +90,20 @@ impl<'a> TypeArena<'a> {
                 None => Vec::new(),
             };
             bytes += name.len() + tag.len();
+            let selection = file_offset
+                .and_then(|base| {
+                    Some([
+                        u32::try_from(base + field.name.start).ok()?,
+                        u32::try_from(base + field.name.end).ok()?,
+                    ])
+                })
+                .unwrap_or([0, 0]);
             fields.push(Field {
                 name: name.to_owned(),
                 ty,
                 embedded: field.embedded,
                 tag,
+                selection,
             });
         }
         self.store_struct(origin, fields)
@@ -142,7 +161,10 @@ impl<'a> TypeArena<'a> {
             .iter()
             .map(|field| field.name.len() + field.tag.len())
             .sum();
-        if self.fields.len() + fields.len() > MAX_NODES || self.field_bytes + bytes > MAX_BYTES {
+        if self.fields.len() + fields.len() > self.node_limit
+            || bytes > MAX_BYTES
+            || self.field_bytes + bytes > self.byte_limit
+        {
             return None;
         }
         self.field_bytes += bytes;
@@ -193,66 +215,125 @@ impl<'a> TypeArena<'a> {
         if self.workspace.files.get(a)?.package != self.workspace.files.get(b)?.package {
             return Some(false);
         }
-        Some(
-            a.parent() == b.parent()
-                || self.workspace.import_path(a)? == self.workspace.import_path(b)?,
-        )
+        if a.parent() == b.parent() {
+            return Some(true);
+        }
+        match (self.workspace.import_path(a), self.workspace.import_path(b)) {
+            (Some(pa), Some(pb)) => Some(pa == pb),
+            _ if self.symbolic => Some(false),
+            _ => None,
+        }
     }
 
-    pub(super) fn write_struct(
-        &self,
-        origin: &Path,
-        fields: Range<usize>,
-        consumer: DisplayScope<'_>,
-        out: &mut String,
-        depth: usize,
-    ) -> Option<()> {
-        if self.fields[fields.clone()]
-            .iter()
-            .any(|field| !crate::syntax::is_exported_name(&field.name))
-            && let DisplayScope::Consumer(file) = consumer
-            && !self.same_field_package(origin, file)?
-        {
+    pub(crate) fn direct_struct_field(
+        &mut self,
+        target: TypeId,
+        consumer: &Path,
+        name: &str,
+    ) -> Option<(MemberDeclId<'a>, TypeId)> {
+        if name == "_" {
             return None;
         }
-        out.push_str("struct { ");
+        let unaliased = self.unalias(target)?;
+        let owner = match self.nodes.get(usize::from(unaliased.0))? {
+            Ty::Named { declaration, .. } => Some(declaration.symbol),
+            _ => None,
+        };
+        let root = self.underlying(unaliased)?;
+        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
+            return None;
+        };
+        let same_pkg =
+            crate::syntax::is_exported_name(name) || self.same_field_package(origin, consumer)?;
+        if !same_pkg {
+            return None;
+        }
         for field in &self.fields[fields] {
-            if !field.embedded {
-                out.push_str(&field.name);
-                out.push(' ');
+            if field.name == name {
+                return Some((
+                    MemberDeclId {
+                        file: origin,
+                        owner,
+                        selection: field.selection,
+                        embedded: field.embedded,
+                        builtin: false,
+                    },
+                    field.ty,
+                ));
             }
-            let start = out.len();
-            self.write_in(field.ty, consumer, out, depth + 1)?;
-            if field.embedded {
-                let mut name = None;
-                for token in Lexer::new(&out[start..]) {
-                    if token.kind == TokenKind::LBrack {
-                        break;
+        }
+        None
+    }
+
+    pub(crate) fn struct_positional_fields(
+        &mut self,
+        target: TypeId,
+        consumer: &Path,
+    ) -> Option<Vec<TypeId>> {
+        let root = self.underlying(target)?;
+        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
+            return None;
+        };
+        let mut out = Vec::with_capacity(fields.len());
+        let mut same_pkg = None;
+        for field in &self.fields[fields] {
+            if !crate::syntax::is_exported_name(&field.name) {
+                let allowed = match same_pkg {
+                    Some(v) => v,
+                    None => {
+                        let v = self.same_field_package(origin, consumer)?;
+                        same_pkg = Some(v);
+                        v
                     }
-                    if token.kind == TokenKind::Ident {
-                        name = Some(&out[start + token.span.start..start + token.span.end]);
-                    }
-                }
-                if name != Some(field.name.as_str()) {
+                };
+                if !allowed {
                     return None;
                 }
             }
-            if !field.tag.is_empty() {
-                out.push_str(" \"");
-                const HEX: &[u8] = b"0123456789abcdef";
-                for byte in &field.tag {
-                    if out.len() + 4 > MAX_BYTES {
-                        return None;
-                    }
-                    out.push_str("\\x");
-                    out.push(char::from(HEX[usize::from(byte >> 4)]));
-                    out.push(char::from(HEX[usize::from(byte & 15)]));
-                }
-                out.push('"');
-            }
-            out.push_str("; ");
+            out.push(field.ty);
         }
-        out.push('}');
-        (out.len() <= MAX_BYTES).then_some(())
+        Some(out)
+    }
+
+    pub(crate) fn is_struct(&mut self, target: TypeId) -> Option<bool> {
+        let root = self.underlying(target)?;
+        Some(matches!(
+            self.nodes.get(usize::from(root.0))?,
+            Ty::Struct { .. }
+        ))
+    }
+
+    pub(crate) fn composite_container_types(
+        &mut self,
+        target: TypeId,
+    ) -> Option<(Option<TypeId>, TypeId)> {
+        let root = self.underlying(target)?;
+        match self.nodes.get(usize::from(root.0))? {
+            Ty::Slice(element) | Ty::Array { element, .. } => Some((None, *element)),
+            Ty::Map { key, value } => Some((Some(*key), *value)),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn elided_composite_element_type(&mut self, ty: TypeId) -> Option<TypeId> {
+        let under = self.underlying(ty)?;
+        if let Ty::Pointer(inner) = self.nodes.get(usize::from(under.0))?.clone() {
+            let inner_under = self.underlying(inner)?;
+            if matches!(
+                self.nodes.get(usize::from(inner_under.0))?,
+                Ty::Struct { .. } | Ty::Array { .. } | Ty::Slice(_) | Ty::Map { .. }
+            ) {
+                return Some(inner);
+            }
+            return None;
+        }
+        if matches!(
+            self.nodes.get(usize::from(under.0))?,
+            Ty::Struct { .. } | Ty::Array { .. } | Ty::Slice(_) | Ty::Map { .. }
+        ) {
+            Some(ty)
+        } else {
+            None
+        }
     }
 }

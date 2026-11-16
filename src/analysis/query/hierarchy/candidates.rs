@@ -251,7 +251,7 @@ impl<'a> Candidates<'a> {
         }
         self.resolution_calls += 1;
         self.underlying_calls += 1;
-        let resolved = workspace.underlying_target(file, spelling);
+        let resolved = crate::analysis::types::lookup::underlying_target(workspace, file, spelling);
         if self.underlying.len() < 4096 {
             self.underlying.insert((key_file, spelling), resolved);
         }
@@ -281,7 +281,8 @@ impl<'a> Candidates<'a> {
             }
             self.resolution_calls += 1;
             self.declaration_calls += 1;
-            let resolved = workspace.type_declaration(file, name);
+            let resolved =
+                crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
             self.qualified_fast += 1;
             if self.imported_declarations.len() < 4_096 {
                 self.imported_declarations.insert(key, resolved);
@@ -296,7 +297,8 @@ impl<'a> Candidates<'a> {
         } else {
             self.unqualified_slow += 1;
         }
-        let resolved = indexed.or_else(|| workspace.type_declaration(file, name));
+        let resolved = indexed
+            .or_else(|| crate::analysis::resolve::resolve_type_declaration(workspace, file, name));
         if self.declarations.len() < 4096 {
             self.declarations.insert((key_file, name), resolved);
         }
@@ -703,7 +705,9 @@ impl<'a> Candidates<'a> {
                 let Some(name) = locals::named_type(name) else {
                     return true;
                 };
-                if let Some((origin, target)) = workspace.type_declaration(file, &name) {
+                if let Some((origin, target)) =
+                    crate::analysis::resolve::resolve_type_declaration(workspace, file, &name)
+                {
                     pending.push((origin.as_path(), target));
                     if pending.len() > 4096 {
                         return true;
@@ -776,7 +780,9 @@ impl<'a> Candidates<'a> {
                 let Some(name) = locals::named_type(name) else {
                     return true;
                 };
-                if let Some((origin, target)) = workspace.type_declaration(file, &name) {
+                if let Some((origin, target)) =
+                    crate::analysis::resolve::resolve_type_declaration(workspace, file, &name)
+                {
                     pending.push((origin.as_path(), target));
                     if pending.len() > 4096 {
                         return true;

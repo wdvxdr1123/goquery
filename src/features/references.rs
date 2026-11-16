@@ -10,7 +10,6 @@ pub(super) fn execute(
     offset: usize,
     params: &Value,
 ) -> Result<Value, (i32, String)> {
-    let workspace = context.workspace();
     let file = context.file();
     let started = Instant::now();
     let include_declaration = params["context"]["includeDeclaration"].as_bool() == Some(true);
@@ -18,8 +17,7 @@ pub(super) fn execute(
         return Ok(Value::Null);
     };
     let target = context.reference_target(&index, offset, include_declaration)?;
-    let source = context.into_source();
-    let query = Context::metadata(workspace);
+    let (source, query) = context.into_source_and_metadata();
     let (locations, dedup) = match target {
         ReferenceTarget::Unresolved => return Ok(Value::Null),
         ReferenceTarget::Local(spans) => {

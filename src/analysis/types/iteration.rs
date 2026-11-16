@@ -2,6 +2,18 @@
 use super::{BasicKind, Direction, Mode, Operand, Ty, TypeArena, TypeId};
 
 impl TypeArena<'_> {
+    pub(crate) fn send_element(&mut self, input: TypeId) -> Option<TypeId> {
+        self.step()?;
+        let root = self.common_under(input)?;
+        match self.nodes.get(usize::from(root.0))? {
+            Ty::Chan {
+                direction: Direction::Both | Direction::Send,
+                element,
+            } => Some(*element),
+            _ => None,
+        }
+    }
+
     pub(crate) fn receive_slot(
         &mut self,
         input: Operand,

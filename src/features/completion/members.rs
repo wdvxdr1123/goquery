@@ -1,9 +1,8 @@
 //! Render selected members by file/owner, without retaining closed sources.
-use crate::analysis::check::callable_signature::SignatureSource;
+use crate::analysis::query::completion::SignatureSource;
 use crate::features::completion::collect::Candidate;
 use crate::features::completion::render::EditContext;
-use crate::features::documentation;
-use crate::features::documentation::Target;
+use crate::features::document::{self, Target};
 use crate::syntax::TokenKind;
 use crate::text::SourceMap;
 use serde_json::{Value, json};
@@ -12,7 +11,6 @@ pub(super) fn render_completion_candidates<'a>(
     candidates: impl Iterator<Item = (&'a str, Candidate<'a>)>,
     context: &EditContext<'_, '_>,
 ) -> Vec<Value> {
-    let workspace = context.query.workspace();
     let mut ranked: Vec<_> = candidates.enumerate().collect();
     ranked.sort_by(|(_, (_, a)), (_, (_, b))| {
         a.origin()
@@ -33,15 +31,13 @@ pub(super) fn render_completion_candidates<'a>(
         let has_types = group.iter().any(
                 |(_, (_, item))| matches!(item, Candidate::Symbol(_, symbol) if symbol.is_type() && symbol.type_info.as_ref().is_none_or(|info| info.target.is_some())),
             );
-        let needs_source = has_members
-            || needs_signatures
-            || has_types
-            || workspace.completion_config.documentation;
+        let needs_source =
+            has_members || needs_signatures || has_types || context.config.documentation;
         let storage = needs_source
             .then(|| {
                 origin
                     .filter(|origin| *origin != context.file)
-                    .and_then(|origin| workspace.source(origin))
+                    .and_then(|origin| context.query.read_source(origin))
             })
             .flatten();
         let source = if origin == Some(context.file) {
@@ -106,7 +102,7 @@ pub(super) fn render_completion_candidates<'a>(
             if let Some(item) =
                 super::render::completion_item(label, candidate, context, presentation)
             {
-                if workspace.completion_config.documentation
+                if context.config.documentation
                     && let Some(map) = map
                 {
                     let target = match candidate {
@@ -157,14 +153,14 @@ pub(super) fn render_completion_candidates<'a>(
         if !targets.is_empty()
             && let Some(source) = source
         {
-            for (index, comment) in documented.into_iter().zip(documentation::comments(
+            for (index, comment) in documented.into_iter().zip(document::comments(
                 source,
                 &targets,
                 (256 * 1024 - documentation_bytes) / 2,
             )) {
                 if let Some(comment) = comment {
-                    let value = if workspace.completion_config.markdown {
-                        documentation::markdown(&comment, &[])
+                    let value = if context.config.markdown {
+                        document::markdown(&comment, &[])
                     } else {
                         comment
                     };
@@ -172,7 +168,7 @@ pub(super) fn render_completion_candidates<'a>(
                         continue;
                     }
                     documentation_bytes += value.len();
-                    results[index].1["documentation"] = if workspace.completion_config.markdown {
+                    results[index].1["documentation"] = if context.config.markdown {
                         json!({"kind":"markdown", "value":value})
                     } else {
                         value.into()

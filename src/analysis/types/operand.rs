@@ -2,11 +2,18 @@
 use super::{BasicKind, Ty, TypeArena, TypeId};
 use crate::syntax::{Lexer, TokenKind};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
+    TypeExpr,
     Constant,
     Variable,
     Value,
+}
+
+impl Mode {
+    pub(crate) const fn is_value(self) -> bool {
+        matches!(self, Self::Constant | Self::Variable | Self::Value)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -102,6 +109,15 @@ impl TypeArena<'_> {
     ) -> Option<Operand> {
         let source = self.basic_kind(operand.ty)?;
         let target_kind = self.basic_kind(target)?;
+        if target_kind == BasicKind::UnsafePointer {
+            if source != BasicKind::UnsafePointer && source != BasicKind::UntypedNil {
+                return None;
+            }
+            operand.mode = Mode::Value;
+            operand.ty = target;
+            operand.value = None;
+            return Some(operand);
+        }
         if !source.untyped() && !self.identical(operand.ty, target)? {
             return None;
         }
@@ -125,6 +141,43 @@ impl TypeArena<'_> {
         Some(Operand {
             mode: Mode::Variable,
             ty,
+            value: None,
+        })
+    }
+
+    pub(crate) fn unary_expr(
+        &mut self,
+        operator: &str,
+        operand: Operand,
+        int_bits: u32,
+    ) -> Option<Operand> {
+        if let Some(res) = self.unary(operator, operand, int_bits) {
+            return Some(res);
+        }
+        let root = self.underlying(operand.ty)?;
+        if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+            return None;
+        }
+        let terms = self.parameter_set(root)?.terms?;
+        if terms.is_empty() {
+            return None;
+        }
+        for term in terms {
+            self.step()?;
+            let kind = self.basic_kind(term.ty)?;
+            let valid = match operator {
+                "+" | "-" => kind.numeric_rank().is_some(),
+                "^" => kind.integer(),
+                "!" => kind.boolean(),
+                _ => false,
+            };
+            if !valid {
+                return None;
+            }
+        }
+        Some(Operand {
+            mode: Mode::Value,
+            ty: operand.ty,
             value: None,
         })
     }
@@ -181,6 +234,245 @@ impl TypeArena<'_> {
             operand.mode = Mode::Value;
         }
         Some(operand)
+    }
+
+    pub(crate) fn binary_expr(
+        &mut self,
+        operator: &str,
+        left: Operand,
+        right: Operand,
+        expected: Option<TypeId>,
+        int_bits: u32,
+    ) -> Option<Operand> {
+        if let Some(res) = self.binary(operator, left, right, int_bits) {
+            return Some(res);
+        }
+
+        if matches!(operator, "<<" | ">>") {
+            return self.binary_shift(left, right, expected, int_bits);
+        }
+
+        if matches!(operator, "==" | "!=") {
+            if self.basic_kind(left.ty) == Some(BasicKind::UntypedNil)
+                && self.basic_kind(right.ty) == Some(BasicKind::UntypedNil)
+            {
+                return None;
+            }
+            let cmp_lr = self.assignable(left, right.ty, int_bits) == Some(true)
+                && self.comparable(right.ty, 0) == Some(true);
+            let cmp_rl = self.assignable(right, left.ty, int_bits) == Some(true)
+                && self.comparable(left.ty, 0) == Some(true);
+            if cmp_lr || cmp_rl {
+                return Some(Operand {
+                    mode: Mode::Value,
+                    ty: self.basic(BasicKind::UntypedBool)?,
+                    value: None,
+                });
+            }
+        }
+
+        self.binary_param(operator, left, right, int_bits)
+    }
+
+    fn binary_shift(
+        &mut self,
+        left: Operand,
+        right: Operand,
+        expected: Option<TypeId>,
+        int_bits: u32,
+    ) -> Option<Operand> {
+        // Validate shift count: integer (non-negative if constant).
+        if let Some(rk) = self.basic_kind(right.ty) {
+            if rk.untyped() {
+                if right.mode != Mode::Constant {
+                    return None;
+                }
+                let uint_ty = self.basic(BasicKind::Uint)?;
+                self.assign_basic(right, uint_ty, int_bits)?;
+            } else {
+                if !rk.integer() {
+                    return None;
+                }
+                if right.mode == Mode::Constant
+                    && let Some(Constant::Int(v)) = right.value
+                    && v < 0
+                {
+                    return None;
+                }
+            }
+        } else {
+            let rt_root = self.underlying(right.ty)?;
+            if !matches!(
+                self.nodes.get(usize::from(rt_root.0)),
+                Some(Ty::Parameter(_))
+            ) {
+                return None;
+            }
+            let terms = self.parameter_set(rt_root)?.terms?;
+            if terms.is_empty() {
+                return None;
+            }
+            for term in terms {
+                self.step()?;
+                if !self.basic_kind(term.ty)?.integer() {
+                    return None;
+                }
+            }
+        }
+
+        // Validate / contextualize left operand.
+        if self.basic_kind(left.ty).is_some_and(BasicKind::untyped) {
+            let target = match expected {
+                Some(t) if self.is_interface(t) != Some(true) => t,
+                _ => self.basic(BasicKind::Int)?,
+            };
+            if let Some(target_root) = self.underlying(target)
+                && matches!(
+                    self.nodes.get(usize::from(target_root.0)),
+                    Some(Ty::Parameter(_))
+                )
+            {
+                let val = left.value?;
+                let terms = self.parameter_set(target_root)?.terms?;
+                if terms.is_empty() {
+                    return None;
+                }
+                for term in terms {
+                    self.step()?;
+                    let kind = self.basic_kind(term.ty)?;
+                    if !kind.integer() || !representable(val, kind, int_bits) {
+                        return None;
+                    }
+                }
+                return Some(Operand {
+                    mode: Mode::Value,
+                    ty: target,
+                    value: None,
+                });
+            }
+            let converted = self.assign_basic(left, target, int_bits)?;
+            if !self.basic_kind(converted.ty)?.integer() {
+                return None;
+            }
+            return Some(Operand {
+                mode: Mode::Value,
+                ty: converted.ty,
+                value: None,
+            });
+        }
+
+        if let Some(lk) = self.basic_kind(left.ty) {
+            return lk.integer().then_some(Operand {
+                mode: Mode::Value,
+                ty: left.ty,
+                value: None,
+            });
+        }
+
+        let lt_root = self.underlying(left.ty)?;
+        if matches!(
+            self.nodes.get(usize::from(lt_root.0)),
+            Some(Ty::Parameter(_))
+        ) {
+            let terms = self.parameter_set(lt_root)?.terms?;
+            if !terms.is_empty() {
+                for term in terms {
+                    self.step()?;
+                    if !self.basic_kind(term.ty)?.integer() {
+                        return None;
+                    }
+                }
+                return Some(Operand {
+                    mode: Mode::Value,
+                    ty: left.ty,
+                    value: None,
+                });
+            }
+        }
+        None
+    }
+
+    fn binary_param(
+        &mut self,
+        operator: &str,
+        left: Operand,
+        right: Operand,
+        int_bits: u32,
+    ) -> Option<Operand> {
+        let l_untyped = self.basic_kind(left.ty).filter(|k| k.untyped());
+        let r_untyped = self.basic_kind(right.ty).filter(|k| k.untyped());
+
+        let (param_ty, untyped_const) = if l_untyped.is_none() && r_untyped.is_none() {
+            let root = self.underlying(left.ty)?;
+            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+                return None;
+            }
+            if !self.identical(left.ty, right.ty)? {
+                return None;
+            }
+            (left.ty, None)
+        } else if r_untyped.is_some() && l_untyped.is_none() {
+            let root = self.underlying(left.ty)?;
+            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+                return None;
+            }
+            (left.ty, Some(right))
+        } else if l_untyped.is_some() && r_untyped.is_none() {
+            let root = self.underlying(right.ty)?;
+            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+                return None;
+            }
+            (right.ty, Some(left))
+        } else {
+            return None;
+        };
+
+        let root = self.underlying(param_ty)?;
+        let terms = self.parameter_set(root)?.terms?;
+        if terms.is_empty() {
+            return None;
+        }
+        let comparison = matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=");
+        for term in terms {
+            self.step()?;
+            let kind = self.basic_kind(term.ty);
+            if let Some(uc) = untyped_const {
+                if uc.mode != Mode::Constant {
+                    return None;
+                }
+                let val = uc.value?;
+                if !representable(val, kind?, int_bits) {
+                    return None;
+                }
+            }
+            let valid = match operator {
+                "+" => kind.is_some_and(|k| k.numeric_rank().is_some() || k.string()),
+                "-" | "*" | "/" => kind.is_some_and(|k| k.numeric_rank().is_some()),
+                "%" | "&" | "|" | "^" | "&^" => kind.is_some_and(|k| k.integer()),
+                "&&" | "||" => kind.is_some_and(|k| k.boolean()),
+                "<" | "<=" | ">" | ">=" => {
+                    kind.is_some_and(|k| k.string() || k.numeric_rank().is_some_and(|r| r < 3))
+                }
+                "==" | "!=" => self.comparable(term.ty, 0) == Some(true),
+                _ => false,
+            };
+            if !valid {
+                return None;
+            }
+        }
+        if comparison {
+            Some(Operand {
+                mode: Mode::Value,
+                ty: self.basic(BasicKind::UntypedBool)?,
+                value: None,
+            })
+        } else {
+            Some(Operand {
+                mode: Mode::Value,
+                ty: param_ty,
+                value: None,
+            })
+        }
     }
 
     pub(crate) fn binary(

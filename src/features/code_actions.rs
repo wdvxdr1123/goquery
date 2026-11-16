@@ -112,7 +112,7 @@ fn organize_imports(context: &Context<'_>, map: &SourceMap<'_>, actions: &mut Ve
 
 fn edit(context: &Context<'_>, range: &tower_lsp::lsp_types::Range) -> Value {
     let document = workspace::uri(context.file());
-    let text_document = match context.workspace().document_version(context.file()) {
+    let text_document = match context.document_version() {
         Some(version) => json!({ "uri": document, "version": version }),
         None => json!({ "uri": document }),
     };

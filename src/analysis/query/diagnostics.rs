@@ -979,7 +979,8 @@ fn unqualified_defined(query: &UnqualifiedQuery<'_>, span: &Range<usize>, spelli
     query.declared_names.contains(spelling)
         || predeclared
         || query.locals.definition_at(span, spelling).is_some()
-        || query.workspace.unqualified_symbol(query.file, spelling).is_some()
+        || crate::analysis::resolve::unqualified_symbol(query.workspace, query.file, spelling)
+            .is_some()
         // A declaration of this exact name proves it defined even when the
         // package-level lookup refuses duplicates or method names.
         || query
@@ -1011,7 +1012,7 @@ fn qualified_member_missing(
             .locals
             .resolve_at(qualifier.start, qualifier_text)
             .is_some()
-        || workspace.unqualified_symbol(file, qualifier_text).is_some()
+        || crate::analysis::resolve::unqualified_symbol(workspace, file, qualifier_text).is_some()
         || !universe::imported_name(workspace, file, qualifier_text)
     {
         return false;
@@ -1029,8 +1030,7 @@ fn qualified_member_missing(
     if paths.next().is_some() || workspace.declared_package_name(path).is_none() {
         return false;
     }
-    !workspace
-        .imported_symbol_iter(file, qualifier_text)
+    !crate::analysis::resolve::imported_symbol_iter(workspace, file, qualifier_text)
         .any(|(_, symbol)| symbol.name == member)
 }
 

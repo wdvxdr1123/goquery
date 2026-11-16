@@ -205,7 +205,7 @@ pub(super) fn default_type(text: &str) -> Option<String> {
             let span = &parsed.nodes.get(literal_type.0)?.span;
             let annotation = text.get(span.clone())?.trim();
             // Extents require semantic constant/index checks, not a spelling.
-            crate::analysis::check::inferred_array_header(annotation)
+            inferred_array_header(annotation)
                 .is_none()
                 .then(|| annotation.to_owned())
         }
@@ -493,4 +493,97 @@ fn sub_second(mut value: u128, unit: u128, suffix: &str, sign: &str) -> String {
 /// Go `strconv.Quote` rendering of a decoded string constant.
 pub(super) fn quote_bytes(value: &[u8]) -> String {
     crate::syntax::quote_bytes(value)
+}
+
+pub(super) struct InferredArray {
+    pub(super) length: u64,
+    pub(super) text: String,
+}
+
+pub(super) fn inferred_array_header(text: &str) -> Option<usize> {
+    let mut tokens = crate::syntax::Lexer::new(text);
+    let mut first = tokens.next()?;
+    for _ in 0..crate::analysis::budget::MAX_DEPTH {
+        if first.kind != TokenKind::LParen {
+            break;
+        }
+        first = tokens.next()?;
+    }
+    (first.kind == TokenKind::LBrack).then_some(())?;
+    (tokens.next()?.kind == TokenKind::Ellipsis).then_some(())?;
+    let end = tokens.next()?;
+    (end.kind == TokenKind::RBrack).then_some(end.span.end)
+}
+
+/// Package initializer entry point.
+/// Outer None is another expression; Some(None) must not fall back to `[...]`.
+pub(super) fn inferred_array_literal(
+    workspace: &crate::workspace::Workspace,
+    file: &std::path::Path,
+    text: &str,
+) -> Option<Option<InferredArray>> {
+    inferred_array_header(text)?;
+    Some((|| {
+        if text.len() > crate::analysis::budget::MAX_BYTES {
+            return None;
+        }
+        let file = workspace.files.get_key_value(file)?.0.as_path();
+        let prefix = "_ = ";
+        let wrapped = format!("{prefix}{text}");
+        let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Var);
+        if !tree.diagnostics().is_empty() {
+            return None;
+        }
+        let crate::syntax::StmtKind::Declaration { values, .. } =
+            &tree.statement(tree.root())?.kind
+        else {
+            return None;
+        };
+        let mut expr_id = *values.first()?;
+        for _ in 0..crate::analysis::budget::MAX_DEPTH {
+            let expr = tree.expression(expr_id)?;
+            match &expr.kind {
+                crate::syntax::ExprKind::Parenthesized { expression } => expr_id = *expression,
+                crate::syntax::ExprKind::Composite { elements, .. } => {
+                    if elements.len() > crate::analysis::budget::MAX_NODES {
+                        return None;
+                    }
+                    break;
+                }
+                _ => break,
+            }
+        }
+        let wrapped_end = u32::try_from(wrapped.len()).ok()?;
+        let scopes =
+            crate::analysis::scope::tree::ScopeTree::from_top_level_decl(&wrapped, 0, &tree, None);
+        let mut region =
+            crate::analysis::check::region::RegionInfo::new(None, [0, wrapped_end], scopes);
+        let mut arena = crate::analysis::types::TypeArena::with_shared_budget(workspace);
+        let mut decls = crate::analysis::check::decls::DeclCache::new();
+        {
+            let mut checker = crate::analysis::check::RegionChecker::new(
+                &mut arena,
+                &mut decls,
+                file,
+                &wrapped,
+                0,
+                &tree,
+                &mut region,
+                None,
+                None,
+            );
+            checker.check_decl_spec(false);
+        }
+        region.finalize();
+        let rhs_span = [u32::try_from(prefix.len()).ok()?, wrapped_end];
+        let op = region.expr_type(rhs_span)?;
+        let length = arena.array_length(op.ty)?;
+        let formatted =
+            arena.format_type(op.ty, crate::analysis::types::Qualifier::RelativeTo(file))?;
+        let rendered = crate::analysis::query::signatures::label::function_types(&formatted)?;
+        Some(InferredArray {
+            length,
+            text: rendered,
+        })
+    })())
 }

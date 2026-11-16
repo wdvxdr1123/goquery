@@ -2,7 +2,7 @@
 use super::{CallGroup, Groups, finish, record_call};
 use crate::analysis::query::{Context, SourceRange};
 use crate::analysis::resolve::NameIndex;
-use crate::analysis::scope::{Identity, Resolver};
+use crate::analysis::sema::{Identity, IdentityResolver};
 use crate::analysis::source::SourceAnalysis;
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
@@ -18,11 +18,15 @@ impl<'a, View> Context<'a, View> {
         let mut groups = Groups::new();
         let mut count = 0;
         let index = NameIndex::new(self.workspace, &target.name);
-        let mut candidates = self.workspace.reference_candidates(file, target);
+        let mut candidates =
+            crate::analysis::resolve::reference_candidates(self.workspace, file, target);
         let scope = self.workspace.reference_scope(file);
         candidates.retain(|(candidate, _)| scope.contains(candidate, file));
-        self.workspace
-            .trace_candidates("incomingCalls", candidates.len());
+        crate::analysis::resolve::trace_candidates(
+            self.workspace,
+            "incomingCalls",
+            candidates.len(),
+        );
         let fingerprint = Fingerprint::new(target.name.as_bytes());
         for (candidate, stub) in candidates {
             if !stub.identifiers.may_contain_fingerprint(fingerprint) {
@@ -50,7 +54,8 @@ impl<'a, View> Context<'a, View> {
                 } else {
                     SourceAnalysis::for_name(&source, stub, &target.name)?
                 };
-            let mut resolver = Resolver::for_reference(self.workspace, candidate, &index, target);
+            let mut resolver =
+                IdentityResolver::for_reference(self.workspace, candidate, &index, target);
             for name in &analysis.names {
                 if candidate == file && name.span.start == target.start {
                     continue;

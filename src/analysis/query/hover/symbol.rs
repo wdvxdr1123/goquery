@@ -90,8 +90,14 @@ fn function(
     if !parsed.diagnostics.is_empty() {
         return None;
     }
-    let (signature, _) =
-        workspace.declared_signature(consumer, origin, header, &parsed, &symbol.name)?;
+    let (signature, _) = crate::analysis::query::signatures::label::declared_signature(
+        workspace,
+        consumer,
+        origin,
+        header,
+        &parsed,
+        &symbol.name,
+    )?;
     let mut code = String::from("func ");
     if symbol.is_method() {
         let receiver_line = receiver_line(context, origin, header, &parsed)?;
@@ -112,10 +118,11 @@ fn function(
                 continue;
             };
             let constraint = header.get(parameter.annotation.clone())?;
-            let constraint = workspace
-                .signature_type(consumer, origin, constraint)
-                .map(|text| render::normalize_type(&text))
-                .unwrap_or_else(|| constraint.trim().to_owned());
+            let constraint = crate::analysis::query::signatures::label::signature_type(
+                workspace, consumer, origin, constraint,
+            )
+            .map(|text| render::normalize_type(&text))
+            .unwrap_or_else(|| constraint.trim().to_owned());
             parameters.push(format!("{name} {constraint}"));
         }
         if !parameters.is_empty()
@@ -166,7 +173,12 @@ fn receiver_line(
     let workspace = context.workspace();
     let receiver = parsed.receiver.first()?;
     let annotation = header.get(receiver.annotation.clone())?;
-    let receiver_type = workspace.signature_type(context.file(), origin, annotation)?;
+    let receiver_type = crate::analysis::query::signatures::label::signature_type(
+        workspace,
+        context.file(),
+        origin,
+        annotation,
+    )?;
     let name = receiver
         .name
         .as_ref()
@@ -184,7 +196,8 @@ fn method_link(context: &Context<'_>, origin: &Path, symbol: &Symbol) -> Option<
     }
     let workspace = context.workspace();
     let receiver = symbol.receiver.as_deref()?;
-    let (_, owner) = workspace.type_declaration(origin, receiver)?;
+    let (_, owner) =
+        crate::analysis::resolve::resolve_type_declaration(workspace, origin, receiver)?;
     if !crate::syntax::is_exported_name(&symbol.name)
         || !crate::syntax::is_exported_name(&owner.name)
     {
@@ -263,15 +276,15 @@ fn type_symbol(
         content.extra.push(promoted);
     }
     let methods = if symbol.alias {
-        workspace
-            .embedded_target(origin, &symbol.name)
-            .and_then(|(file, owner)| {
+        crate::analysis::types::lookup::embedded_target(workspace, origin, &symbol.name).and_then(
+            |(file, owner)| {
                 if owner.generic {
                     return None;
                 }
                 let source = declaration_source(context, file)?;
                 method_lines(context, file, owner, source.text())
-            })
+            },
+        )
     } else {
         method_lines(context, origin, symbol, source)
     };
@@ -313,7 +326,7 @@ fn rhs_type_declaration(
 ) -> Option<RhsDeclaration> {
     let workspace = context.workspace();
     let base = name.split('[').next().unwrap_or(name);
-    let (path, rhs) = workspace.type_declaration(origin, base)?;
+    let (path, rhs) = crate::analysis::resolve::resolve_type_declaration(workspace, origin, base)?;
     let declaration = rhs.declaration()?;
     let text = if path.as_path() == origin {
         source.get(declaration).map(str::to_owned)
@@ -345,8 +358,13 @@ fn method_lines(
     // Resolve the owner in its declaration scope, but select production/test
     // methods from the actual query file's package view.
     let mut entries: Vec<(String, usize, String)> = Vec::new();
-    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> = workspace
-        .scoped_receiver_methods(consumer, origin, &owner.name)
+    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> =
+        crate::analysis::types::lookup::scoped_receiver_methods(
+            workspace,
+            consumer,
+            origin,
+            &owner.name,
+        )
         .into_iter()
         .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
         .take(MAX_METHODS)
@@ -421,7 +439,9 @@ fn collect_promoted_methods(
     let workspace = context.workspace();
     let consumer = context.file();
     // Re-resolve by name so declaration offsets match this file's source view.
-    let Some((canonical_file, canonical)) = workspace.type_declaration(file, &symbol.name) else {
+    let Some((canonical_file, canonical)) =
+        crate::analysis::resolve::resolve_type_declaration(workspace, file, &symbol.name)
+    else {
         return;
     };
     let file = canonical_file.as_path();
@@ -583,7 +603,9 @@ fn recurse_promoted(
     }
     let workspace = context.workspace();
     let consumer = context.file();
-    let Some((target_file, target)) = workspace.type_declaration(file, name) else {
+    let Some((target_file, target)) =
+        crate::analysis::resolve::resolve_type_declaration(workspace, file, name)
+    else {
         return;
     };
     if target.generic
@@ -594,8 +616,13 @@ fn recurse_promoted(
         return;
     }
     let same_package = super::same_package(context, consumer, target_file);
-    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> = workspace
-        .scoped_receiver_methods(consumer, target_file, &target.name)
+    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> =
+        crate::analysis::types::lookup::scoped_receiver_methods(
+            workspace,
+            consumer,
+            target_file,
+            &target.name,
+        )
         .into_iter()
         .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
         .take(MAX_METHODS)
@@ -644,8 +671,14 @@ fn method_line(
     if !parsed.diagnostics.is_empty() {
         return None;
     }
-    let (signature, _) =
-        workspace.declared_signature(consumer, origin, header, &parsed, &method.name)?;
+    let (signature, _) = crate::analysis::query::signatures::label::declared_signature(
+        workspace,
+        consumer,
+        origin,
+        header,
+        &parsed,
+        &method.name,
+    )?;
     let receiver = receiver_line(context, origin, header, &parsed)?;
     Some(format!(
         "func {receiver} {}",
@@ -777,8 +810,7 @@ fn conversion_expression_type(
             let alias = expression.get(operand.span.clone())?;
             let name = expression.get(field.clone())?;
             let workspace = context.workspace();
-            if !workspace
-                .imported_symbol_iter(origin, alias)
+            if !crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
                 .any(|(_, symbol)| symbol.is_type() && symbol.name == name)
             {
                 return None;
@@ -808,17 +840,20 @@ fn conversion_expression_type(
     );
     if !builtin {
         let name = text.split('.').next_back()?;
-        let is_type = workspace
-            .unqualified_symbol(origin, name)
+        let is_type = crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
             .is_some_and(|(_, symbol)| symbol.is_type());
         if !is_type {
             return None;
         }
     }
-    workspace
-        .signature_type(context.file(), origin, text)
-        .map(|rendered| render::normalize_type(&rendered))
-        .or_else(|| Some(render::normalize_type(text)))
+    crate::analysis::query::signatures::label::signature_type(
+        workspace,
+        context.file(),
+        origin,
+        text,
+    )
+    .map(|rendered| render::normalize_type(&rendered))
+    .or_else(|| Some(render::normalize_type(text)))
 }
 
 /// Declared type of a typed constant referenced by a constant expression.
@@ -852,13 +887,11 @@ fn expression_const_type_at(
         }
         let workspace = context.workspace();
         let resolved = if let Some((alias, constant)) = name.split_once('.') {
-            workspace
-                .imported_symbol_iter(origin, alias)
+            crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
                 .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
                 .map(|(path, symbol)| (path.clone(), symbol))
         } else {
-            workspace
-                .unqualified_symbol(origin, &name)
+            crate::analysis::resolve::unqualified_symbol(workspace, origin, &name)
                 .filter(|(_, symbol)| symbol.is_const())
                 .map(|(path, symbol)| (path.clone(), symbol))
         };
@@ -887,7 +920,9 @@ fn expression_const_type_at(
             };
         if let Some(annotation) = annotation {
             let consumer = context.file();
-            let rendered = workspace.signature_type(consumer, &file, annotation)?;
+            let rendered = crate::analysis::query::signatures::label::signature_type(
+                workspace, consumer, &file, annotation,
+            )?;
             let consumer_package = workspace
                 .files
                 .get(consumer)
@@ -930,13 +965,11 @@ fn evaluate_named_constant(
     }
     let workspace = context.workspace();
     let resolved = if let Some((alias, constant)) = name.split_once('.') {
-        workspace
-            .imported_symbol_iter(origin, alias)
+        crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
             .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
             .map(|(path, symbol)| (path.clone(), symbol))
     } else {
-        workspace
-            .unqualified_symbol(origin, name)
+        crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
             .filter(|(_, symbol)| symbol.is_const())
             .map(|(path, symbol)| (path.clone(), symbol))
     };
@@ -976,13 +1009,11 @@ fn resolve_constant<'a>(
     name: &str,
 ) -> Option<(std::path::PathBuf, &'a Symbol)> {
     if let Some((alias, constant)) = name.split_once('.') {
-        workspace
-            .imported_symbol_iter(origin, alias)
+        crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
             .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
             .map(|(path, symbol)| (path.clone(), symbol))
     } else {
-        workspace
-            .unqualified_symbol(origin, name)
+        crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
             .filter(|(_, symbol)| symbol.is_const())
             .map(|(path, symbol)| (path.clone(), symbol))
     }
@@ -1024,10 +1055,13 @@ fn evaluate_string_constant(
         let substituted = super::value::substitute_iota(&expression, iota);
         let (nested, bytes) = evaluate_string_constant(context, &file, &substituted, next)?;
         let annotation = annotation.or(nested).map(|text| {
-            context
-                .workspace()
-                .requalified_type(context.file(), &file, text.trim())
-                .unwrap_or(text)
+            crate::analysis::resolve::requalified_type(
+                context.workspace(),
+                context.file(),
+                &file,
+                text.trim(),
+            )
+            .unwrap_or(text)
         });
         Some((annotation, bytes))
     })
@@ -1036,7 +1070,8 @@ fn evaluate_string_constant(
 /// RHS source text of an alias declaration (`type FileMode = fs.FileMode`).
 fn alias_rhs_text(context: &Context<'_>, origin: &Path, name: &str) -> Option<String> {
     let workspace = context.workspace();
-    let (file, symbol) = workspace.type_declaration(origin, name)?;
+    let (file, symbol) =
+        crate::analysis::resolve::resolve_type_declaration(workspace, origin, name)?;
     if !symbol.alias {
         return None;
     }
@@ -1133,7 +1168,12 @@ fn value_symbol(
                 Some(annotation) => match render::alias_text(&annotation) {
                     Some(alias) => alias.to_owned(),
                     None => {
-                        let rendered = workspace.signature_type(consumer, origin, &annotation)?;
+                        let rendered = crate::analysis::query::signatures::label::signature_type(
+                            workspace,
+                            consumer,
+                            origin,
+                            &annotation,
+                        )?;
                         if annotation.contains('.') && !rendered.contains('.') {
                             annotation.trim().to_owned()
                         } else if !rendered.contains('.')
@@ -1176,7 +1216,9 @@ fn value_symbol(
                 let ty = match render::alias_text(annotation) {
                     Some(alias) => alias.to_owned(),
                     None => {
-                        let rendered = workspace.signature_type(consumer, origin, annotation)?;
+                        let rendered = crate::analysis::query::signatures::label::signature_type(
+                            workspace, consumer, origin, annotation,
+                        )?;
                         if annotation.contains('.') && !rendered.contains('.') {
                             annotation.trim().to_owned()
                         } else {
@@ -1186,9 +1228,9 @@ fn value_symbol(
                 };
                 format!("var {qualifier}{} {ty}", symbol.name)
             } else {
-                let inferred = shape.value_text.and_then(|text| {
-                    crate::analysis::check::inferred_array_literal(workspace, origin, text)
-                });
+                let inferred = shape
+                    .value_text
+                    .and_then(|text| super::value::inferred_array_literal(workspace, origin, text));
                 let ty = if let Some(inferred) = inferred {
                     render::normalize_type(&inferred?.text)
                 } else {

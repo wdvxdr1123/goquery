@@ -6,17 +6,16 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symbol) -> Value {
-    let workspace = context.workspace();
     let uri = workspace::uri(file);
     let filename = file.file_name().unwrap_or_default().to_string_lossy();
-    let detail = workspace.import_path(file).map_or_else(
+    let detail = context.import_path(file).map_or_else(
         || filename.to_string(),
         |package| format!("{package} \u{2022} {filename}"),
     );
     let initializer = symbol.is_value();
     let mut range = symbol.selection;
     if initializer {
-        for sibling in &workspace.files[file].symbols {
+        for sibling in context.file_symbols(file).unwrap_or(&[]) {
             if sibling.range == symbol.range {
                 if (
                     sibling.selection.start.line,
@@ -33,9 +32,15 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
             }
         }
     }
-    json!({"name":if initializer {"init"} else {&symbol.name},"kind":if initializer {tower_lsp::lsp_types::SymbolKind::VARIABLE} else {tower_lsp::lsp_types::SymbolKind::FUNCTION},"detail":detail,"uri":uri,
-            "range":range,"selectionRange":range,
-            "data":{"uri":uri,"start":symbol.start,"name":symbol.name}})
+    json!({
+        "name":if initializer {"init"} else {&symbol.name},
+        "kind":if initializer {tower_lsp::lsp_types::SymbolKind::VARIABLE} else {tower_lsp::lsp_types::SymbolKind::FUNCTION},
+        "detail":detail,
+        "uri":uri,
+        "range":range,
+        "selectionRange":range,
+        "data":{"uri":uri,"start":symbol.start,"name":symbol.name}
+    })
 }
 
 pub(super) fn execute(

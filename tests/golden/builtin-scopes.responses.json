@@ -234,6 +234,19 @@
       {
         "range": {
           "end": {
+            "character": 15,
+            "line": 14
+          },
+          "start": {
+            "character": 11,
+            "line": 14
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
             "character": 10,
             "line": 18
           },

@@ -18,7 +18,7 @@ pub(crate) fn visible(
     name: &str,
 ) -> bool {
     locals.is_none_or(|locals| locals.resolve_at(offset, name).is_none())
-        && workspace.unqualified_symbol(file, name).is_none()
+        && crate::analysis::resolve::unqualified_symbol(workspace, file, name).is_none()
         && !imported_name(workspace, file, name)
 }
 

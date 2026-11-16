@@ -185,6 +185,45 @@
           }
         },
         "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 7
+          },
+          "start": {
+            "character": 9,
+            "line": 7
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 12
+          },
+          "start": {
+            "character": 9,
+            "line": 12
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 17
+          },
+          "start": {
+            "character": 9,
+            "line": 17
+          }
+        },
+        "uri": "$SIBLING_URI"
       }
     ]
   },

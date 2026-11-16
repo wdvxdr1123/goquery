@@ -1,133 +1,18 @@
 //! Signature-based format calls, shared by tokens and document highlights.
-use super::{FormatDirective, MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
-use crate::analysis::budget::{MEMO_BYTES, MEMO_ENTRIES};
-use crate::analysis::check::Inference;
-use crate::analysis::scope::Locals;
-use crate::syntax::{Expr, ExprKind, Lexer, Token, TokenKind};
+use super::{MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
+use crate::analysis::budget::MAX_BYTES;
+use crate::analysis::check::region::RegionInfo;
+use crate::analysis::obj::{MethodOrigin, ObjectRef};
+use crate::analysis::sema::Semantics;
+use crate::analysis::types::TypeArena;
+use crate::syntax::{self, Lexer, Token, TokenKind};
 use crate::workspace::Workspace;
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::Path;
 
-// Only one active body's expressions and locals survive between candidates.
-// Nested closures replace that scope; no whole-file AST or type cache is kept.
 const MAX_SCOPES: usize = 512;
 const MAX_ARGUMENT_TOKEN_VISITS: usize = super::MAX_STATEMENTS * super::MAX_NESTED_SCOPES;
-
-struct CallScope {
-    locals: Locals,
-    expressions: Vec<Expr>,
-    base: usize,
-    arities: RefCell<HashMap<(usize, String), Option<usize>>>,
-    arity_bytes: Cell<usize>,
-}
-
-impl CallScope {
-    fn at(workspace: &Workspace, file: &Path, source: &str, offset: usize) -> Option<Self> {
-        let scope = super::super::cursor_scope(workspace, file, source, offset).ok()?;
-        if let Some(body) = scope.body {
-            return Some(Self {
-                locals: scope.locals,
-                expressions: body.tree.expressions,
-                base: body.base,
-                arities: RefCell::new(HashMap::new()),
-                arity_bytes: Cell::new(0),
-            });
-        }
-        // Package-level initializers have no enclosing statement body.
-        let declaration = workspace
-            .files
-            .get(file)?
-            .symbols
-            .iter()
-            .find_map(|symbol| {
-                let declaration = symbol.declaration()?;
-                (symbol.is_value() && declaration.contains(&offset)).then_some(declaration)
-            })?;
-        let text = source.get(declaration.clone())?;
-        let base = declaration.start + super::top_level_assign(text)? + 1;
-        let parsed = crate::syntax::parse_expression(source.get(base..declaration.end)?);
-        parsed.diagnostics.is_empty().then_some(Self {
-            locals: scope.locals,
-            expressions: parsed.nodes,
-            base,
-            arities: RefCell::new(HashMap::new()),
-            arity_bytes: Cell::new(0),
-        })
-    }
-
-    fn call(&self, source: &str, open: usize, end: usize) -> Option<&Expr> {
-        self.expressions.iter().find(|expression| {
-            let ExprKind::Call { function, .. } = &expression.kind else {
-                return false;
-            };
-            let function = &self.expressions[function.0];
-            self.base + expression.span.end == end
-                && source
-                    .get(self.base + function.span.end..open)
-                    .is_some_and(|gap| Lexer::new(gap).next().is_none())
-        })
-    }
-
-    /// Repeated calls through one lexical binding have the same signature arity.
-    /// Cache only name/selector chains: evaluated receivers keep full inference.
-    fn format_parameter(
-        &self,
-        workspace: &Workspace,
-        file: &Path,
-        source: &str,
-        function: crate::syntax::ExprId,
-    ) -> Option<usize> {
-        let mut root = function;
-        let mut binding = None;
-        for _ in 0..32 {
-            match &self.expressions[root.0].kind {
-                ExprKind::Name => {
-                    let span = &self.expressions[root.0].span;
-                    let offset = self.base + span.start;
-                    binding = self
-                        .locals
-                        .resolve_at(offset, source.get(offset..self.base + span.end)?);
-                    break;
-                }
-                ExprKind::Selector { operand, .. } => root = *operand,
-                ExprKind::Parenthesized { expression } => root = *expression,
-                _ => break,
-            }
-        }
-        let span = &self.expressions[function.0].span;
-        let text = source.get(self.base + span.start..self.base + span.end)?;
-        let key = binding
-            .filter(|_| text.len() <= MEMO_BYTES)
-            .map(|binding| (binding.selection.start, text.to_owned()));
-        if let Some(key) = &key
-            && let Some(value) = self.arities.borrow().get(key)
-        {
-            return *value;
-        }
-        let value = Inference::new(
-            workspace,
-            file,
-            source,
-            &self.locals,
-            &self.expressions,
-            self.base,
-        )
-        .format_parameter(function);
-        if let Some(key) = key
-            && self.arities.borrow().len() < MEMO_ENTRIES
-            && let Some(bytes) = self
-                .arity_bytes
-                .get()
-                .checked_add(key.1.len() + std::mem::size_of_val(&value))
-            && bytes <= MEMO_BYTES
-        {
-            self.arity_bytes.set(bytes);
-            self.arities.borrow_mut().insert(key, value);
-        }
-        value
-    }
-}
 
 pub(super) fn calls_at(
     workspace: &Workspace,
@@ -145,10 +30,11 @@ fn calls(
     cursor: Option<usize>,
 ) -> Vec<PrintfCall> {
     let trace = workspace.trace.queries.then(std::time::Instant::now);
-    let mut scope_time = std::time::Duration::ZERO;
+    let mut region_time = std::time::Duration::ZERO;
     let mut signature_time = std::time::Duration::ZERO;
     let tokens: Vec<_> = Lexer::new(source).collect();
-    let mut active: Option<CallScope> = None;
+    let mut sema: Option<Semantics<'_>> = None;
+    let mut last_region: Option<[u32; 2]> = None;
     let mut scopes = 0usize;
     let mut candidates = 0usize;
     let mut out = Vec::new();
@@ -184,71 +70,84 @@ fn calls(
                 && tokens[*start].kind == TokenKind::String
                 && source.get(tokens[*start].span.clone()).is_some_and(|text| {
                     text.len() <= MAX_FORMAT_BYTES
-                        && crate::syntax::decode_string_literal(text)
+                        && syntax::decode_string_literal(text)
                             .is_some_and(|bytes| bytes.contains(&b'%'))
                 })
         }) {
             continue;
         }
         candidates += 1;
-        let end = tokens[close].span.end;
-        if active
-            .as_ref()
-            .and_then(|scope| scope.call(source, token.span.start, end))
-            .is_none()
-        {
-            // Drop the previous arena before parsing another body.
-            drop(active.take());
-            scopes += 1;
-            let phase = workspace.trace.queries.then(std::time::Instant::now);
-            active = CallScope::at(workspace, file, source, token.span.start);
-            if let Some(phase) = phase {
-                scope_time += phase.elapsed();
-            }
-        }
-        let Some(scope) = active.as_ref() else {
+        let Some(open_byte) = u32::try_from(token.span.start).ok() else {
             continue;
         };
-        let Some(call) = scope.call(source, token.span.start, end) else {
+        let Some(close_end) = u32::try_from(tokens[close].span.end).ok() else {
             continue;
         };
-        let ExprKind::Call {
-            function,
-            arguments,
-            ..
-        } = &call.kind
-        else {
-            continue;
-        };
+
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let format_index = scope.format_parameter(workspace, file, source, *function);
+        let sema_ref = sema.get_or_insert_with(|| Semantics::new(workspace));
+        let Some((region, arena)) = sema_ref.region_and_arena_at(file, source, open_byte, None)
+        else {
+            if let Some(phase) = phase {
+                region_time += phase.elapsed();
+            }
+            continue;
+        };
+        if last_region != Some(region.span) {
+            last_region = Some(region.span);
+            scopes += 1;
+        }
         if let Some(phase) = phase {
+            region_time += phase.elapsed();
+        }
+
+        let Some(call) = region.calls.iter().find(|c| {
+            !c.is_conversion
+                && c.span[1] == close_end
+                && (c.open_paren == open_byte
+                    || (c.callee_span[1] <= open_byte
+                        && source
+                            .get(c.callee_span[1] as usize..open_byte as usize)
+                            .is_some_and(|gap| Lexer::new(gap).next().is_none())))
+        }) else {
+            continue;
+        };
+
+        let sig_phase = workspace.trace.queries.then(std::time::Instant::now);
+        let format_index = match call.callee_obj {
+            Some(ObjectRef::Func(decl)) => decl_format_parameter(workspace, file, source, decl)
+                .or_else(|| call.signature.and_then(|ty| arena.format_parameter(ty))),
+            Some(ObjectRef::Method(MethodOrigin::Concrete(decl))) => call
+                .signature
+                .and_then(|ty| arena.format_parameter(ty))
+                .or_else(|| decl_format_parameter(workspace, file, source, decl)),
+            _ => call.signature.and_then(|ty| arena.format_parameter(ty)),
+        };
+        if let Some(phase) = sig_phase {
             signature_time += phase.elapsed();
         }
         let Some(format_index) = format_index else {
             continue;
         };
-        let Some(literal) = arguments
+        if !arguments
             .get(format_index)
-            .map(|id| &scope.expressions[id.0])
-        else {
-            continue;
-        };
-        if !matches!(literal.kind, ExprKind::Literal) {
+            .is_some_and(|&(ts, te)| te == ts + 1 && tokens[ts].kind == TokenKind::String)
+        {
             continue;
         }
-        let format_span = scope.base + literal.span.start..scope.base + literal.span.end;
+        let Some(&fmt_span) = call.arg_spans.get(format_index) else {
+            continue;
+        };
+        let format_span = fmt_span[0] as usize..fmt_span[1] as usize;
         if super::format_literal_directives(source, format_span.clone()).is_empty() {
             continue;
         }
         out.push(PrintfCall {
-            span: scope.base + call.span.start..scope.base + call.span.end,
-            arguments: arguments
+            span: call.span[0] as usize..call.span[1] as usize,
+            arguments: call
+                .arg_spans
                 .iter()
-                .map(|id| {
-                    let span = &scope.expressions[id.0].span;
-                    scope.base + span.start..scope.base + span.end
-                })
+                .map(|s| s[0] as usize..s[1] as usize)
                 .collect(),
             format_span,
             format_index,
@@ -256,7 +155,7 @@ fn calls(
     }
     if let Some(trace) = trace {
         eprintln!(
-            "format calls: candidates {candidates}; scopes {scopes} {scope_time:?}; signatures {signature_time:?}; argument tokens {}; total {:?}",
+            "format calls: candidates {candidates}; scopes {scopes} {region_time:?}; signatures {signature_time:?}; argument tokens {}; total {:?}",
             MAX_ARGUMENT_TOKEN_VISITS - argument_visits,
             trace.elapsed(),
         );
@@ -264,25 +163,103 @@ fn calls(
     out
 }
 
-pub(crate) fn format_directives(
+fn decl_format_parameter(
     workspace: &Workspace,
     file: &Path,
     source: &str,
-) -> Vec<FormatDirective> {
-    let mut rows: Vec<_> = calls(workspace, file, source, None)
-        .into_iter()
-        .filter_map(|call| {
-            // gopls splits multiline literals into line tokens before it tries
-            // format splitting. Argument highlights still use these calls.
-            (!source.get(call.format_span.clone())?.contains('\n')).then(|| FormatDirective {
-                directives: super::format_literal_directives(source, call.format_span.clone()),
-                literal: call.format_span,
-            })
-        })
-        .collect();
-    rows.sort_unstable_by_key(|row| row.literal.start);
-    rows.dedup_by(|a, b| a.literal == b.literal);
-    rows
+    decl: crate::analysis::obj::DeclId<'_>,
+) -> Option<usize> {
+    if !decl.symbol.is_callable() {
+        return None;
+    }
+    let range = decl.symbol.declaration()?;
+    let end = decl.symbol.body().map_or(range.end, |body| body.start);
+    if end.checked_sub(range.start)? > MAX_BYTES {
+        return None;
+    }
+    let header = if decl.file == file {
+        std::borrow::Cow::Borrowed(source.get(range.start..end)?)
+    } else {
+        std::borrow::Cow::Owned(workspace.source_slice(decl.file, range.start..end)?)
+    };
+    let signature = syntax::parse_signature(&header);
+    (signature.diagnostics.is_empty() && signature.parameters.last().is_some_and(|p| p.variadic))
+        .then(|| signature.parameters.len().checked_sub(2))
+        .flatten()
+}
+
+fn is_single_string_literal(text: &str) -> bool {
+    let text = text.trim();
+    text.len() <= MAX_FORMAT_BYTES && matches!(text.as_bytes().first(), Some(b'"' | b'`')) && {
+        let mut tokens = Lexer::new(text);
+        tokens
+            .next()
+            .is_some_and(|token| token.kind == TokenKind::String && token.span == (0..text.len()))
+    }
+}
+
+pub(crate) fn collect_region_format_directives<'a>(
+    file: &'a Path,
+    source: &str,
+    region: &RegionInfo<'a>,
+    arena: &mut TypeArena<'a>,
+    window: Option<(usize, usize)>,
+    candidates: &mut usize,
+    out: &mut HashMap<Range<usize>, Vec<Range<usize>>>,
+) {
+    let workspace = arena.workspace();
+    for call in &region.calls {
+        if *candidates >= MAX_PRINTF_CALLS {
+            break;
+        }
+        if call.is_conversion || call.arg_spans.is_empty() {
+            continue;
+        }
+        if !call.arg_spans.iter().any(|&[start, end]| {
+            source
+                .get(start as usize..end as usize)
+                .is_some_and(|text| {
+                    (text.contains('%') || text.contains('\\'))
+                        && is_single_string_literal(text)
+                        && syntax::decode_string_literal(text.trim())
+                            .is_some_and(|bytes| bytes.contains(&b'%'))
+                })
+        }) {
+            continue;
+        }
+        *candidates += 1;
+        let format_index = match call.callee_obj {
+            Some(ObjectRef::Func(decl)) => decl_format_parameter(workspace, file, source, decl)
+                .or_else(|| call.signature.and_then(|ty| arena.format_parameter(ty))),
+            Some(ObjectRef::Method(MethodOrigin::Concrete(decl))) => call
+                .signature
+                .and_then(|ty| arena.format_parameter(ty))
+                .or_else(|| decl_format_parameter(workspace, file, source, decl)),
+            _ => call.signature.and_then(|ty| arena.format_parameter(ty)),
+        };
+        let Some(format_index) = format_index else {
+            continue;
+        };
+        let Some(&[s, e]) = call.arg_spans.get(format_index) else {
+            continue;
+        };
+        let format_span = s as usize..e as usize;
+        if window.is_some_and(|(w_start, w_end)| {
+            format_span.start >= w_end || format_span.end <= w_start
+        }) {
+            continue;
+        }
+        let Some(fmt_text) = source.get(format_span.clone()) else {
+            continue;
+        };
+        if fmt_text.contains('\n') || !is_single_string_literal(fmt_text) {
+            continue;
+        }
+        let directives = super::format_literal_directives(source, format_span.clone());
+        if !directives.is_empty() {
+            out.insert(format_span, directives);
+        }
+    }
 }
 
 /// Top-level argument token ranges of one call, starting at its `(`.

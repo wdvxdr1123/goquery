@@ -7,9 +7,9 @@
 //! corresponding member of its method set.
 use super::hierarchy::SymbolTarget;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::member::MemberDeclaration;
-use crate::analysis::method_set::ReceiverMember;
-use crate::analysis::scope::{self, DeclarationKind, Identity, Resolver};
+use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
+use crate::analysis::scope::{self, DeclarationKind};
+use crate::analysis::sema::{Identity, IdentityResolver};
 use crate::analysis::source::{Name, Role, SourceAnalysis};
 use crate::index::{IndexedSymbol as Symbol, SymbolKind};
 use crate::syntax::MemberKind;
@@ -76,12 +76,16 @@ impl<'a> Context<'a> {
             .find(|symbol| symbol.start == selection.start && symbol.end == selection.end)
         {
             classify_symbol(self.workspace, file, symbol)?
-        } else if let Some(member) = self
-            .workspace
-            .member_declaration_target(file, source, &selection, &SourceMap::new(source))
-            // Implementation queries on an embedding follow its written type;
-            // highlight queries use the implicit field declaration instead.
-            .filter(|member| !member.embedded)
+        } else if let Some(member) = super::navigation::member_declaration_target(
+            self.workspace,
+            file,
+            source,
+            &selection,
+            &SourceMap::new(source),
+        )
+        // Implementation queries on an embedding follow its written type;
+        // highlight queries use the implicit field declaration instead.
+        .filter(|member| !member.embedded)
         {
             classify_member(member)?
         } else {
@@ -89,7 +93,8 @@ impl<'a> Context<'a> {
             let Some(name) = analysis.names.iter().find(|name| name.span == selection) else {
                 return Err((0, "no identifier found".to_owned()));
             };
-            let identity = Resolver::new(self.workspace, file).resolve(&analysis, source, name);
+            let identity =
+                IdentityResolver::new(self.workspace, file).resolve(&analysis, source, name);
             classify_identity(self.workspace, file, source, &analysis, name, identity)?
         };
         let mut builtin = None;
@@ -153,10 +158,11 @@ impl<'a> Context<'a> {
         let required = [name];
         let mut locations: Vec<SourceLocation<'a>> = Vec::new();
         for target in self.type_relations(file, owner, supers)? {
-            let Some(spelling) = self
-                .workspace
-                .implementation_spelling(target.file, target.symbol)
-            else {
+            let Some(spelling) = crate::analysis::types::lookup::implementation_spelling(
+                self.workspace,
+                target.file,
+                target.symbol,
+            ) else {
                 continue;
             };
             let root = self
@@ -164,7 +170,8 @@ impl<'a> Context<'a> {
                 .files
                 .get_key_value(target.file)
                 .map(|(path, _)| (path, target.symbol));
-            let members = self.workspace.implementation_members(
+            let members = crate::analysis::types::lookup::implementation_members(
+                self.workspace,
                 target.file,
                 &spelling,
                 Some(&required),
@@ -196,7 +203,8 @@ impl<'a> Context<'a> {
             }
         };
         member_name == name
-            && self.workspace.member_id(origin, member_name) == self.workspace.member_id(file, name)
+            && crate::analysis::types::lookup::member_id(self.workspace, origin, member_name)
+                == crate::analysis::types::lookup::member_id(self.workspace, file, name)
     }
 
     fn member_location(&self, member: ReceiverMember<'a>) -> Option<SourceLocation<'a>> {
@@ -206,7 +214,7 @@ impl<'a> Context<'a> {
                 range: selection_range(&symbol.selection),
             }),
             ReceiverMember::Declaration(declaration) => {
-                let data = self.workspace.member_data(declaration)?;
+                let data = declaration.data(self.workspace)?;
                 Some(SourceLocation {
                     file: declaration.file.as_path(),
                     range: selection_range(&data.selection),
@@ -294,9 +302,11 @@ fn classify_symbol<'a>(
             let Some(name) = scope::named_type(receiver) else {
                 return Ok(Target::Empty);
             };
-            let Some((owner_file, owner)) =
-                workspace.type_declaration(file, scope::named_root(&name))
-            else {
+            let Some((owner_file, owner)) = crate::analysis::resolve::resolve_type_declaration(
+                workspace,
+                file,
+                scope::named_root(&name),
+            ) else {
                 return Ok(Target::Empty);
             };
             Ok(Target::Method {

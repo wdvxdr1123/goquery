@@ -27,7 +27,8 @@ pub(super) fn promotion_path(
     let base = base.trim();
     let base = base.split('[').next().unwrap_or(base);
     let workspace = context.workspace();
-    let (file, symbol) = workspace.type_declaration(receiver_file, base)?;
+    let (file, symbol) =
+        crate::analysis::resolve::resolve_type_declaration(workspace, receiver_file, base)?;
     let mut visiting = vec![(file.clone(), symbol.start)];
     path_from(context, file, symbol, target_file, target, 0, &mut visiting)
 }
@@ -251,6 +252,6 @@ fn embedded_target<'a>(
 ) -> Option<(PathBuf, &'a Symbol)> {
     let text = annotation.trim().trim_start_matches('*').trim();
     let name = text.split('[').next()?.trim();
-    let (path, symbol) = workspace.type_declaration(file, name)?;
+    let (path, symbol) = crate::analysis::resolve::resolve_type_declaration(workspace, file, name)?;
     Some((path.clone(), symbol))
 }

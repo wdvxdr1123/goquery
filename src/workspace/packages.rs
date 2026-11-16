@@ -56,8 +56,7 @@ pub(crate) fn production_file(file: &Path) -> bool {
 }
 
 impl Workspace {
-    pub(crate) fn import_path(&self, file: &Path) -> Option<String> {
-        let directory = file.parent()?;
+    pub(crate) fn directory_import_path(&self, directory: &Path) -> Option<String> {
         let (root, module) = self
             .modules
             .iter()
@@ -77,6 +76,10 @@ impl Workspace {
         } else {
             format!("{module}/{suffix}")
         })
+    }
+
+    pub(crate) fn import_path(&self, file: &Path) -> Option<String> {
+        self.directory_import_path(file.parent()?)
     }
 
     /// Only a package's own external tests import its test-augmented namespace.

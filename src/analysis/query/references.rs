@@ -1,10 +1,10 @@
 //! Cross-file reference checking keeps only bounded semantic location rows.
 use super::locations;
+use super::navigation::anonymous;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::check::navigation::anonymous;
-use crate::analysis::member::MemberDeclaration;
+use crate::analysis::obj::MemberDeclaration;
 use crate::analysis::resolve::{self, NameIndex};
-use crate::analysis::scope::{Identity, Resolver};
+use crate::analysis::sema::{Identity, IdentityResolver};
 use crate::analysis::source::{Role, SourceAnalysis};
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
@@ -27,7 +27,7 @@ impl<View> Context<'_, View> {
             return Ok(Vec::new());
         };
         let mut candidates = if resolve::exported(name) {
-            workspace.dependent_candidates(target_file)
+            crate::analysis::resolve::dependent_candidates(workspace, target_file)
         } else {
             workspace
                 .files
@@ -88,11 +88,11 @@ impl<View> Context<'_, View> {
         let mut scope_time = Duration::ZERO;
         let mut resolve_time = Duration::ZERO;
         let initial_time = query_started.elapsed();
-        let mut candidates = self.workspace.reference_candidates(target_file, target);
+        let mut candidates =
+            crate::analysis::resolve::reference_candidates(self.workspace, target_file, target);
         let scope = self.workspace.reference_scope(file);
         candidates.retain(|(candidate, _)| scope.contains(candidate, target_file));
-        self.workspace
-            .trace_candidates("references", candidates.len());
+        crate::analysis::resolve::trace_candidates(self.workspace, "references", candidates.len());
         let candidate_time = query_started.elapsed() - initial_time;
         let candidate_count = candidates.len();
         let target_import = self.workspace.import_path(target_file);
@@ -134,7 +134,8 @@ impl<View> Context<'_, View> {
                 continue;
             }
             let phase = Instant::now();
-            let mut resolver = Resolver::for_reference(self.workspace, candidate, index, target);
+            let mut resolver =
+                IdentityResolver::for_reference(self.workspace, candidate, index, target);
             scope_time += phase.elapsed();
             let phase = Instant::now();
             for name in &analysis.names {
@@ -166,7 +167,7 @@ impl<View> Context<'_, View> {
         origin: &Path,
     ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
         let mut candidates = if resolve::exported(target.name) {
-            self.workspace.dependent_candidates(target.file)
+            crate::analysis::resolve::dependent_candidates(self.workspace, target.file)
         } else {
             self.workspace
                 .files
@@ -179,12 +180,11 @@ impl<View> Context<'_, View> {
         };
         let scope = self.workspace.reference_scope(origin);
         candidates.retain(|(file, _)| scope.contains(file, target.file));
-        self.workspace
-            .trace_candidates("references", candidates.len());
+        crate::analysis::resolve::trace_candidates(self.workspace, "references", candidates.len());
         let mut locations = Vec::new();
         if include_declaration
             && target.embedded
-            && let Some(data) = self.workspace.member_data(target)
+            && let Some(data) = target.data(self.workspace)
         {
             let range = data.selection;
             locations.push(SourceLocation {
@@ -214,7 +214,7 @@ impl<View> Context<'_, View> {
             }
             let analysis = SourceAnalysis::for_name(&source, stub, target.name)?;
             let map = SourceMap::new(&source);
-            let mut resolver = Resolver::for_name(self.workspace, file, index);
+            let mut resolver = IdentityResolver::for_name(self.workspace, file, index);
             for name in &analysis.names {
                 if (!include_declaration && matches!(name.role, Role::FieldDeclaration(_)))
                     || &source[name.span.clone()] != target.name

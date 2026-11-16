@@ -1,11 +1,9 @@
 //! Function signatures use bounded shared type-ID lists, without names or bodies.
-use super::arena::DisplayScope;
 use super::constraints;
 use super::{
     BasicKind, Direction, MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId,
 };
 use crate::syntax::{Lexer, Signature, TokenKind};
-use std::ops::Range;
 use std::path::Path;
 
 impl TypeArena<'_> {
@@ -17,8 +15,9 @@ impl TypeArena<'_> {
         environment: &[(&str, TypeId)],
     ) -> Option<TypeId> {
         let receiver = self.parse_in(origin, receiver, environment)?;
+        let receiver = self.unalias(receiver)?;
         let base = match self.nodes[usize::from(receiver.0)] {
-            Ty::Pointer(base) => base,
+            Ty::Pointer(base) => self.unalias(base)?,
             _ => receiver,
         };
         let Ty::Named {
@@ -32,7 +31,7 @@ impl TypeArena<'_> {
         if symbol.alias || !symbol.generic || !self.same_field_package(file, origin)? {
             return None;
         }
-        let arguments = self.arguments[arguments].to_vec();
+        let arguments = self.arguments[arguments.range()].to_vec();
         if arguments.len() > 32
             || arguments.iter().enumerate().any(|(index, ty)| {
                 !matches!(self.nodes[usize::from(ty.0)], Ty::Parameter(_))
@@ -45,12 +44,12 @@ impl TypeArena<'_> {
             .workspace
             .source_slice(file, symbol.end..symbol.declaration()?.end)?;
         let end = crate::syntax::type_parameter_end(&source)?;
-        let header = format!("func _{}()", source.get(..end)?);
-        let signature = crate::syntax::parse_signature(&header);
+        let header = source.get(..end)?;
+        let signature = crate::syntax::parse_type_parameters(header);
         if !signature.diagnostics.is_empty() {
             return None;
         }
-        let names = constraints::parameter_names(&header, &signature)?;
+        let names = constraints::parameter_names(header, &signature)?;
         if names.len() != arguments.len() {
             return None;
         }
@@ -111,13 +110,13 @@ impl TypeArena<'_> {
         self.store_signature(parameters, results, variadic)
     }
 
-    pub(super) fn store_signature(
+    pub(crate) fn store_signature(
         &mut self,
         parameters: Vec<TypeId>,
         results: Vec<TypeId>,
         variadic: bool,
     ) -> Option<TypeId> {
-        if self.arguments.len() + parameters.len() + results.len() > MAX_NODES {
+        if self.arguments.len() + parameters.len() + results.len() > self.node_limit {
             return None;
         }
         let start = self.arguments.len();
@@ -155,14 +154,6 @@ impl TypeArena<'_> {
             self.nodes[usize::from(input.0)],
             Ty::Signature { .. }
         ))
-    }
-
-    pub(crate) fn result_count(&mut self, input: TypeId) -> Option<usize> {
-        let input = self.underlying(input)?;
-        match &self.nodes[usize::from(input.0)] {
-            Ty::Signature { results, .. } => Some(results.len()),
-            _ => None,
-        }
     }
 
     /// Last fixed parameter of a variadic callable, as used by gopls for
@@ -222,7 +213,26 @@ impl TypeArena<'_> {
         self.arguments.get(results.start + result).copied()
     }
 
-    pub(super) fn assignable(
+    pub(crate) fn signature_parts(
+        &mut self,
+        input: TypeId,
+    ) -> Option<(Vec<TypeId>, Vec<TypeId>, bool)> {
+        let input = self.underlying(input)?;
+        match &self.nodes[usize::from(input.0)] {
+            Ty::Signature {
+                parameters,
+                results,
+                variadic,
+            } => Some((
+                self.arguments[parameters.clone()].to_vec(),
+                self.arguments[results.clone()].to_vec(),
+                *variadic,
+            )),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn assignable(
         &mut self,
         source: Operand,
         target: TypeId,
@@ -247,13 +257,7 @@ impl TypeArena<'_> {
             return Some(true);
         }
         let (a, b) = (self.unalias(source.ty)?, self.unalias(target)?);
-        if matches!(
-            self.nodes[usize::from(a.0)],
-            Ty::Named { .. } | Ty::Basic(_) | Ty::Parameter(_)
-        ) && matches!(
-            self.nodes[usize::from(b.0)],
-            Ty::Named { .. } | Ty::Basic(_) | Ty::Parameter(_)
-        ) {
+        if self.is_defined_type(a) && self.is_defined_type(b) {
             return Some(false);
         }
         let (a, b) = (self.underlying(a)?, self.underlying(b)?);
@@ -273,44 +277,5 @@ impl TypeArena<'_> {
             ) => self.identical(a, b),
             _ => Some(false),
         }
-    }
-
-    pub(super) fn write_signature(
-        &self,
-        parameters: Range<usize>,
-        results: Range<usize>,
-        variadic: bool,
-        consumer: DisplayScope<'_>,
-        out: &mut String,
-        depth: usize,
-    ) -> Option<()> {
-        out.push_str("func(");
-        let count = parameters.len();
-        for (index, ty) in self.arguments[parameters].iter().enumerate() {
-            if index > 0 {
-                out.push_str(", ");
-            }
-            if variadic && index + 1 == count {
-                let Ty::Slice(element) = self.nodes[usize::from(ty.0)] else {
-                    return None;
-                };
-                out.push_str("...");
-                self.write_in(element, consumer, out, depth + 1)?;
-            } else {
-                self.write_in(*ty, consumer, out, depth + 1)?;
-            }
-        }
-        out.push(')');
-        if !results.is_empty() {
-            out.push_str(" (");
-            for (index, ty) in self.arguments[results].iter().enumerate() {
-                if index > 0 {
-                    out.push_str(", ");
-                }
-                self.write_in(*ty, consumer, out, depth + 1)?;
-            }
-            out.push(')');
-        }
-        (out.len() <= MAX_BYTES).then_some(())
     }
 }

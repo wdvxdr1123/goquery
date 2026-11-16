@@ -109,7 +109,10 @@ impl TypeArena<'_> {
             if approximate {
                 return None;
             }
-            if matches!(self.nodes[usize::from(ty.0)], Ty::Named { .. }) {
+            if matches!(
+                self.nodes[usize::from(ty.0)],
+                Ty::Named { .. } | Ty::Alias { .. }
+            ) {
                 return self.named_set(ty, depth + 1);
             }
             let mut set = TypeSet::all();
@@ -130,7 +133,7 @@ impl TypeArena<'_> {
         }
         self.underlying(ty)?;
         self.constraint_terms += 1;
-        if self.constraint_terms > MAX_NODES {
+        if self.constraint_terms > self.node_limit {
             return None;
         }
         Some(TypeSet {
@@ -166,14 +169,16 @@ impl TypeArena<'_> {
                 if name == "_" || !explicit.insert(name) {
                     return None;
                 }
-                let header = format!("func{}", source.get(member.annotation.clone())?);
-                let signature = crate::syntax::parse_literal_signature(&header);
+                let header = source.get(member.annotation.clone())?;
+                let signature = crate::syntax::parse_method_signature(header);
                 let signature =
-                    self.signature(origin, &header, &signature, environment, depth + 1)?;
+                    self.signature(origin, header, &signature, environment, depth + 1)?;
                 methods.push(Method {
                     name: name.to_owned(),
                     origin,
                     signature,
+                    selection: [0, 0],
+                    builtin: false,
                 });
                 if methods.len() > MAX_NODES {
                     return None;
@@ -201,28 +206,28 @@ impl TypeArena<'_> {
         if depth >= MAX_DEPTH {
             return None;
         }
-        let Ty::Named {
-            declaration,
-            arguments,
-        } = self.nodes[usize::from(input.0)].clone()
-        else {
-            return None;
+        let (declaration, arguments) = match self.nodes[usize::from(input.0)].clone() {
+            Ty::Named {
+                declaration,
+                arguments,
+            }
+            | Ty::Alias {
+                declaration,
+                arguments,
+            } => (declaration, arguments),
+            _ => return None,
         };
         let (file, symbol) = (declaration.file, declaration.symbol);
-        let arguments = self.arguments[arguments].to_vec();
+        let arguments = self.arguments[arguments.range()].to_vec();
         let source = self
             .workspace
             .source_slice(file, symbol.end..symbol.declaration()?.end)?;
-        let header = match crate::syntax::type_parameter_end(&source) {
-            Some(end) => format!("func _{}()", source.get(..end)?),
-            None if !symbol.generic => "func _()".to_owned(),
-            None => return None,
-        };
-        let signature = crate::syntax::parse_signature(&header);
+        let (header, signature) =
+            crate::analysis::types::named::parse_type_parameters_of(&source, symbol.generic)?;
         if !signature.diagnostics.is_empty() {
             return None;
         }
-        let names = constraints::parameter_names(&header, &signature)?;
+        let names = constraints::parameter_names(header, &signature)?;
         if names.len() != arguments.len() {
             return None;
         }
@@ -230,7 +235,7 @@ impl TypeArena<'_> {
         for (index, name) in names.into_iter().enumerate() {
             environment.push((name, self.push(Ty::Parameter(index))?));
         }
-        let constraints = self.constraints(file, &header, &signature, &environment)?;
+        let constraints = self.constraints(file, header, &signature, &environment)?;
         let mut set =
             self.constraint_set(file, declaration_body(&source)?, &environment, depth + 1)?;
         for (constraint, (_, parameter)) in constraints.into_iter().zip(&environment) {

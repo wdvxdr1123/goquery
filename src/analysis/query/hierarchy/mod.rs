@@ -44,8 +44,13 @@ impl<'a, View> Context<'a, View> {
     }
     pub(crate) fn type_is_interface(&self, file: &Path, symbol: &Symbol) -> bool {
         matches!(
-            self.workspace
-                .type_form(file, &symbol.name, &Locals::empty(), 0),
+            crate::analysis::types::type_form_in_scope(
+                self.workspace,
+                file,
+                &symbol.name,
+                &Locals::empty(),
+                0,
+            ),
             Some(TypeForm::Interface)
         )
     }

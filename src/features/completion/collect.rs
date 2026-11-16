@@ -1,9 +1,8 @@
 //! Completion parses only the enclosing function and the cursor's closure path.
-use crate::analysis::check::ScopedType;
-use crate::analysis::member::MemberDeclaration;
-use crate::analysis::method_set::ReceiverMember;
 use crate::analysis::query::Context;
-use crate::analysis::scope::Binding;
+use crate::analysis::query::completion::{
+    Binding, CompletionReceiver, MemberDeclaration, ReceiverMember,
+};
 use crate::features::completion::render::EditContext;
 use crate::fuzzy::CompletionMatcher;
 use crate::index::IndexedSymbol as Symbol;
@@ -17,12 +16,12 @@ use std::time::Instant;
 pub(in crate::features) fn execute(
     context: &Context<'_>,
     offset: usize,
+    config: &super::render::CompletionConfig,
 ) -> Result<Value, (i32, String)> {
-    let workspace = context.workspace();
     let file = context.file();
     let source = context.source();
     let started = Instant::now();
-    let trace = workspace.trace.queries;
+    let trace = context.trace_queries();
     let map = SourceMap::new(source);
     let mut scope = context.cursor_scope(offset)?;
     let expected = if context.type_position(offset, &scope) {
@@ -30,17 +29,16 @@ pub(in crate::features) fn execute(
     } else {
         ExpectedKind::Any
     };
-    let calls = workspace.completion_config.snippets
-        && workspace.completion_config.calls
-        && !context.function_value_context(offset, &scope);
+    let calls = config.snippets && config.calls && !context.function_value_context(offset, &scope);
     let scope_time = started.elapsed();
     let receiver_started = Instant::now();
-    let selected_receiver = context.completion_receiver(&scope, offset);
+    let sema_selector = context.completion_selector_members(&scope, offset);
+    let selected_receiver = sema_selector.as_ref().and_then(|(_, recv)| recv.clone());
     drop(scope.body.take());
     let receiver_time = receiver_started.elapsed();
     let collection_started = Instant::now();
     let locals = &scope.locals;
-    workspace.trace_candidates("completion", 1);
+    context.trace_candidates("completion", 1);
     let prefix = source[..offset]
         .chars()
         .rev()
@@ -67,33 +65,46 @@ pub(in crate::features) fn execute(
         candidates.insert(&binding.name, Candidate::Local(binding));
     }
     if let Some(alias) = qualifier {
-        let binding = locals.resolve_at(offset, alias);
-        if receiver.is_some() || binding.is_some() {
-            if receiver.is_none() {
-                receiver = binding
-                    .and_then(|binding| context.binding_type(locals, binding))
-                    .map(|text| ScopedType { scope: file, text });
-            }
-            for member in receiver
-                .as_ref()
-                .map_or_else(Vec::new, |ty| context.completion_members(ty))
-            {
+        if let Some((members, _)) = &sema_selector {
+            for member in members {
                 match member {
                     ReceiverMember::Method(path, symbol) => {
-                        candidates.insert(&symbol.name, Candidate::Symbol(path, symbol))
+                        candidates.insert(&symbol.name, Candidate::Symbol(path, symbol));
                     }
                     ReceiverMember::Declaration(member) => {
-                        candidates.insert(member.name, Candidate::Member(member))
+                        candidates.insert(member.name, Candidate::Member(*member));
                     }
                 }
             }
         } else {
-            for (path, symbol) in workspace.imported_symbol_iter(file, alias) {
-                candidates.insert(&symbol.name, Candidate::Symbol(path, symbol));
+            let binding = locals.resolve_at(offset, alias);
+            if receiver.is_some() || binding.is_some() {
+                if receiver.is_none() {
+                    receiver = binding
+                        .and_then(|binding| context.binding_type(locals, binding))
+                        .map(|text| CompletionReceiver { scope: file, text });
+                }
+                for member in receiver
+                    .as_ref()
+                    .map_or_else(Vec::new, |ty| context.completion_members(ty))
+                {
+                    match member {
+                        ReceiverMember::Method(path, symbol) => {
+                            candidates.insert(&symbol.name, Candidate::Symbol(path, symbol))
+                        }
+                        ReceiverMember::Declaration(member) => {
+                            candidates.insert(member.name, Candidate::Member(member))
+                        }
+                    }
+                }
+            } else {
+                for (path, symbol) in context.imported_symbols(alias) {
+                    candidates.insert(&symbol.name, Candidate::Symbol(path, symbol));
+                }
             }
         }
     } else {
-        for (path, symbol) in workspace.file_symbol_iter(file) {
+        for (path, symbol) in context.file_symbols_in_scope() {
             if symbol.receiver.is_none()
                 && (!matches!(expected, ExpectedKind::Type)
                     || locals.resolve_at(offset, &symbol.name).is_none())
@@ -109,6 +120,7 @@ pub(in crate::features) fn execute(
         .map_or(source.len(), |(byte, _)| offset + byte);
     let edit = EditContext {
         query: context,
+        config,
         file,
         source,
         locals,

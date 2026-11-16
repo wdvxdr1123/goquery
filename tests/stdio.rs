@@ -1031,7 +1031,7 @@ fn run_case(case: &str) {
                 .lines()
                 .filter(|line| line.starts_with("textDocument/definition:"))
                 .count(),
-            if case == "definitions" { 22 } else { 24 },
+            if case == "definitions" { 22 } else { 25 },
             "{trace}"
         );
         assert!(
@@ -4487,6 +4487,69 @@ fn watched_file_changes_refresh_cross_package_state() {
             "invalid/unavailable extent fell back to a fabricated type: {reply}"
         );
     }
+    let aliases = "package p\ntype Pair[T comparable] = [2]T\ntype Box[T any] struct { Value T }\ntype BoxAlias[T comparable] = Box[T]\nfunc First[T comparable](p Pair[T]) T { return p[0] }\nvar IntPair Pair[int]\nvar FirstEl = IntPair[0]\nvar FirstInt = First(IntPair)\nfunc useAlias() {\n\tfirstEl := IntPair[0]\n\tvar b BoxAlias[string]\n\t_ = firstEl\n\t_ = b.Value\n\t_ = b\n\t_ = FirstInt\n\t_ = FirstEl\n}\n";
+    let aliases_uri = url::Url::from_file_path(nested_root.join("child/p/aliases.go")).unwrap();
+    nested_server.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": aliases_uri, "languageId": "go", "version": 1, "text": aliases,
+        }}),
+    );
+    for (needle, expected) in [
+        ("IntPair", "Pair[int]"),
+        ("FirstInt", "var FirstInt int"),
+        ("firstEl :=", "var firstEl int"),
+        ("b.Value", "field Value string"),
+    ] {
+        let offset = aliases.rfind(needle).unwrap() + needle.rfind('.').map_or(0, |dot| dot + 1);
+        let reply = nested_server.request(
+            "textDocument/hover",
+            serde_json::json!({
+                "textDocument": {"uri": aliases_uri},
+                "position": position(aliases, offset),
+            }),
+        );
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|text| text.contains(expected)),
+            "generic type alias hover mismatch for {needle}: {reply}"
+        );
+    }
+    let def_offset = aliases.find("Pair[int]").unwrap();
+    let def_reply = nested_server.request(
+        "textDocument/definition",
+        serde_json::json!({
+            "textDocument": {"uri": aliases_uri},
+            "position": position(aliases, def_offset),
+        }),
+    );
+    let expected_pair = position(aliases, aliases.find("Pair[T comparable]").unwrap());
+    assert!(
+        def_reply["result"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| {
+                row["uri"] == aliases_uri.as_str() && row["range"]["start"] == expected_pair
+            })),
+        "generic type alias definition mismatch: {def_reply}"
+    );
+    let tdef_offset = aliases.rfind("_ = b").unwrap() + "_ = ".len();
+    let tdef_reply = nested_server.request(
+        "textDocument/typeDefinition",
+        serde_json::json!({
+            "textDocument": {"uri": aliases_uri},
+            "position": position(aliases, tdef_offset),
+        }),
+    );
+    let expected_box_alias = position(aliases, aliases.find("BoxAlias[T comparable]").unwrap());
+    assert!(
+        tdef_reply["result"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| {
+                row["uri"] == aliases_uri.as_str() && row["range"]["start"] == expected_box_alias
+            })),
+        "generic type alias typeDefinition mismatch: {tdef_reply}"
+    );
     for (filename, test_methods, private_methods) in [
         ("view.go", false, false),
         ("view_test.go", true, true),
@@ -4871,6 +4934,763 @@ fn watched_file_changes_refresh_cross_package_state() {
         std::thread::sleep(Duration::from_millis(10));
     }
     let _ = std::fs::remove_dir_all(&pipelined_root);
+}
+
+mod sema_e2e {
+    use super::jsonrpc2;
+    use serde_json::{Value, json};
+    use std::io::BufReader;
+    use std::path::PathBuf;
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    struct SemaTestServer {
+        root: PathBuf,
+        child: Option<Child>,
+        stdin: Option<ChildStdin>,
+        stdout: BufReader<ChildStdout>,
+        next_id: i64,
+    }
+
+    impl SemaTestServer {
+        fn start(name: &str, files: &[(&str, &str)]) -> Self {
+            let root =
+                std::env::temp_dir().join(format!("goquery-sema-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).expect("create sema test root");
+            for (rel, content) in files {
+                let path = root.join(rel);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).expect("create parent dir");
+                }
+                std::fs::write(&path, content).expect("write fixture file");
+            }
+            let mut child = Command::new(env!("CARGO_BIN_EXE_goquery"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .env("GOWORK", "off")
+                .env("GOMODCACHE", root.join("_gomodcache"))
+                .env_remove("GOQUERY_DISABLE_DIAG")
+                .env_remove("GOQUERY_TRACE_QUERIES")
+                .spawn()
+                .expect("spawn goquery");
+            let stdin = child.stdin.take().expect("server stdin");
+            let stdout = BufReader::new(child.stdout.take().expect("server stdout"));
+            let mut server = Self {
+                root,
+                child: Some(child),
+                stdin: Some(stdin),
+                stdout,
+                next_id: 0,
+            };
+            let root_uri = url::Url::from_directory_path(&server.root)
+                .expect("root dir uri")
+                .to_string();
+            let init = server.request(
+                "initialize",
+                json!({
+                    "processId": std::process::id(),
+                    "rootUri": root_uri,
+                    "capabilities": {},
+                    "initializationOptions": {
+                        "goroot": "",
+                        "fileWatch": false,
+                    },
+                }),
+            );
+            assert!(init.get("result").is_some(), "initialize failed: {init}");
+            server.notify("initialized", json!({}));
+            server
+        }
+
+        fn uri(&self, rel: &str) -> String {
+            url::Url::from_file_path(self.root.join(rel))
+                .expect("file uri")
+                .to_string()
+        }
+
+        fn send(&mut self, msg: &Value) {
+            let stdin = self.stdin.as_mut().expect("server stdin active");
+            jsonrpc2::send(stdin, msg.clone()).expect("send lsp message");
+        }
+
+        fn notify(&mut self, method: &str, params: Value) {
+            self.send(&json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params,
+            }));
+        }
+
+        fn request(&mut self, method: &str, params: Value) -> Value {
+            self.next_id += 1;
+            let id = self.next_id;
+            let mut msg = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": method,
+            });
+            if !params.is_null() {
+                msg["params"] = params;
+            }
+            self.send(&msg);
+            loop {
+                let incoming = jsonrpc2::read_message(&mut self.stdout)
+                    .expect("read lsp response")
+                    .expect("unexpected eof waiting for response");
+                if incoming.get("method").is_some()
+                    && let Some(req_id) = incoming.get("id")
+                {
+                    let reply = json!({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": Value::Null,
+                    });
+                    self.send(&reply);
+                    continue;
+                }
+                if incoming.get("id") == Some(&json!(id)) && incoming.get("method").is_none() {
+                    return incoming;
+                }
+            }
+        }
+
+        fn did_open(&mut self, uri: &str, text: &str) {
+            self.notify(
+                "textDocument/didOpen",
+                json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": "go",
+                        "version": 1,
+                        "text": text,
+                    },
+                }),
+            );
+        }
+
+        fn did_change(&mut self, uri: &str, version: i64, text: &str) {
+            self.notify(
+                "textDocument/didChange",
+                json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "version": version,
+                    },
+                    "contentChanges": [{"text": text}],
+                }),
+            );
+        }
+
+        fn shutdown(mut self) {
+            let reply = self.request("shutdown", Value::Null);
+            assert!(reply.get("result").is_some(), "shutdown failed: {reply}");
+            self.notify("exit", Value::Null);
+            let _ = self.stdin.take();
+            if let Some(mut child) = self.child.take() {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    if child.try_wait().expect("wait goquery").is_some() {
+                        break;
+                    }
+                    if Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("sema test server did not exit");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+    }
+
+    impl Drop for SemaTestServer {
+        fn drop(&mut self) {
+            let _ = self.stdin.take();
+            if let Some(mut child) = self.child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn pos(source: &str, offset: usize) -> Value {
+        let prefix = source.get(..offset).expect("valid utf-8 offset");
+        json!({
+            "line": prefix.matches('\n').count(),
+            "character": prefix.rsplit('\n').next().unwrap_or_default().encode_utf16().count(),
+        })
+    }
+
+    #[test]
+    fn sema_generic_nested_call_hover_and_signature_help() {
+        let main_src = concat!(
+            "package main\n\n",
+            "type Pair[A, B any] struct {\n",
+            "\tFirst  A\n",
+            "\tSecond B\n",
+            "}\n\n",
+            "func PairOf[A, B any](a A, b B) Pair[A, B] {\n",
+            "\treturn Pair[A, B]{First: a, Second: b}\n",
+            "}\n\n",
+            "func Wrap[T any](v T) []T {\n",
+            "\treturn []T{v}\n",
+            "}\n\n",
+            "func main() {\n",
+            "\tx := Wrap( PairOf(1, \"a\"))\n",
+            "\t_ = x\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "generic-nested",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.24\n"),
+                ("main.go", main_src),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, main_src);
+
+        let x_off = main_src.find("x :=").expect("x decl");
+        let hover_x = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, x_off)}),
+        );
+        assert!(
+            hover_x["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("var x []Pair[int, string]")),
+            "expected instantiated slice type on x: {hover_x}"
+        );
+
+        let pairof_off = main_src.find("PairOf(1").expect("PairOf call");
+        let hover_pairof = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, pairof_off)}),
+        );
+        assert!(
+            hover_pairof["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("func PairOf(a int, b string) Pair[int, string]")),
+            "expected instantiated PairOf hover: {hover_pairof}"
+        );
+
+        let wrap_off = main_src.find("Wrap( PairOf").expect("Wrap call");
+        let hover_wrap = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, wrap_off)}),
+        );
+        assert!(
+            hover_wrap["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("func Wrap(v Pair[int, string]) []Pair[int, string]")),
+            "expected instantiated Wrap hover: {hover_wrap}"
+        );
+
+        let wrap_arg_off = wrap_off + "Wrap(".len();
+        let sig_wrap = server.request(
+            "textDocument/signatureHelp",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, wrap_arg_off)}),
+        );
+        assert!(
+            sig_wrap["result"]["signatures"][0]["label"]
+                .as_str()
+                .is_some_and(|l| l.starts_with("Wrap(")),
+            "expected Wrap signatureHelp: {sig_wrap}"
+        );
+        assert_eq!(sig_wrap["result"]["activeParameter"], 0, "{sig_wrap}");
+
+        let pairof_second_off = main_src.find(", \"a\"").expect("second arg comma") + 1;
+        let sig_pairof = server.request(
+            "textDocument/signatureHelp",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, pairof_second_off)}),
+        );
+        assert!(
+            sig_pairof["result"]["signatures"][0]["label"]
+                .as_str()
+                .is_some_and(|l| l.starts_with("PairOf(")),
+            "expected PairOf signatureHelp: {sig_pairof}"
+        );
+        assert_eq!(sig_pairof["result"]["activeParameter"], 1, "{sig_pairof}");
+
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_unimported_transitive_type_hover_and_completion() {
+        let a_src = concat!(
+            "package a\n\n",
+            "type Secret struct {\n",
+            "\tValue int\n",
+            "}\n\n",
+            "func (Secret) Ping() string { return \"ok\" }\n",
+        );
+        let b_src = "package b\n\nimport \"example.com/m/a\"\n\nfunc Make() a.Secret { return a.Secret{} }\n";
+        let c_src = concat!(
+            "package c\n\n",
+            "import \"example.com/m/b\"\n\n",
+            "func run() {\n",
+            "\ts := b.Make()\n",
+            "\t_ = s.Ping()\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "transitive",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.24\n"),
+                ("a/a.go", a_src),
+                ("b/b.go", b_src),
+                ("c/c.go", c_src),
+            ],
+        );
+        let c_uri = server.uri("c/c.go");
+        let a_uri = server.uri("a/a.go");
+        server.did_open(&c_uri, c_src);
+
+        let s_off = c_src.find("s :=").expect("s decl");
+        let hover_s = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": c_uri}, "position": pos(c_src, s_off)}),
+        );
+        assert!(
+            hover_s["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("var s a.Secret")),
+            "expected qualified transitive type on s: {hover_s}"
+        );
+
+        let tdef_s = server.request(
+            "textDocument/typeDefinition",
+            json!({"textDocument": {"uri": c_uri}, "position": pos(c_src, s_off)}),
+        );
+        assert_eq!(
+            tdef_s["result"][0]["uri"].as_str(),
+            Some(a_uri.as_str()),
+            "expected typeDefinition to point to a/a.go: {tdef_s}"
+        );
+
+        let c_edit = concat!(
+            "package c\n\n",
+            "import \"example.com/m/b\"\n\n",
+            "func run() {\n",
+            "\ts := b.Make()\n",
+            "\ts.\n",
+            "}\n",
+        );
+        server.did_change(&c_uri, 2, c_edit);
+        let comp_off = c_edit.find("\ts.").expect("selector dot") + "\ts.".len();
+        let comp = server.request(
+            "textDocument/completion",
+            json!({"textDocument": {"uri": c_uri}, "position": pos(c_edit, comp_off)}),
+        );
+        let items = comp["result"]["items"]
+            .as_array()
+            .expect("completion items");
+        assert!(
+            items.iter().any(|item| item["label"] == "Value"),
+            "expected field Value in transitive completion: {comp}"
+        );
+        assert!(
+            items.iter().any(|item| item["label"] == "Ping"),
+            "expected method Ping in transitive completion: {comp}"
+        );
+
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_conversion_suppresses_signature_help() {
+        let main_src = concat!(
+            "package main\n\n",
+            "type MyInt int\n\n",
+            "func Take(v MyInt) {}\n\n",
+            "func main() {\n",
+            "\ty := MyInt(42)\n",
+            "\tTake( MyInt(42))\n",
+            "\t_ = y\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "conversion-sig",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.24\n"),
+                ("main.go", main_src),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, main_src);
+
+        let conv_off = main_src.find("42").expect("conversion arg");
+        let sig_conv = server.request(
+            "textDocument/signatureHelp",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, conv_off)}),
+        );
+        assert_eq!(
+            sig_conv["result"],
+            Value::Null,
+            "conversion must suppress signatureHelp: {sig_conv}"
+        );
+
+        let take_arg_off = main_src.find("Take( MyInt").expect("Take call") + "Take(".len();
+        let sig_take = server.request(
+            "textDocument/signatureHelp",
+            json!({"textDocument": {"uri": uri}, "position": pos(main_src, take_arg_off)}),
+        );
+        assert_eq!(
+            sig_take["result"]["signatures"][0]["label"].as_str(),
+            Some("Take(v MyInt)"),
+            "expected Take signatureHelp: {sig_take}"
+        );
+        assert_eq!(sig_take["result"]["activeParameter"], 0, "{sig_take}");
+
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_streaming_semantic_tokens_and_local_defined_types() {
+        fn decode_tokens(data: &[Value]) -> Vec<(u32, u32, u32, u32, u32)> {
+            assert_eq!(data.len() % 5, 0, "encoded tokens must come in 5-tuples");
+            let mut out = Vec::with_capacity(data.len() / 5);
+            let mut line = 0u32;
+            let mut start = 0u32;
+            for chunk in data.chunks_exact(5) {
+                let d_line = chunk[0].as_u64().expect("deltaLine") as u32;
+                let d_start = chunk[1].as_u64().expect("deltaStart") as u32;
+                let length = chunk[2].as_u64().expect("length") as u32;
+                let kind = chunk[3].as_u64().expect("tokenType") as u32;
+                let mods = chunk[4].as_u64().expect("tokenModifiers") as u32;
+                line += d_line;
+                start = if d_line == 0 {
+                    start + d_start
+                } else {
+                    d_start
+                };
+                out.push((line, start, length, kind, mods));
+            }
+            out
+        }
+
+        let main_src = concat!(
+            "package main\n\n",
+            "const (\n",
+            "\tBase = iota + 2\n",
+            "\tNext\n",
+            ")\n\n",
+            "var _ = Base\n",
+            "var Arr [Base * Base]int\n",
+            "var PairA, PairB = [4]int{}, 7\n\n",
+            "func first() int {\n",
+            "\ttype Fn1 func() int\n",
+            "\ttype Fn2 func() int\n",
+            "\tvar f1 Fn1 = func() int { return PairB }\n",
+            "\t_ = f1\n",
+            "\tvar raw func() int = f1\n",
+            "\tvar _ Fn2 = raw\n",
+            "\treturn f1() + raw()\n",
+            "}\n\n",
+            "func second() int {\n",
+            "\treturn len(Arr) + len(PairA) + Next\n",
+            "}\n\n",
+            "func third() int {\n",
+            "\tx := first() + second()\n",
+            "\treturn x\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "streaming-tokens",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.21\n"),
+                ("main.go", main_src),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, main_src);
+
+        let full = server.request(
+            "textDocument/semanticTokens/full",
+            json!({"textDocument": {"uri": uri}}),
+        );
+        let full_tokens = decode_tokens(
+            full["result"]["data"]
+                .as_array()
+                .expect("semanticTokens/full data array"),
+        );
+
+        let first_start_off = main_src.find("func first()").expect("first start");
+        let first_end_off = main_src.find("\nfunc second()").expect("first end");
+        let first_range = server.request(
+            "textDocument/semanticTokens/range",
+            json!({
+                "textDocument": {"uri": uri},
+                "range": {
+                    "start": pos(main_src, first_start_off),
+                    "end": pos(main_src, first_end_off),
+                }
+            }),
+        );
+        let first_tokens = decode_tokens(
+            first_range["result"]["data"]
+                .as_array()
+                .expect("first range data"),
+        );
+        let first_start_line = main_src[..first_start_off].matches('\n').count() as u32;
+        let first_end_line = main_src[..first_end_off].matches('\n').count() as u32;
+        let expected_first: Vec<_> = full_tokens
+            .iter()
+            .copied()
+            .filter(|(line, ..)| *line >= first_start_line && *line <= first_end_line)
+            .collect();
+        assert_eq!(
+            first_tokens, expected_first,
+            "range window over first() must match full tokens slice"
+        );
+
+        let second_start_off = main_src.find("func second()").expect("second start");
+        let second_end_off = main_src.find("\nfunc third()").expect("second end");
+        let second_range = server.request(
+            "textDocument/semanticTokens/range",
+            json!({
+                "textDocument": {"uri": uri},
+                "range": {
+                    "start": pos(main_src, second_start_off),
+                    "end": pos(main_src, second_end_off),
+                }
+            }),
+        );
+        let second_tokens = decode_tokens(
+            second_range["result"]["data"]
+                .as_array()
+                .expect("second range data"),
+        );
+        let second_start_line = main_src[..second_start_off].matches('\n').count() as u32;
+        let second_end_line = main_src[..second_end_off].matches('\n').count() as u32;
+        let expected_second: Vec<_> = full_tokens
+            .iter()
+            .copied()
+            .filter(|(line, ..)| *line >= second_start_line && *line <= second_end_line)
+            .collect();
+        assert_eq!(
+            second_tokens, expected_second,
+            "range window over second() must match full tokens slice"
+        );
+
+        let token_at = |needle: &str| {
+            let off = main_src.find(needle).expect(needle);
+            let p = pos(main_src, off);
+            let target_line = p["line"].as_u64().expect("line") as u32;
+            let target_col = p["character"].as_u64().expect("character") as u32;
+            full_tokens
+                .iter()
+                .copied()
+                .find(|(line, col, ..)| *line == target_line && *col == target_col)
+                .unwrap_or_else(|| {
+                    panic!("missing token for {needle:?} at {target_line}:{target_col}")
+                })
+        };
+
+        const MOD_DEFINITION: u32 = 1 << 1;
+        const MOD_READONLY: u32 = 1 << 2;
+        const MOD_SIGNATURE: u32 = 1 << 5;
+        const MOD_NUMBER: u32 = 1 << 6;
+        const MOD_ARRAY: u32 = 1 << 12;
+
+        // Package blank declaration `var _ = Base` vs local blank assignment `_ = f1`
+        let pkg_blank = token_at("_ = Base");
+        assert_ne!(
+            pkg_blank.4 & MOD_DEFINITION,
+            0,
+            "package blank declaration should carry definition modifier: {pkg_blank:?}"
+        );
+        let local_blank_assign = token_at("_ = f1");
+        assert_eq!(
+            local_blank_assign.4 & MOD_DEFINITION,
+            0,
+            "local blank assignment must not carry definition modifier: {local_blank_assign:?}"
+        );
+
+        // Non-decimal constant array shape [Base * Base]int on Arr and composite literal [4]int{} on PairA
+        let arr_use = token_at("Arr) + len(PairA)");
+        assert_ne!(
+            arr_use.4 & MOD_ARRAY,
+            0,
+            "Arr ([Base * Base]int) should carry array shape modifier: {arr_use:?}"
+        );
+        let pair_a_use = token_at("PairA) + Next");
+        assert_ne!(
+            pair_a_use.4 & MOD_ARRAY,
+            0,
+            "PairA ([4]int{{}}) should carry array shape modifier: {pair_a_use:?}"
+        );
+
+        // Local defined function type signature modifier
+        let f1_use = token_at("f1\n\tvar raw");
+        assert_ne!(
+            f1_use.4 & MOD_SIGNATURE,
+            0,
+            "f1 (local defined func() int) should carry signature modifier: {f1_use:?}"
+        );
+
+        // Const iota progression readonly + number modifier on Next
+        let next_use = token_at("Next\n}");
+        assert_ne!(
+            next_use.4 & (MOD_READONLY | MOD_NUMBER),
+            0,
+            "Next const use should carry readonly|number modifiers: {next_use:?}"
+        );
+        assert_eq!(
+            next_use.4 & (MOD_READONLY | MOD_NUMBER),
+            MOD_READONLY | MOD_NUMBER,
+            "Next const use should carry both readonly and number modifiers: {next_use:?}"
+        );
+
+        // Local defined type assignable to unnamed func() int check: raw's initializer f1 stays typed
+        let f1_in_raw = token_at("f1\n\tvar _ Fn2");
+        assert_ne!(
+            f1_in_raw.4 & MOD_SIGNATURE,
+            0,
+            "f1 assigned to raw func() int should retain signature modifier: {f1_in_raw:?}"
+        );
+
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_promoted_receiver_members_and_interface_implementation() {
+        let store_src = concat!(
+            "package store\n\n",
+            "type Reader interface {\n",
+            "\tReadItem(id int) (string, bool)\n",
+            "}\n\n",
+            "type Base struct {\n",
+            "\tPrefix string\n",
+            "}\n\n",
+            "func (b *Base) ReadItem(id int) (string, bool) {\n",
+            "\treturn b.Prefix, id > 0\n",
+            "}\n\n",
+            "type Service struct {\n",
+            "\t*Base\n",
+            "}\n",
+        );
+        let main_src = concat!(
+            "package main\n\n",
+            "import \"example.com/app/pkg/store\"\n\n",
+            "func run() {\n",
+            "\tsvc := &store.Service{Base: &store.Base{Prefix: \"ok\"}}\n",
+            "\tval, ok := svc.ReadItem(1)\n",
+            "\tbuf := make([]string, 0, 2)\n",
+            "\tbuf = append(buf, val)\n",
+            "\t_, _ = buf, ok\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "promoted-members",
+            &[
+                ("go.mod", "module example.com/app\n\ngo 1.24\n"),
+                ("pkg/store/store.go", store_src),
+                ("main.go", main_src),
+            ],
+        );
+        let main_uri = server.uri("main.go");
+        let store_uri = server.uri("pkg/store/store.go");
+        server.did_open(&store_uri, store_src);
+        server.did_open(&main_uri, main_src);
+
+        let val_off = main_src.find("val, ok").expect("val decl");
+        let hover_val = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": main_uri}, "position": pos(main_src, val_off)}),
+        );
+        assert!(
+            hover_val["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("var val string")),
+            "expected string hover on val: {hover_val}"
+        );
+
+        let ok_off = main_src.find("ok := svc").expect("ok decl");
+        let hover_ok = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": main_uri}, "position": pos(main_src, ok_off)}),
+        );
+        assert!(
+            hover_ok["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("var ok bool")),
+            "expected bool hover on ok: {hover_ok}"
+        );
+
+        let call_off = main_src.find("ReadItem(1)").expect("ReadItem call");
+        let def_read = server.request(
+            "textDocument/definition",
+            json!({"textDocument": {"uri": main_uri}, "position": pos(main_src, call_off)}),
+        );
+        let read_impl_off = store_src
+            .find("func (b *Base) ReadItem")
+            .expect("method def")
+            + "func (b *Base) ".len();
+        let read_impl_pos = pos(store_src, read_impl_off);
+        assert!(
+            def_read["result"].as_array().is_some_and(|locs| {
+                locs.iter().any(|loc| {
+                    loc["uri"].as_str() == Some(store_uri.as_str())
+                        && loc["range"]["start"] == read_impl_pos
+                })
+            }),
+            "expected promoted method definition in pkg/store/store.go: {def_read}"
+        );
+
+        let iface_off = store_src.find("Reader interface").expect("Reader decl");
+        let impls = server.request(
+            "textDocument/implementation",
+            json!({"textDocument": {"uri": store_uri}, "position": pos(store_src, iface_off)}),
+        );
+        let base_pos = pos(store_src, store_src.find("Base struct").expect("Base decl"));
+        let service_pos = pos(
+            store_src,
+            store_src.find("Service struct").expect("Service decl"),
+        );
+        let impl_rows = impls["result"]
+            .as_array()
+            .unwrap_or_else(|| panic!("expected implementation list: {impls}"));
+        assert!(
+            impl_rows.iter().any(|loc| {
+                loc["uri"].as_str() == Some(store_uri.as_str())
+                    && (loc["range"]["start"] == base_pos || loc["range"]["start"] == service_pos)
+            }),
+            "expected Base or Service to implement Reader: {impls}"
+        );
+
+        let main_edit = concat!(
+            "package main\n\n",
+            "import \"example.com/app/pkg/store\"\n\n",
+            "func run() {\n",
+            "\tsvc := &store.Service{Base: &store.Base{Prefix: \"ok\"}}\n",
+            "\tsvc.\n",
+            "\t_ = svc\n",
+            "}\n",
+        );
+        server.did_change(&main_uri, 2, main_edit);
+        let comp_off = main_edit.find("\tsvc.").expect("svc dot") + "\tsvc.".len();
+        let comp = server.request(
+            "textDocument/completion",
+            json!({"textDocument": {"uri": main_uri}, "position": pos(main_edit, comp_off)}),
+        );
+        let items = comp["result"]["items"]
+            .as_array()
+            .expect("completion items");
+        assert!(
+            items.iter().any(|item| item["label"] == "ReadItem"),
+            "expected promoted method ReadItem in completion: {comp}"
+        );
+        assert!(
+            items.iter().any(|item| item["label"] == "Prefix"),
+            "expected promoted field Prefix in completion: {comp}"
+        );
+
+        server.shutdown();
+    }
 }
 
 // ---------------------------------------------------------------------------

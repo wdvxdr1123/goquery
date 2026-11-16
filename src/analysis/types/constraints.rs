@@ -70,7 +70,8 @@ impl TypeArena<'_> {
     ) -> Option<bool> {
         Some(
             !environment.iter().any(|(parameter, _)| *parameter == name)
-                && self.workspace.unqualified_symbol(origin, name).is_none()
+                && crate::analysis::resolve::unqualified_symbol(self.workspace, origin, name)
+                    .is_none()
                 && !self
                     .workspace
                     .files

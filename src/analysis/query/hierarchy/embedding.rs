@@ -16,7 +16,9 @@ impl<'a, View> Context<'a, View> {
         if supers {
             if let Some(info) = &target.type_info {
                 for name in &info.embedded {
-                    if let Some((path, symbol)) = self.workspace.embedded_target(file, name) {
+                    if let Some((path, symbol)) =
+                        crate::analysis::types::lookup::embedded_target(self.workspace, file, name)
+                    {
                         results.insert(
                             (path.as_path(), symbol.start),
                             SymbolTarget { file: path, symbol },
@@ -32,9 +34,13 @@ impl<'a, View> Context<'a, View> {
             }
         } else {
             let index = NameIndex::new(self.workspace, &target.name);
-            let candidates = self.workspace.reference_candidates(file, target);
-            self.workspace
-                .trace_candidates("subtypes", candidates.len());
+            let candidates =
+                crate::analysis::resolve::reference_candidates(self.workspace, file, target);
+            crate::analysis::resolve::trace_candidates(
+                self.workspace,
+                "subtypes",
+                candidates.len(),
+            );
             for (path, stub) in candidates {
                 for symbol in &stub.symbols {
                     let Some(info) = &symbol.type_info else {

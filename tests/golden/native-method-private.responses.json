@@ -210,6 +210,19 @@
           }
         },
         "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 7
+          },
+          "start": {
+            "character": 9,
+            "line": 7
+          }
+        },
+        "uri": "$FILE_URI"
       }
     ]
   },

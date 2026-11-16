@@ -7,3 +7,4 @@ mod simple;
 
 pub(in crate::syntax::parser) use block::declaration_parser;
 pub use block::parse_block;
+pub use declaration::{DeclSpecKind, parse_decl_spec, parse_declaration};

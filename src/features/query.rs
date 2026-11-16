@@ -97,12 +97,15 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         return match query {
             DocumentQuery::FoldingRange => super::folding_range::execute(&context),
             DocumentQuery::CodeLens => super::code_lens::execute(&context),
-            DocumentQuery::DocumentLink => super::document_link::execute(&context),
-            DocumentQuery::Symbols => super::document_symbol::execute(&context, hierarchical),
+            DocumentQuery::DocumentLink => super::document::link::execute(&context),
+            DocumentQuery::Symbols => super::document::symbol::execute(&context, hierarchical),
             DocumentQuery::Formatting(params) => super::formatting::execute(&mut context, params),
             _ => unreachable!("syntax-only dispatch"),
         };
     }
+    let semantic_config = workspace.semantic_config;
+    let completion_config = workspace.completion_config;
+    let signature_plaintext = workspace.signature_plaintext;
     let mut context = match Context::new(workspace, file) {
         Ok(context) => context,
         Err(error) => {
@@ -116,9 +119,11 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         }
     };
     match query {
-        DocumentQuery::SemanticTokens => return super::highlighting::execute(&context),
+        DocumentQuery::SemanticTokens => {
+            return super::highlighting::execute(&context, &semantic_config);
+        }
         DocumentQuery::SemanticTokensRange(params) => {
-            return super::highlighting::execute_range(&context, params);
+            return super::highlighting::execute_range(&context, params, &semantic_config);
         }
         DocumentQuery::Diagnostics => return super::diagnostics::execute(&context),
         DocumentQuery::CodeAction(params) => return super::code_actions::execute(&context, params),
@@ -157,8 +162,12 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
     ))?;
     match query {
         DocumentQuery::TypeDefinition(_) => super::type_definition::execute(&mut context, offset),
-        DocumentQuery::Completion(_) => super::completion::execute(&context, offset),
-        DocumentQuery::SignatureHelp(_) => super::signature_help::execute(&context, offset, params),
+        DocumentQuery::Completion(_) => {
+            super::completion::execute(&context, offset, &completion_config)
+        }
+        DocumentQuery::SignatureHelp(_) => {
+            super::signature_help::execute(&context, offset, params, signature_plaintext)
+        }
         DocumentQuery::Definition(_) => {
             super::navigation::execute(&context, offset, "textDocument/definition")
         }
@@ -169,7 +178,9 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         DocumentQuery::PrepareRename(_) => super::rename::prepare(&context, offset),
         DocumentQuery::Rename(_) => super::rename::execute(&mut context, offset, params),
         DocumentQuery::Implementation(_) => super::implementation::execute(&context, offset),
-        DocumentQuery::DocumentHighlight(_) => super::document_highlight::execute(&context, offset),
+        DocumentQuery::DocumentHighlight(_) => {
+            super::document::highlight::execute(&context, offset)
+        }
         DocumentQuery::PrepareCallHierarchy(_) => {
             super::navigation::execute(&context, offset, "textDocument/prepareCallHierarchy")
         }

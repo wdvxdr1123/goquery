@@ -14,18 +14,21 @@ mod locations;
 mod navigation;
 mod references;
 pub(crate) mod rename;
+pub(crate) mod semantic_tokens;
 mod semantics;
 mod signatures;
 pub(crate) mod symbols;
+pub(crate) use crate::analysis::types::TypeDeclaration;
 pub(crate) use locations::{SourceLocation, SourceRange};
+pub(crate) use navigation::{ReferenceTarget, Target as NavigationSymbolTarget};
 pub(crate) use signatures::SignatureTrigger;
+pub(crate) use signatures::label::CallableSignature;
 mod source;
 use crate::analysis::scope::{CursorScope, Locals};
-use crate::analysis::types::TypeArena;
 use crate::workspace::Workspace;
-pub(crate) use navigation::ReferenceTarget;
 use source::SourceView;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::ops::Range;
 use std::path::Path;
 
@@ -37,11 +40,38 @@ pub(crate) struct Document<'a> {
 pub(crate) struct Context<'a, View = Document<'a>> {
     workspace: &'a Workspace,
     view: View,
-    arena: Option<TypeArena<'a>>,
+    sema: RefCell<Option<crate::analysis::sema::Semantics<'a>>>,
 }
 impl<'a, View> Context<'a, View> {
-    pub(crate) fn workspace(&self) -> &'a Workspace {
+    pub(in crate::analysis) fn workspace(&self) -> &'a Workspace {
         self.workspace
+    }
+
+    pub(crate) fn sdk_root_path(&self) -> Option<&'a Path> {
+        self.workspace.sdk_root_path()
+    }
+
+    pub(crate) fn document_version_of(&self, file: &Path) -> Option<i32> {
+        self.workspace.document_version(file)
+    }
+
+    pub(crate) fn import_path(&self, file: &Path) -> Option<String> {
+        self.workspace.import_path(file)
+    }
+
+    pub(crate) fn file_symbols(&self, file: &Path) -> Option<&'a [crate::index::IndexedSymbol]> {
+        self.workspace
+            .files
+            .get(file)
+            .map(|file| file.symbols.as_slice())
+    }
+
+    pub(crate) fn trace_candidates(&self, query: &str, count: usize) {
+        crate::analysis::resolve::trace_candidates(self.workspace, query, count);
+    }
+
+    pub(crate) fn read_source(&self, file: &Path) -> Option<String> {
+        self.workspace.source(file)
     }
 }
 impl<'a> Context<'a, ()> {
@@ -49,7 +79,7 @@ impl<'a> Context<'a, ()> {
         Self {
             workspace,
             view: (),
-            arena: None,
+            sema: RefCell::new(None),
         }
     }
 }
@@ -76,7 +106,7 @@ impl<'a> Context<'a> {
                 file,
                 source: SourceView::admitted(workspace, file, closed),
             },
-            arena: None,
+            sema: RefCell::new(None),
         })
     }
     pub(crate) fn borrowed(workspace: &'a Workspace, file: &'a Path, source: &'a str) -> Self {
@@ -86,7 +116,7 @@ impl<'a> Context<'a> {
                 file,
                 source: SourceView::borrowed(source),
             },
-            arena: None,
+            sema: RefCell::new(None),
         }
     }
 
@@ -116,7 +146,7 @@ impl<'a> Context<'a> {
         Ok(Self {
             workspace,
             view,
-            arena: None,
+            sema: RefCell::new(None),
         })
     }
     pub(crate) fn file(&self) -> &'a Path {
@@ -125,19 +155,26 @@ impl<'a> Context<'a> {
     pub(crate) fn source(&self) -> &str {
         self.view.source.text()
     }
-    /// printf-style format literals and directive ranges in the current source.
-    pub(crate) fn format_directives(&self) -> Vec<highlight::FormatDirective> {
-        highlight::format_directives(self.workspace, self.view.file, self.view.source.text())
+    pub(crate) fn with_sema<R>(
+        &self,
+        f: impl FnOnce(&mut crate::analysis::sema::Semantics<'a>) -> R,
+    ) -> R {
+        let mut guard = self.sema.borrow_mut();
+        let sema =
+            guard.get_or_insert_with(|| crate::analysis::sema::Semantics::new(self.workspace));
+        f(sema)
     }
-    pub(crate) fn into_source(self) -> Cow<'a, str> {
-        self.view.source.into_text()
+    pub(crate) fn is_detached(&self) -> bool {
+        self.workspace.is_detached(self.view.file)
     }
-    pub(crate) fn callable_type(&mut self, annotation: &str) -> Option<bool> {
-        let arena = self
-            .arena
-            .get_or_insert_with(|| TypeArena::new(self.workspace));
-        let ty = arena.parse(self.view.file, annotation)?;
-        arena.is_callable(ty)
+
+    pub(crate) fn document_version(&self) -> Option<i32> {
+        self.workspace.document_version(self.view.file)
+    }
+
+    pub(crate) fn into_source_and_metadata(self) -> (Cow<'a, str>, Context<'a, ()>) {
+        let workspace = self.workspace;
+        (self.view.source.into_text(), Context::metadata(workspace))
     }
 }
 

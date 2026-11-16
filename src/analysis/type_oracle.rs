@@ -1,11 +1,10 @@
 //! External go/types differential entry point, compiled only for tests.
-use crate::analysis::check::Inference;
-use crate::analysis::source::SourceAnalysis;
-use crate::analysis::types::TypeArena;
+use crate::analysis::obj::{ObjectRef, SymbolOrigin};
+use crate::analysis::sema::Semantics;
 use crate::analysis::types::{ComplexPart, Constant, Mode};
 use crate::workspace::{self, Workspace};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[test]
 #[ignore = "run scripts/compare_types.py with pinned Go 1.27.3"]
@@ -20,68 +19,85 @@ fn type_oracle() {
             &json!({"rootUri": workspace::uri(Path::new(oracle["root"].as_str().unwrap()))}),
         )
         .unwrap();
+
+    let mut sema = Semantics::new(&workspace);
+    let mut current_file: Option<PathBuf> = None;
+    let mut current_source = String::new();
     let mut rows = Vec::new();
+
     for entry in oracle["bindings"].as_array().unwrap() {
         let file = Path::new(entry["file"].as_str().unwrap());
-        let source = workspace.source(file).expect("indexed fixture source");
-        let analysis = SourceAnalysis::new(&source, &workspace.files[file]).unwrap();
         let offset = entry["offset"].as_u64().unwrap() as usize;
         let name = entry["name"].as_str().unwrap();
-        let binding = analysis
-            .locals
-            .definition_at(&(offset..offset + name.len()), name);
-        let mut ty = binding
-            .and_then(|binding| workspace.binding_type(file, &source, &analysis.locals, binding));
-        let mut arena = TypeArena::new(&workspace);
-        let native = binding.and_then(|binding| {
-            Inference::new(&workspace, file, &source, &analysis.locals, &[], 0)
-                .test_binding(&mut arena, binding)
-        });
-        // A represented failure cannot acquire an identity via legacy spelling.
-        let input = match native {
-            Some(value) => value.map(|value| value.ty),
-            None => ty.as_deref().and_then(|text| arena.parse(file, text)),
-        };
-        // Identity stays authoritative; when the legacy text boundary rejects an
-        // ambiguous local spelling (shadowed formal/local type), the presentation
-        // is the checker's declaration-scope rendering instead of nothing.
-        if ty.is_none()
-            && let Some(input) = input
-        {
-            ty = arena
-                .render_resolved(input, file)
-                .or_else(|| arena.render(input, file));
+        if entry.get("scope").and_then(Value::as_str).unwrap_or("body") != "body" {
+            rows.push(json!({
+                "file": file,
+                "offset": offset,
+                "name": name,
+                "type": Value::Null,
+                "identity": Value::Null,
+                "form": Value::Null,
+                "initializer": Value::Null,
+            }));
+            continue;
         }
-        let identity = input.and_then(|input| arena.test_identity(input));
-        let form = input.and_then(|input| arena.form(input).map(|form| form.test_name()));
-        let initializer = binding.and_then(|binding| {
-            let (span, result, count) = binding.initializer()?;
-            if result != 0 || count != 1 || span.len() > 16 * 1024 {
-                return None;
-            }
-            let text = source.get(span.clone())?;
-            let parsed = crate::syntax::parse_expression(text);
-            if !parsed.diagnostics.is_empty() {
-                return None;
-            }
-            let inference = Inference::new(
-                &workspace,
-                file,
-                &source,
-                &analysis.locals,
-                &parsed.nodes,
-                span.start,
-            );
-            let mut arena = TypeArena::new(&workspace);
-            let operand = inference.test_operand(&mut arena, parsed.root);
-            let numeric = operand
-                .filter(|operand| operand.mode == Mode::Constant)
-                .and_then(|operand| exact_numeric(operand.value?));
-            Some(json!({"offset":span.start,"expr":text,"numeric":numeric}))
-        });
-        rows.push(
-            json!({"file": file, "offset": offset, "name": name, "type": ty, "identity": identity, "form": form, "initializer":initializer}),
-        );
+
+        if current_file.as_deref() != Some(file) {
+            current_source = workspace.source(file).expect("indexed fixture source");
+            current_file = Some(file.to_path_buf());
+        }
+
+        let interned_file = sema.intern_file(file).expect("indexed fixture file");
+        let (ty, identity, form, initializer) = if let Some((region, arena)) =
+            sema.region_and_arena_at(interned_file, &current_source, offset as u32, None)
+        {
+            let local_id = region.scopes.definition_at(offset as u32).or_else(|| {
+                region
+                    .implicits
+                    .iter()
+                    .find_map(|(span, obj)| (span[0] == offset as u32).then_some(*obj))
+                    .and_then(|obj| match obj {
+                        ObjectRef::Var {
+                            origin: SymbolOrigin::Local { id, .. },
+                            ..
+                        } => Some(id),
+                        _ => None,
+                    })
+            });
+            let op = local_id.and_then(|id| region.local_type(id));
+            let ty_id = op.map(|o| o.ty);
+            let ty = ty_id.and_then(|t| arena.render(t, interned_file));
+            let identity = ty_id.and_then(|t| arena.test_identity(t));
+            let form = ty_id.and_then(|t| arena.form(t).map(|f| f.test_name()));
+            let initializer = local_id
+                .and_then(|id| region.local_init(id))
+                .and_then(|init_span| {
+                    let s = init_span[0] as usize;
+                    let e = init_span[1] as usize;
+                    if e.saturating_sub(s) > 16 * 1024 {
+                        return None;
+                    }
+                    let expr_text = current_source.get(s..e)?;
+                    let init_op = region.expr_type(init_span);
+                    let numeric = init_op
+                        .filter(|o| o.mode == Mode::Constant)
+                        .and_then(|o| exact_numeric(o.value?));
+                    Some(json!({"offset": s, "expr": expr_text, "numeric": numeric}))
+                });
+            (ty, identity, form, initializer)
+        } else {
+            (None, None, None, None)
+        };
+
+        rows.push(json!({
+            "file": file,
+            "offset": offset,
+            "name": name,
+            "type": ty,
+            "identity": identity,
+            "form": form,
+            "initializer": initializer,
+        }));
     }
     std::fs::write(output, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
 }

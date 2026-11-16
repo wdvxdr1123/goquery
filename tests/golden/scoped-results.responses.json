@@ -779,6 +779,19 @@
       {
         "range": {
           "end": {
+            "character": 15,
+            "line": 9
+          },
+          "start": {
+            "character": 11,
+            "line": 9
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
             "character": 28,
             "line": 10
           },
@@ -811,6 +824,19 @@
           "start": {
             "character": 21,
             "line": 12
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 18
+          },
+          "start": {
+            "character": 11,
+            "line": 18
           }
         },
         "uri": "$FILE_URI"

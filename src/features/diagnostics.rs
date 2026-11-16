@@ -15,7 +15,7 @@ const UNNECESSARY: u8 = 1;
 pub(super) fn execute(context: &Context<'_>) -> Result<Value, (i32, String)> {
     // Orphaned open buffers (outside the build/discovery scope) are not part of
     // any package; gopls reports no compiler diagnostics for them here.
-    if context.workspace().is_detached(context.file()) {
+    if context.is_detached() {
         return Ok(json!([]));
     }
     let rows = diagnostics::diagnostics(context);

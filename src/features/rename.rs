@@ -25,7 +25,6 @@ pub(super) fn execute(
         .as_str()
         .ok_or((crate::error::INVALID_PARAMS, "expected newName".to_string()))?;
     let edits = context.rename_edits(offset, new_name)?;
-    let workspace = context.workspace();
     let mut documents: BTreeMap<PathBuf, Vec<Value>> = BTreeMap::new();
     for edit in edits.edits {
         let encoded = encode_edit(&edit, new_name);
@@ -37,7 +36,7 @@ pub(super) fn execute(
             json!({
                 "textDocument": {
                     "uri": workspace::uri(&file),
-                    "version": workspace.document_version(&file).unwrap_or(0),
+                    "version": context.document_version_of(&file).unwrap_or(0),
                 },
                 "edits": edits,
             })

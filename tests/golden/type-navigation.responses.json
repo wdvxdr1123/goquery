@@ -242,12 +242,12 @@
       {
         "range": {
           "end": {
-            "character": 11,
-            "line": 5
+            "character": 26,
+            "line": 10
           },
           "start": {
-            "character": 5,
-            "line": 5
+            "character": 20,
+            "line": 10
           }
         },
         "uri": "$FILE_URI"

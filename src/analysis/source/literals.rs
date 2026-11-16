@@ -100,13 +100,26 @@ impl SourceAnalysis {
         let (span, projections) = self.literal_element_projection(context)?;
         let mut ty = source.get(span.clone())?.to_owned();
         for key in projections.into_iter().rev() {
-            let form = workspace.type_form(file, &ty, &self.locals, span.start)?;
+            let form = crate::analysis::types::type_form_in_scope(
+                workspace,
+                file,
+                &ty,
+                &self.locals,
+                span.start,
+            )?;
             if !matches!(form, TypeForm::Array | TypeForm::Slice | TypeForm::Map)
                 || key && !matches!(form, TypeForm::Map)
             {
                 return None;
             }
-            ty = workspace.range_type(file, &ty, &self.locals, span.start, usize::from(!key), 2)?;
+            ty = crate::analysis::types::lookup::composite_element_type(
+                workspace,
+                file,
+                &ty,
+                &self.locals,
+                span.start,
+                key,
+            )?;
         }
         Some((ty, span.start))
     }

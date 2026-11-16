@@ -73,6 +73,7 @@ impl TypeArena<'_> {
                 | Ty::Chan { .. }
                 | Ty::Signature { .. }
                 | Ty::Interface { .. }
+                | Ty::Basic(BasicKind::UnsafePointer)
         ))
     }
 
@@ -102,6 +103,18 @@ impl TypeArena<'_> {
                 return Some(true);
             }
         }
+        if (matches!(self.nodes[usize::from(s.0)], Ty::Pointer(_))
+            || self.basic_kind(s) == Some(BasicKind::Uintptr))
+            && self.basic_kind(t) == Some(BasicKind::UnsafePointer)
+        {
+            return Some(true);
+        }
+        if self.basic_kind(s) == Some(BasicKind::UnsafePointer)
+            && (matches!(self.nodes[usize::from(t.0)], Ty::Pointer(_))
+                || self.basic_kind(t) == Some(BasicKind::Uintptr))
+        {
+            return Some(true);
+        }
         if self.basic_kind(s).is_some_and(BasicKind::string) && self.bytes_or_runes(t)?
             || self.bytes_or_runes(s)? && self.basic_kind(t).is_some_and(BasicKind::string)
         {
@@ -117,11 +130,7 @@ impl TypeArena<'_> {
                     element: a,
                 },
                 Ty::Chan { element: b, .. },
-            ) if !matches!(self.nodes[usize::from(sv.0)], Ty::Named { .. })
-                || !matches!(self.nodes[usize::from(tv.0)], Ty::Named { .. }) =>
-            {
-                self.identical(a, b)
-            }
+            ) if !self.is_defined_type(sv) || !self.is_defined_type(tv) => self.identical(a, b),
             (
                 Ty::Slice(element),
                 Ty::Array {

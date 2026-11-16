@@ -5,9 +5,10 @@
 //! name), and declaration doc comments/doc links are renamed with it.
 use super::locations::SourcePosition;
 use super::{Context, ReferenceTarget, SourceRange};
-use crate::analysis::member::MemberDeclaration;
+use crate::analysis::obj::MemberDeclaration;
 use crate::analysis::resolve::{self, NameIndex};
-use crate::analysis::scope::{self, Identity, Resolver};
+use crate::analysis::scope;
+use crate::analysis::sema::{Identity, IdentityResolver};
 use crate::analysis::source::{Role, SourceAnalysis};
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
@@ -288,7 +289,7 @@ impl<'a> Context<'a> {
         let file = self.file();
         let stub = self.workspace().files.get(file)?;
         let analysis = SourceAnalysis::new(source, stub).ok()?;
-        let mut resolver = Resolver::new(self.workspace(), file);
+        let mut resolver = IdentityResolver::new(self.workspace(), file);
         for name in &analysis.names {
             if !spans.contains(&name.span) {
                 continue;
@@ -479,9 +480,7 @@ impl<'a> Context<'a> {
         if !qualifier_use(source, ident) {
             return None;
         }
-        if self
-            .workspace()
-            .unqualified_symbol(self.file(), spelling)
+        if crate::analysis::resolve::unqualified_symbol(self.workspace(), self.file(), spelling)
             .is_some()
         {
             return None;
@@ -575,9 +574,7 @@ impl<'a> Context<'a> {
                     previous.map(|previous: crate::syntax::Token| previous.kind),
                     Some(TokenKind::Period) | Some(TokenKind::Ident)
                 )
-                && self
-                    .workspace()
-                    .unqualified_symbol(file, old_name)
+                && crate::analysis::resolve::unqualified_symbol(self.workspace(), file, old_name)
                     .is_none()
             {
                 let shadowed = self
@@ -828,12 +825,9 @@ impl<'a> Context<'a> {
                         )
                     })?;
                     let map = SourceMap::new(&source);
-                    let inline =
-                        crate::analysis::check::navigation::anonymous::InlineIndex::new(&source);
+                    let inline = super::navigation::anonymous::InlineIndex::new(&source);
                     if let Some(conflict) =
-                        crate::analysis::check::navigation::anonymous::field_conflict(
-                            &inline, selection, new_name,
-                        )
+                        super::navigation::anonymous::field_conflict(&inline, selection, new_name)
                     {
                         let declaration = position_text_in(
                             &source,
@@ -885,7 +879,7 @@ impl<'a> Context<'a> {
     }
 
     /// Supplementary field-reference rows for candidates where the shared
-    /// Resolver cannot project a binding's native type. Identity is proven by
+    /// IdentityResolver cannot project a binding's native type. Identity is proven by
     /// the receiver/key type declaration, never by spelling alone.
     fn field_reference_supplement(
         &self,
@@ -898,7 +892,7 @@ impl<'a> Context<'a> {
             return Ok(());
         };
         let mut candidates = if resolve::exported(target.name) {
-            workspace.dependent_candidates(target.file)
+            crate::analysis::resolve::dependent_candidates(workspace, target.file)
         } else {
             let package = target_stub.package.as_str();
             workspace
@@ -937,14 +931,20 @@ impl<'a> Context<'a> {
                         let text = &source[qualifier.clone()];
                         let binding = analysis.locals.resolve_at(qualifier.start, text);
                         let ty = binding.and_then(|binding| {
-                            workspace
-                                .binding_type(file, &source, &analysis.locals, binding)
+                            crate::analysis::query::Context::borrowed(workspace, file, &source)
+                                .binding_type(&analysis.locals, binding)
                                 .or_else(|| {
                                     call_initializer_type(workspace, file, &source, binding)
                                 })
                         });
                         let in_scope = ty.as_ref().is_some_and(|ty| {
-                            workspace.receiver_in_scope(file, ty, &analysis.locals, qualifier.start)
+                            crate::analysis::types::lookup::receiver_in_scope(
+                                workspace,
+                                file,
+                                ty,
+                                &analysis.locals,
+                                qualifier.start,
+                            )
                         });
                         let same = ty
                             .as_ref()
@@ -1067,7 +1067,7 @@ impl<'a> Context<'a> {
                 continue;
             }
             let map = SourceMap::new(&source);
-            let mut resolver = Resolver::for_name(workspace, method_file, &index);
+            let mut resolver = IdentityResolver::for_name(workspace, method_file, &index);
             for name in &analysis.names {
                 if &source[name.span.clone()] != old_name {
                     continue;
@@ -1097,7 +1097,8 @@ impl<'a> Context<'a> {
             return Ok(());
         }
         let workspace = self.workspace();
-        let mut candidates = workspace.reference_candidates(target_file, symbol);
+        let mut candidates =
+            crate::analysis::resolve::reference_candidates(workspace, target_file, symbol);
         let scope = workspace.reference_scope(self.file());
         candidates.retain(|(candidate, _)| scope.contains(candidate, target_file));
         let target_import = workspace.import_path(target_file);
@@ -1403,23 +1404,22 @@ impl<'a> Context<'a> {
         };
         let declaring_package = decl_stub.package.clone();
         let candidates: Vec<&PathBuf> = if mode == LinkMode::Type || receiver.is_some() {
-            workspace
-                .dependent_candidates(target_file)
+            crate::analysis::resolve::dependent_candidates(workspace, target_file)
                 .into_iter()
                 .map(|(path, _)| path)
                 .collect()
         } else {
-            workspace
-                .reference_candidates(
-                    target_file,
-                    match target {
-                        Target::Global { symbol, .. } => symbol,
-                        _ => return Ok(Vec::new()),
-                    },
-                )
-                .into_iter()
-                .map(|(path, _)| path)
-                .collect()
+            crate::analysis::resolve::reference_candidates(
+                workspace,
+                target_file,
+                match target {
+                    Target::Global { symbol, .. } => symbol,
+                    _ => return Ok(Vec::new()),
+                },
+            )
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect()
         };
         let import_path = workspace.import_path(target_file);
         let mut edits = Vec::new();
@@ -1685,9 +1685,9 @@ fn same_field_owner(
     let Some(name) = scope::named_type(ty) else {
         return false;
     };
-    let Some((owner_file, owner)) = workspace
-        .underlying_target(file, &name)
-        .or_else(|| workspace.type_declaration(file, &name))
+    let Some((owner_file, owner)) =
+        crate::analysis::types::lookup::underlying_target(workspace, file, &name)
+            .or_else(|| crate::analysis::resolve::resolve_type_declaration(workspace, file, &name))
     else {
         return false;
     };

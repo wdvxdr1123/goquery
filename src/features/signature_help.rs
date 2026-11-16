@@ -10,6 +10,7 @@ pub(super) fn execute(
     context: &Context<'_>,
     offset: usize,
     params: &Value,
+    plaintext: bool,
 ) -> Result<Value, (i32, String)> {
     let trigger = SignatureTrigger {
         explicit: params["context"]["triggerKind"].as_u64() == Some(1),
@@ -19,10 +20,10 @@ pub(super) fn execute(
         return Ok(Value::Null);
     };
     let text = information.documentation.unwrap_or_default();
-    let (kind, text) = if context.workspace().signature_plaintext {
+    let (kind, text) = if plaintext {
         (MarkupKind::PlainText, text)
     } else {
-        let mut rendered = super::documentation::markdown(&text, &[]);
+        let mut rendered = super::document::markdown(&text, &[]);
         if rendered.ends_with('\n') {
             rendered.pop();
         }
@@ -42,8 +43,8 @@ pub(super) fn execute(
     .expect("serializable signature help"))
 }
 
-impl From<crate::analysis::check::callable_signature::CallableSignature> for SignatureInformation {
-    fn from(value: crate::analysis::check::callable_signature::CallableSignature) -> Self {
+impl From<crate::analysis::query::CallableSignature> for SignatureInformation {
+    fn from(value: crate::analysis::query::CallableSignature) -> Self {
         Self {
             label: value.label,
             documentation: None,

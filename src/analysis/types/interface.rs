@@ -1,6 +1,5 @@
 //! Complete basic-interface method sets stored only in the bounded type arena.
-use super::arena::DisplayScope;
-use super::{BasicKind, MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
+use super::{BasicKind, MAX_BYTES, MAX_DEPTH, Operand, Ty, TypeArena, TypeId};
 use crate::syntax::{Lexer, TokenKind};
 use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
@@ -11,13 +10,16 @@ pub(super) struct Method<'a> {
     pub(super) name: String,
     pub(super) origin: &'a Path,
     pub(super) signature: TypeId,
+    pub(super) selection: [u32; 2],
+    pub(super) builtin: bool,
 }
 
 impl<'a> TypeArena<'a> {
-    pub(super) fn read_interface(
+    pub(super) fn read_interface_at(
         &mut self,
         origin: &Path,
         source: &str,
+        file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
         depth: usize,
     ) -> Option<TypeId> {
@@ -37,25 +39,42 @@ impl<'a> TypeArena<'a> {
             .iter()
             .filter(|m| m.container == container)
         {
-            if let Some(name) = &member.name {
-                let name = source.get(name.clone())?;
+            if let Some(name_span) = &member.name {
+                let name = source.get(name_span.clone())?;
                 if name == "_" || !explicit.insert(name) {
                     self.invalid_type = true;
                     return None;
                 }
-                let header = format!("func{}", source.get(member.annotation.clone())?);
-                let signature = crate::syntax::parse_literal_signature(&header);
+                let header = source.get(member.annotation.clone())?;
+                let signature = crate::syntax::parse_method_signature(header);
                 let signature =
-                    self.signature(origin, &header, &signature, environment, depth + 1)?;
+                    self.signature(origin, header, &signature, environment, depth + 1)?;
+                let selection = file_offset
+                    .and_then(|base| {
+                        Some([
+                            u32::try_from(base + name_span.start).ok()?,
+                            u32::try_from(base + name_span.end).ok()?,
+                        ])
+                    })
+                    .unwrap_or([0, 0]);
                 methods.push(Method {
                     name: name.to_owned(),
                     origin,
                     signature,
+                    selection,
+                    builtin: false,
                 });
             } else {
                 let text = source.get(member.annotation.clone())?;
                 let mut tokens = Lexer::new(text).peekable();
-                let ty = self.read(origin, text, &mut tokens, environment, depth + 1)?;
+                let ty = self.read_at(
+                    origin,
+                    text,
+                    file_offset.map(|base| base + member.annotation.start),
+                    &mut tokens,
+                    environment,
+                    depth + 1,
+                )?;
                 if !tokens.all(|t| t.kind == TokenKind::Semicolon) {
                     return None;
                 }
@@ -68,7 +87,7 @@ impl<'a> TypeArena<'a> {
                 };
                 methods.extend(self.methods[embedded.clone()].iter().cloned());
             }
-            if methods.len() > MAX_NODES {
+            if methods.len() > self.node_limit {
                 return None;
             }
         }
@@ -84,6 +103,8 @@ impl<'a> TypeArena<'a> {
                 name: "Error".to_owned(),
                 origin,
                 signature,
+                selection: [0, 0],
+                builtin: true,
             }]
         } else {
             Vec::new()
@@ -108,8 +129,16 @@ impl<'a> TypeArena<'a> {
         for method in methods {
             let package = if crate::syntax::is_exported_name(&method.name) {
                 String::new()
+            } else if let Some(path) = self.workspace.import_path(method.origin) {
+                path
+            } else if self.symbolic {
+                format!(
+                    "{}:{}",
+                    method.origin.parent()?.to_str()?,
+                    self.workspace.files.get(method.origin)?.package
+                )
             } else {
-                self.workspace.import_path(method.origin)?
+                return None;
             };
             let key = (method.name.clone(), package);
             if let Some(previous) = sorted.get(&key) {
@@ -122,7 +151,10 @@ impl<'a> TypeArena<'a> {
             }
         }
         let bytes = sorted.values().map(|m| m.name.len()).sum::<usize>();
-        if self.methods.len() + sorted.len() > MAX_NODES || self.method_bytes + bytes > MAX_BYTES {
+        if self.methods.len() + sorted.len() > self.node_limit
+            || bytes > MAX_BYTES
+            || self.method_bytes + bytes > self.byte_limit
+        {
             return None;
         }
         self.method_bytes += bytes;
@@ -180,7 +212,9 @@ impl<'a> TypeArena<'a> {
     /// arguments have been inferred. Constructor metadata is sufficient here;
     /// assignment checks the concrete instantiated type afterward.
     pub(super) fn interface_constructor(&mut self, input: TypeId) -> Option<bool> {
-        if let Ty::Named { declaration, .. } = self.nodes[usize::from(input.0)].clone() {
+        if let Ty::Named { declaration, .. } | Ty::Alias { declaration, .. } =
+            self.nodes[usize::from(input.0)].clone()
+        {
             let (mut file, mut symbol) = (declaration.file, declaration.symbol);
             for _ in 0..MAX_DEPTH {
                 let Some(info) = &symbol.type_info else {
@@ -196,7 +230,11 @@ impl<'a> TypeArena<'a> {
                     return Some(false);
                 }
                 let Some((next_file, next_symbol)) =
-                    self.workspace.type_declaration(file, &target.name)
+                    crate::analysis::resolve::resolve_type_declaration(
+                        self.workspace,
+                        file,
+                        &target.name,
+                    )
                 else {
                     return Some(matches!(target.name.as_str(), "any" | "error"));
                 };
@@ -291,7 +329,7 @@ impl<'a> TypeArena<'a> {
         int_bits: u32,
     ) -> Option<Operand> {
         self.step()?;
-        if targets.len() > MAX_NODES || defaults > 1 || !self.is_interface(source.ty)? {
+        if targets.len() > self.node_limit || defaults > 1 || !self.is_interface(source.ty)? {
             return None;
         }
         for (index, target) in targets.iter().enumerate() {
@@ -318,40 +356,5 @@ impl<'a> TypeArena<'a> {
             },
             value: None,
         })
-    }
-
-    pub(super) fn write_interface(
-        &self,
-        _origin: &Path,
-        methods: Range<usize>,
-        builtin_any: bool,
-        consumer: DisplayScope<'_>,
-        out: &mut String,
-        depth: usize,
-    ) -> Option<()> {
-        // The universe alias keeps its source spelling in types.TypeString.
-        if builtin_any && methods.is_empty() {
-            out.push_str("any");
-            return Some(());
-        }
-        out.push_str("interface{");
-        for method in &self.methods[methods] {
-            if !crate::syntax::is_exported_name(&method.name)
-                && let DisplayScope::Consumer(file) = consumer
-                && !self.same_field_package(method.origin, file)?
-            {
-                return None;
-            }
-            out.push_str(&method.name);
-            let mut signature = String::new();
-            self.write_in(method.signature, consumer, &mut signature, depth + 1)?;
-            out.push_str(signature.strip_prefix("func")?);
-            out.push(';');
-            if out.len() > MAX_BYTES {
-                return None;
-            }
-        }
-        out.push('}');
-        Some(())
     }
 }

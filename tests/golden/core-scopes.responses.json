@@ -223,6 +223,71 @@
           }
         },
         "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 6
+          },
+          "start": {
+            "character": 9,
+            "line": 6
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 11
+          },
+          "start": {
+            "character": 9,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 16,
+            "line": 16
+          },
+          "start": {
+            "character": 12,
+            "line": 16
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 21
+          },
+          "start": {
+            "character": 11,
+            "line": 21
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 26
+          },
+          "start": {
+            "character": 11,
+            "line": 26
+          }
+        },
+        "uri": "$FILE_URI"
       }
     ]
   },

@@ -9,11 +9,6 @@ pub(crate) enum TypeDeclaration<'a> {
     Builtin(&'static str),
     Local(&'a Path, Range<usize>),
 }
-pub(crate) struct LocalTypeName<'s> {
-    pub(crate) name: &'s str,
-    pub(crate) selection: Range<usize>,
-    pub(crate) formal: bool,
-}
 
 /// One written local `type` declaration, borrowed for the duration of the query.
 /// Only the four facts go/types needs for a local defined type or alias are kept.
@@ -49,11 +44,12 @@ const MAX_LOCAL_TYPES: usize = 64;
 impl<'a> TypeArena<'a> {
     /// Register query-local local-type facts and parse one written annotation in
     /// that environment. Identity is `(file, selection)`; the spelling is display only.
-    pub(crate) fn declared_scope_type(
+    pub(crate) fn declared_scope_type_in(
         &mut self,
         origin: &Path,
         text: &str,
         definitions: &[LocalTypeDefinition<'_>],
+        extra_env: &[(&str, TypeId)],
     ) -> Option<TypeId> {
         if text.len() > MAX_BYTES || definitions.len() > MAX_LOCAL_TYPES {
             return None;
@@ -68,6 +64,11 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
             environment.push((definition.name, self.local_type_node(origin, definition)?));
+        }
+        for &(name, ty) in extra_env {
+            if !environment.iter().any(|(existing, _)| *existing == name) {
+                environment.push((name, ty));
+            }
         }
         for definition in definitions {
             let index = self.local_type_index(origin, &definition.selection)?;
@@ -136,6 +137,36 @@ impl<'a> TypeArena<'a> {
         self.local_types
             .iter()
             .position(|fact| fact.origin == origin && fact.selection == *selection)
+    }
+
+    pub(super) fn is_ready_defined_local(&self, input: TypeId) -> bool {
+        let Some(Ty::LocalDeclaration {
+            origin,
+            selection,
+            formal: false,
+        }) = self.nodes.get(usize::from(input.0))
+        else {
+            return false;
+        };
+        let Some(index) = self.local_type_index(origin, selection) else {
+            return false;
+        };
+        !self.local_types[index].alias
+            && matches!(self.local_types[index].state, LocalTypeState::Ready(_))
+    }
+
+    pub(super) fn is_defined_type(&self, input: TypeId) -> bool {
+        matches!(
+            self.nodes.get(usize::from(input.0)),
+            Some(Ty::Named { .. } | Ty::Basic(_) | Ty::Parameter(_))
+        ) || self.is_ready_defined_local(input)
+    }
+
+    pub(super) fn is_known_non_opaque(&self, input: TypeId) -> bool {
+        !matches!(
+            self.nodes.get(usize::from(input.0)),
+            Some(Ty::LocalDeclaration { .. })
+        ) || self.is_ready_defined_local(input)
     }
 
     /// Display name of a registered local declaration; the spelling never proves
@@ -225,9 +256,10 @@ impl<'a> TypeArena<'a> {
             visited.push(ty);
             match self.nodes.get(usize::from(ty.0))? {
                 Ty::LocalDeclaration { .. } => return Some(true),
-                Ty::Named { arguments, .. } => {
-                    pending.extend_from_slice(&self.arguments[arguments.clone()])
+                Ty::Named { arguments, .. } | Ty::Alias { arguments, .. } => {
+                    pending.extend_from_slice(&self.arguments[arguments.range()])
                 }
+                Ty::Tuple(elements) => pending.extend_from_slice(&self.arguments[elements.range()]),
                 Ty::Struct { fields, .. } => {
                     let fields = self.fields[fields.clone()].to_vec();
                     pending.extend(fields.into_iter().map(|field| field.ty));
@@ -254,55 +286,6 @@ impl<'a> TypeArena<'a> {
             }
         }
         Some(false)
-    }
-
-    /// Test-only structural identity for a local defined type; aliases are already
-    /// transparent. Declarations keep their file/offset identity, never a spelling.
-    #[cfg(test)]
-    pub(super) fn local_declaration_identity(
-        &mut self,
-        input: TypeId,
-    ) -> Option<serde_json::Value> {
-        let (origin, selection, formal) = match self.nodes.get(usize::from(input.0))? {
-            Ty::LocalDeclaration {
-                origin,
-                selection,
-                formal,
-            } => (*origin, selection.clone(), *formal),
-            _ => return None,
-        };
-        if formal {
-            return None;
-        }
-        self.local_type_index(origin, &selection)?;
-        Some(serde_json::json!(["local", origin, selection.start, []]))
-    }
-
-    /// Query-local lexical declarations enter only the projection graph. Their
-    /// bodies/constraints remain unknown; no source/name strings are retained.
-    pub(crate) fn declaration_type(
-        &mut self,
-        origin: &Path,
-        text: &str,
-        names: &[LocalTypeName<'_>],
-    ) -> Option<TypeId> {
-        if names.len() > 64 {
-            return None;
-        }
-        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
-        let mut environment = Vec::new();
-        for name in names {
-            if environment.iter().any(|(key, _)| *key == name.name) {
-                return None;
-            }
-            let ty = self.push(Ty::LocalDeclaration {
-                origin,
-                selection: name.selection.clone(),
-                formal: name.formal,
-            })?;
-            environment.push((name.name, ty));
-        }
-        self.parse_in(origin, text, &environment)
     }
 
     /// Projection-only schema: opaque formals preserve declaration references.
@@ -358,8 +341,22 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
             match self.nodes.get(usize::from(input.0))? {
-                Ty::Named { declaration, .. } => {
+                Ty::Named { declaration, .. } | Ty::Alias { declaration, .. } => {
                     result.push(TypeDeclaration::Named(declaration.file, declaration.symbol))
+                }
+                Ty::Basic(super::BasicKind::UnsafePointer) => {
+                    if let Some(unsafe_file) = self
+                        .workspace
+                        .builtin_file()
+                        .and_then(|b| Some(b.parent()?.parent()?.join("unsafe/unsafe.go")))
+                        && let Some((path, stub)) = self.workspace.files.get_key_value(&unsafe_file)
+                        && let Some(sym) = stub
+                            .symbols
+                            .iter()
+                            .find(|s| s.is_type() && s.name == "Pointer")
+                    {
+                        result.push(TypeDeclaration::Named(path.as_path(), sym));
+                    }
                 }
                 Ty::Basic(kind) if !kind.untyped() => {
                     result.push(TypeDeclaration::Builtin(kind.name()))
@@ -378,6 +375,12 @@ impl<'a> TypeArena<'a> {
                 | Ty::Slice(element)
                 | Ty::Array { element, .. }
                 | Ty::Chan { element, .. } => pending.push((*element, depth + 1)),
+                Ty::Tuple(elements) => pending.extend(
+                    self.arguments[elements.range()]
+                        .iter()
+                        .rev()
+                        .map(|ty| (*ty, depth + 1)),
+                ),
                 Ty::Signature { results, .. } => pending.extend(
                     self.arguments[results.clone()]
                         .iter()
@@ -395,5 +398,36 @@ impl<'a> TypeArena<'a> {
             }
         }
         Some(result)
+    }
+
+    pub(crate) fn projected_type_declarations(
+        &mut self,
+        ty: TypeId,
+    ) -> Option<Result<Vec<TypeDeclaration<'a>>, (i32, String)>> {
+        let names = self.type_declarations(ty)?;
+        Some(if names.is_empty() {
+            if let Some(display) = self.diagnostic_type(ty) {
+                Err((0, format!("cannot find type name(s) from type {display}")))
+            } else {
+                Ok(names)
+            }
+        } else {
+            Ok(names)
+        })
+    }
+
+    pub(crate) fn local_type_annotation(&self, id: TypeId) -> Option<(&'a Path, &str)> {
+        let Ty::LocalDeclaration {
+            origin,
+            selection,
+            formal: false,
+        } = self.nodes.get(usize::from(id.0))?
+        else {
+            return None;
+        };
+        self.local_types
+            .iter()
+            .find(|fact| fact.origin == *origin && &fact.selection == selection)
+            .map(|fact| (fact.origin, fact.annotation.as_ref()))
     }
 }

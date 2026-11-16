@@ -261,6 +261,97 @@
           }
         },
         "uri": "$LIB_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 7
+          },
+          "start": {
+            "character": 9,
+            "line": 7
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 10
+          },
+          "start": {
+            "character": 9,
+            "line": 10
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 14,
+            "line": 13
+          },
+          "start": {
+            "character": 10,
+            "line": 13
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 13,
+            "line": 16
+          },
+          "start": {
+            "character": 9,
+            "line": 16
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 15,
+            "line": 19
+          },
+          "start": {
+            "character": 11,
+            "line": 19
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 23
+          },
+          "start": {
+            "character": 14,
+            "line": 23
+          }
+        },
+        "uri": "$SIBLING_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 19,
+            "line": 27
+          },
+          "start": {
+            "character": 15,
+            "line": 27
+          }
+        },
+        "uri": "$SIBLING_URI"
       }
     ]
   },

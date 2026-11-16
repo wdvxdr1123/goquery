@@ -16,6 +16,49 @@ pub fn parse_literal_signature(source: &str) -> Signature {
     header(source, HeaderKind::Literal)
 }
 
+/// Parses an interface method signature `(params...) results...` without a `func` keyword.
+pub fn parse_method_signature(source: &str) -> Signature {
+    let mut parser = Parser::new(source);
+    let (parameters, end) = parser.parameter_list(ParameterContext::Inputs, 0);
+    let (results, _) = parser.result_parameters(0, end);
+    while parser.at(TokenKind::Semicolon) {
+        parser.tokens.next();
+    }
+    if let Some(token) = parser.tokens.next() {
+        parser.error(token.span, "unexpected token after method signature");
+    }
+    Signature {
+        receiver: Vec::new(),
+        type_parameters: Vec::new(),
+        parameters,
+        results,
+        diagnostics: parser.diagnostics,
+        type_references: parser.type_references,
+        expressions: parser.nodes,
+    }
+}
+
+/// Parses a standalone type-parameter list `[T any, U ~int]`.
+pub fn parse_type_parameters(source: &str) -> Signature {
+    let mut parser = Parser::new(source);
+    let type_parameters = parser.parameter_list(ParameterContext::TypeParameters, 0).0;
+    while parser.at(TokenKind::Semicolon) {
+        parser.tokens.next();
+    }
+    if let Some(token) = parser.tokens.next() {
+        parser.error(token.span, "unexpected token after type parameters");
+    }
+    Signature {
+        receiver: Vec::new(),
+        type_parameters,
+        parameters: Vec::new(),
+        results: Vec::new(),
+        diagnostics: parser.diagnostics,
+        type_references: parser.type_references,
+        expressions: parser.nodes,
+    }
+}
+
 #[derive(PartialEq, Eq)]
 enum HeaderKind {
     Named,

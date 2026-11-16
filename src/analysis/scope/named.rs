@@ -53,8 +53,8 @@ pub(crate) fn parameters(declaration: &str) -> Option<Vec<String>> {
     if end > MAX_TYPE_BYTES {
         return None;
     }
-    let header = format!("func _{}()", declaration.get(..end)?);
-    let signature = crate::syntax::parse_signature(&header);
+    let header = declaration.get(..end)?;
+    let signature = crate::syntax::parse_type_parameters(header);
     if !signature.diagnostics.is_empty() {
         return None;
     }

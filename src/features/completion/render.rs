@@ -1,8 +1,8 @@
 //! Client-aware insertion edits, rendered only after candidate collection is capped.
-use crate::analysis::check::callable_signature::ParameterLabel;
 use crate::analysis::query::Context;
-use crate::analysis::query::completion::{Kind, Presentation as MemberPresentation};
-use crate::analysis::scope::Locals;
+use crate::analysis::query::completion::{
+    Kind, Locals, ParameterLabel, Presentation as MemberPresentation,
+};
 use crate::features::completion::collect::Candidate;
 use crate::syntax::{Lexer, TokenKind};
 use crate::text::SourceMap;
@@ -11,6 +11,7 @@ use std::fmt::Write;
 use std::ops::Range;
 use std::path::Path;
 
+#[derive(Clone, Copy)]
 pub(crate) struct CompletionConfig {
     pub(super) snippets: bool,
     pub(super) calls: bool,
@@ -62,6 +63,7 @@ impl CompletionConfig {
 
 pub(super) struct EditContext<'a, 'workspace> {
     pub query: &'a Context<'workspace>,
+    pub config: &'a CompletionConfig,
     pub file: &'a Path,
     pub source: &'a str,
     pub locals: &'a Locals,
@@ -80,7 +82,7 @@ pub(super) fn completion_item(
 ) -> Option<Value> {
     use tower_lsp::lsp_types::CompletionItemKind as LspKind;
     let kind = candidate.kind()?;
-    let config = &context.query.workspace().completion_config;
+    let config = context.config;
     let (member_detail, member_signature, type_parameters, kind) =
         member.map_or((None, None, None, kind), |member| {
             (

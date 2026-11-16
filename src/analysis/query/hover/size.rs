@@ -208,12 +208,13 @@ impl<'context, 'workspace> Sizes<'context, 'workspace> {
             return Some(layout);
         }
         let workspace = self.context.workspace();
-        let Some((file, symbol)) = workspace.type_declaration(origin, text) else {
+        let Some((file, symbol)) =
+            crate::analysis::resolve::resolve_type_declaration(workspace, origin, text)
+        else {
             // go/types treats a type from an unresolvable imported package as the
             // invalid type, which still occupies a word in layouts.
             if let Some((prefix, _)) = text.split_once('.')
-                && workspace
-                    .imported_symbol_iter(origin, prefix)
+                && crate::analysis::resolve::imported_symbol_iter(workspace, origin, prefix)
                     .next()
                     .is_none()
             {
@@ -444,12 +445,13 @@ impl<'context, 'workspace> Sizes<'context, 'workspace> {
             return true;
         }
         let workspace = self.context.workspace();
-        if let Some((_, symbol)) = workspace.unqualified_symbol(origin, name) {
+        if let Some((_, symbol)) =
+            crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
+        {
             return symbol.is_type();
         }
         if let Some((alias, part)) = name.split_once('.') {
-            return workspace
-                .imported_symbol_iter(origin, alias)
+            return crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
                 .any(|(_, symbol)| symbol.is_type() && symbol.name == part);
         }
         false
@@ -462,14 +464,14 @@ impl<'context, 'workspace> Sizes<'context, 'workspace> {
         }
         let workspace = self.context.workspace();
         let (file, symbol) = if let Some((alias, constant)) = name.split_once('.') {
-            let (path, symbol) = workspace
-                .imported_symbol_iter(origin, alias)
-                .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)?;
+            let (path, symbol) =
+                crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
+                    .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)?;
             (path.clone(), symbol)
         } else {
-            let (path, symbol) = workspace
-                .unqualified_symbol(origin, name)
-                .filter(|(_, symbol)| symbol.is_const())?;
+            let (path, symbol) =
+                crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
+                    .filter(|(_, symbol)| symbol.is_const())?;
             (path.clone(), symbol)
         };
         let source = self.source_text(&file)?;

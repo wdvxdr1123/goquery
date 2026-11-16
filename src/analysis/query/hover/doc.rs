@@ -148,8 +148,7 @@ fn doc_link_symbol(
                 return import_position(workspace, file, &import)
                     .map(|position| (position.0, position.1));
             }
-            let resolved = workspace
-                .imported_symbol_iter(file, prefix)
+            let resolved = crate::analysis::resolve::imported_symbol_iter(workspace, file, prefix)
                 .find(|(_, symbol)| symbol.name == rest && !symbol.name.is_empty())
                 .map(|(path, symbol)| {
                     (
@@ -177,9 +176,9 @@ fn doc_link_symbol(
             }
             return resolved;
         }
-        if let Some((_, symbol)) = workspace
-            .unqualified_symbol(file, prefix)
-            .filter(|(_, symbol)| symbol.is_type())
+        if let Some((_, symbol)) =
+            crate::analysis::resolve::unqualified_symbol(workspace, file, prefix)
+                .filter(|(_, symbol)| symbol.is_type())
         {
             return member_location(workspace, file, &symbol.name, rest);
         }
@@ -190,12 +189,12 @@ fn doc_link_symbol(
         .get(file)
         .map(|stub| stub.package.clone())
         .unwrap_or_default();
-    let resolved = workspace
-        .unqualified_symbol(file, name)
-        .map(|(path, symbol)| {
+    let resolved = crate::analysis::resolve::unqualified_symbol(workspace, file, name).map(
+        |(path, symbol)| {
             let start = symbol.selection.start;
             (path.clone(), (start.line, start.character))
-        });
+        },
+    );
     if let Some(view) = view {
         if let Some((path, _)) = resolved.as_ref()
             && workspace.file_matches_target(path, view)
@@ -235,14 +234,16 @@ fn member_location(
     receiver: &str,
     member: &str,
 ) -> Option<(PathBuf, (u32, u32))> {
-    let member = workspace.scoped_receiver_member(file, file, receiver, member)?;
+    let member = crate::analysis::types::lookup::scoped_receiver_member(
+        workspace, file, file, receiver, member,
+    )?;
     match member {
-        crate::analysis::method_set::ReceiverMember::Method(path, symbol) => {
+        crate::analysis::obj::ReceiverMember::Method(path, symbol) => {
             let start = symbol.selection.start;
             Some((path.clone(), (start.line, start.character)))
         }
-        crate::analysis::method_set::ReceiverMember::Declaration(declaration) => {
-            let data = workspace.member_data(declaration)?;
+        crate::analysis::obj::ReceiverMember::Declaration(declaration) => {
+            let data = declaration.data(workspace)?;
             Some((
                 declaration.file.clone(),
                 (data.selection.start.line, data.selection.start.character),

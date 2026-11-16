@@ -179,18 +179,6 @@ impl TypeArena<'_> {
         Some(matches!(self.nodes[usize::from(root.0)], Ty::Array { .. }))
     }
 
-    pub(crate) fn field_addressable(&mut self, owner: Operand) -> Option<bool> {
-        let root = self.underlying(owner.ty)?;
-        Some(match self.nodes[usize::from(root.0)] {
-            Ty::Pointer(element) => {
-                let root = self.underlying(element)?;
-                matches!(self.nodes[usize::from(root.0)], Ty::Struct { .. })
-            }
-            Ty::Struct { .. } => owner.mode == Mode::Variable,
-            _ => false,
-        })
-    }
-
     fn slice_root(&mut self, input: TypeId) -> Option<TypeId> {
         let root = self.underlying(input)?;
         if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {

@@ -3,15 +3,14 @@ mod body;
 mod cursor;
 mod kind;
 pub(crate) mod named;
-mod resolver;
 pub(crate) mod signature;
+pub(crate) mod tree;
 pub(crate) mod universe;
 pub(crate) use cursor::CursorScope;
 pub(crate) use kind::ObjectKind;
 pub(crate) use named::{
     arguments as type_arguments, named_root, named_type, parameters as type_parameters,
 };
-pub(crate) use resolver::{Identity, Resolver};
 pub(crate) use signature::receiver_parameters;
 
 use std::ops::Range;
@@ -84,8 +83,6 @@ pub(crate) struct SwitchCase {
     scope_start: usize,
     pub(crate) operand: Range<usize>,
     pub(crate) types: Vec<Range<usize>>,
-    pub(crate) clauses: usize,
-    pub(crate) default: bool,
 }
 
 // Vec capacities stop at these power-of-two caps. No source strings or trees
@@ -107,6 +104,10 @@ impl Locals {
             receiver_constraints: Vec::new(),
             switch_cases: Vec::new(),
         }
+    }
+
+    pub(crate) fn bindings(&self) -> &[Binding] {
+        &self.bindings
     }
 
     pub(crate) fn extend(&mut self, other: Self) {
@@ -143,23 +144,6 @@ impl Locals {
         self.switch_cases.iter().find(|case| {
             case.selection == binding.selection.start && case.scope_start == binding.scope.start
         })
-    }
-
-    pub(crate) fn switch_clauses(
-        &self,
-        selected: &SwitchCase,
-    ) -> impl Iterator<Item = &SwitchCase> {
-        let operand = selected.operand.clone();
-        self.switch_cases
-            .iter()
-            .filter(move |case| case.operand == operand)
-    }
-
-    pub(crate) fn type_parameter_receiver(&self, binding: &Binding) -> Option<&Range<usize>> {
-        self.receiver_constraints
-            .iter()
-            .find(|(selection, _)| *selection == binding.selection)
-            .map(|(_, receiver)| receiver)
     }
 
     pub(crate) fn type_parameter_constraint(&self, binding: &Binding) -> Option<&Range<usize>> {

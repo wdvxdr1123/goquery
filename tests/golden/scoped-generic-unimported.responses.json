@@ -261,7 +261,34 @@
   {
     "id": 6,
     "jsonrpc": "2.0",
-    "result": null
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 12,
+            "line": 11
+          },
+          "start": {
+            "character": 8,
+            "line": 11
+          }
+        },
+        "uri": "$FILE_URI"
+      },
+      {
+        "range": {
+          "end": {
+            "character": 21,
+            "line": 17
+          },
+          "start": {
+            "character": 17,
+            "line": 17
+          }
+        },
+        "uri": "$OTHER_URI"
+      }
+    ]
   },
   {
     "id": 7,
