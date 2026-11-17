@@ -4,11 +4,9 @@ use super::render::{self, declaration_source};
 use super::{HoverLink, doc, import_qualifier};
 use crate::analysis::query::Context;
 use crate::index::{IndexedSymbol as Symbol, SymbolKind};
-use crate::syntax::{Lexer, TokenKind};
 use std::path::Path;
 
 const MAX_DECLARATION_BYTES: usize = 256 * 1024;
-const MAX_METHODS: usize = 128;
 
 pub(super) fn declare(
     context: &Context<'_>,
@@ -45,7 +43,7 @@ fn describe(
         }
         SymbolKind::Type => type_symbol(context, origin, source, symbol, range, declaring),
         SymbolKind::Variable | SymbolKind::Constant => {
-            value_symbol(context, origin, source, symbol, range, declaring)
+            value_symbol(context, origin, source, symbol, range)
         }
     };
     let Some(mut content) = content else {
@@ -53,15 +51,12 @@ fn describe(
     };
     let workspace = context.workspace();
     let consumer = context.file();
-    if !symbol.is_type()
+    if symbol.is_callable()
         && let Some(code) = content.code.take()
     {
         content.code = Some(render::replace_invalid_qualified(
             workspace, consumer, &code,
         ));
-    }
-    for block in &mut content.extra {
-        *block = render::replace_invalid_qualified(workspace, consumer, block);
     }
     if content.footer.is_none()
         && let Some(version) = super::version::added(context, origin, symbol)
@@ -249,15 +244,7 @@ fn type_symbol(
         type_decl.insert_str(line_end, &format!(" // {summary}"));
     }
     // gopls appends the aliased named type's own declaration for aliases.
-    if symbol.alias
-        && let Some(target) = symbol
-            .type_info
-            .as_ref()
-            .and_then(|info| info.target.as_ref())
-        && let Some(rhs) = rhs_type_declaration(context, origin, source, &target.name)
-        && !rhs.alias
-    {
-        let text = rhs.text;
+    if let Some(text) = rhs_type_declaration(context, origin, source, symbol) {
         type_decl.push_str("\n\n");
         type_decl.push_str("type ");
         type_decl.push_str(super::declaration::format_spec(&text).trim_end());
@@ -275,19 +262,7 @@ fn type_symbol(
     {
         content.extra.push(promoted);
     }
-    let methods = if symbol.alias {
-        crate::analysis::types::lookup::embedded_target(workspace, origin, &symbol.name).and_then(
-            |(file, owner)| {
-                if owner.generic {
-                    return None;
-                }
-                let source = declaration_source(context, file)?;
-                method_lines(context, file, owner, source.text())
-            },
-        )
-    } else {
-        method_lines(context, origin, symbol, source)
-    };
+    let methods = method_lines(context, origin, symbol);
     if let Some(methods) = methods {
         content.extra.push(methods);
     }
@@ -322,635 +297,161 @@ fn rhs_type_declaration(
     context: &Context<'_>,
     origin: &Path,
     source: &str,
-    name: &str,
-) -> Option<RhsDeclaration> {
-    let workspace = context.workspace();
-    let base = name.split('[').next().unwrap_or(name);
-    let (path, rhs) = crate::analysis::resolve::resolve_type_declaration(workspace, origin, base)?;
-    let declaration = rhs.declaration()?;
-    let text = if path.as_path() == origin {
+    alias: &Symbol,
+) -> Option<String> {
+    let rhs = context.with_sema(|sema| {
+        sema.alias_rhs_declaration(crate::analysis::obj::DeclId {
+            file: origin,
+            symbol: alias,
+        })
+    })?;
+    let declaration = rhs.symbol.declaration()?;
+    if rhs.file == origin {
         source.get(declaration).map(str::to_owned)
     } else {
-        let text = declaration_source(context, path)?;
-        text.text().get(declaration).map(str::to_owned)
-    }?;
-    Some(RhsDeclaration {
-        alias: rhs.alias,
-        text,
-    })
+        context.workspace().source_slice(rhs.file, declaration)
+    }
 }
 
-struct RhsDeclaration {
-    alias: bool,
-    text: String,
-}
-
-/// Rendered method set lines, sorted by method name like gopls' method set.
-fn method_lines(
-    context: &Context<'_>,
-    origin: &Path,
-    owner: &Symbol,
-    owner_source: &str,
-) -> Option<String> {
-    let workspace = context.workspace();
-    let consumer = context.file();
-    let same_package = super::same_package(context, consumer, origin);
-    // Resolve the owner in its declaration scope, but select production/test
-    // methods from the actual query file's package view.
-    let mut entries: Vec<(String, usize, String)> = Vec::new();
-    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> =
-        crate::analysis::types::lookup::scoped_receiver_methods(
-            workspace,
-            consumer,
-            origin,
-            &owner.name,
+/// Native method selection owns visibility, collisions and instantiation.
+/// Source headers attach names only; no source text proves a method or type.
+fn method_lines(context: &Context<'_>, origin: &Path, owner: &Symbol) -> Option<String> {
+    let methods = context.with_sema(|sema| {
+        sema.declaration_methods(
+            crate::analysis::obj::DeclId {
+                file: origin,
+                symbol: owner,
+            },
+            context.file(),
         )
-        .into_iter()
-        .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
-        .take(MAX_METHODS)
-        .collect();
-    methods.sort_by(|left, right| left.1.name.cmp(&right.1.name));
-    let mut sources: std::collections::HashMap<std::path::PathBuf, String> =
-        std::collections::HashMap::new();
-    for (path, method) in methods {
-        if path.as_path() != origin && !sources.contains_key(path.as_path()) {
-            let Some(text) = workspace.source(path) else {
-                continue;
-            };
-            sources.insert(path.clone(), text);
+    })?;
+    let mut lines = Vec::new();
+    let mut header_bytes = 0usize;
+    let mut output_bytes = 0usize;
+    for method in methods {
+        let mut receiver = method.receiver.clone();
+        let mut label = format!("{}{}", method.name, method.signature.strip_prefix("func")?);
+        if method.results.len() == 1 {
+            let mut parameters = method.parameters.clone();
+            if method.variadic {
+                let last = parameters.last_mut()?;
+                *last = format!("...{}", last.strip_prefix("[]")?);
+            }
+            label = format!(
+                "{}({}) {}",
+                method.name,
+                parameters.join(", "),
+                method.results[0]
+            );
         }
-        let source = if path.as_path() == origin {
-            owner_source
-        } else {
-            sources
-                .get(path.as_path())
-                .map_or(owner_source, String::as_str)
-        };
-        if let Some(line) = method_line(context, path, source, method) {
-            entries.push((method.name.clone(), 0, line));
-        }
-    }
-    let mut visited = vec![(origin.to_path_buf(), owner.start)];
-    collect_promoted_methods(
-        context,
-        origin,
-        owner_source,
-        owner,
-        0,
-        &mut visited,
-        &mut entries,
-    );
-    if entries.is_empty() {
-        return None;
-    }
-    let mut best: std::collections::HashMap<String, (usize, String)> =
-        std::collections::HashMap::new();
-    for (name, depth, line) in entries {
-        match best.get(&name) {
-            Some((existing, _)) if *existing <= depth => {}
-            _ => {
-                best.insert(name, (depth, line));
+        if let Some((header, parsed)) = method_header(context, &method, &mut header_bytes)? {
+            if parsed.parameters.len() != method.parameters.len()
+                || parsed.results.len() != method.results.len()
+                || parsed
+                    .parameters
+                    .last()
+                    .is_some_and(|parameter| parameter.variadic)
+                    != method.variadic
+            {
+                return None;
+            }
+            let mut annotations = method
+                .parameters
+                .iter()
+                .enumerate()
+                .map(|(index, ty)| {
+                    if method.variadic && index + 1 == method.parameters.len() {
+                        ty.strip_prefix("[]").map(str::to_owned)
+                    } else {
+                        Some(ty.clone())
+                    }
+                })
+                .chain(method.results.iter().map(|ty| Some(ty.clone())));
+            label = crate::analysis::query::signatures::label::signature_label(
+                &header,
+                &parsed,
+                &method.name,
+                |_| annotations.next().flatten(),
+            )?
+            .0
+            .label;
+            if let Some(name) = parsed
+                .receiver
+                .first()
+                .and_then(|receiver| receiver.name.as_ref())
+                .and_then(|name| header.get(name.clone()))
+                .filter(|name| !name.is_empty() && *name != "_")
+            {
+                receiver = format!("{name} {receiver}");
             }
         }
+        let line = format!("func ({receiver}) {}", render::normalize_signature(&label));
+        output_bytes = output_bytes.checked_add(line.len() + 1)?;
+        if output_bytes > crate::analysis::budget::MAX_BYTES {
+            return None;
+        }
+        lines.push(line);
     }
-    let mut names: Vec<&String> = best.keys().collect();
-    names.sort();
-    let lines: Vec<&str> = names
-        .into_iter()
-        .filter_map(|name| best.get(name).map(|(_, line)| line.as_str()))
-        .take(MAX_METHODS)
-        .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
-/// Methods promoted through embedded struct/interface fields and interfaces.
-fn collect_promoted_methods(
+/// A bounded header from an exact native method identity. None inside Some
+/// denotes a universe method, which has no source parameter names to attach.
+fn method_header(
     context: &Context<'_>,
-    file: &Path,
-    source: &str,
-    symbol: &Symbol,
-    depth: usize,
-    visited: &mut Vec<(std::path::PathBuf, usize)>,
-    entries: &mut Vec<(String, usize, String)>,
-) {
-    if depth >= 8 || entries.len() > MAX_METHODS || visited.len() > 64 {
-        return;
-    }
-    let workspace = context.workspace();
-    let consumer = context.file();
-    // Re-resolve by name so declaration offsets match this file's source view.
-    let Some((canonical_file, canonical)) =
-        crate::analysis::resolve::resolve_type_declaration(workspace, file, &symbol.name)
-    else {
-        return;
-    };
-    let file = canonical_file.as_path();
-    let symbol = canonical;
-    let declaration = match symbol.declaration() {
-        Some(declaration) => declaration,
-        None => return,
-    };
-    let Some(tail) = source.get(symbol.end..declaration.end) else {
-        return;
-    };
-    let mut body = tail.trim_start().trim_start_matches('=').trim_start();
-    if body.starts_with('[')
-        && let Some(offset) = crate::syntax::aggregate_offset(body)
-        && let Some(rest) = body.get(offset..)
-    {
-        body = rest.trim_start();
-    }
-    if body.starts_with("interface") {
-        let same_package = super::same_package(context, consumer, file);
-        let Some(owner_display) = render::type_text(context, file, &symbol.name) else {
-            return;
-        };
-        let tokens: Vec<_> = crate::syntax::Lexer::new(body).collect();
-        let mut index = 1usize;
-        if tokens
-            .get(index)
-            .is_some_and(|token| token.kind == crate::syntax::TokenKind::LBrace)
-        {
-            index += 1;
+    method: &crate::analysis::sema::MethodView<'_>,
+    read_bytes: &mut usize,
+) -> Option<Option<(String, crate::syntax::Signature)>> {
+    use crate::analysis::obj::{MethodOrigin, ObjectRef};
+    const HEADER_BYTES: usize = crate::analysis::budget::MAX_BYTES;
+    let (file, span, interface) = match method.object {
+        ObjectRef::Method(MethodOrigin::Concrete(declaration)) => {
+            let span = declaration.symbol.declaration()?;
+            let end = declaration
+                .symbol
+                .body()
+                .map_or(span.end, |body| body.start);
+            (declaration.file, span.start..end, None)
         }
-        loop {
-            while tokens
-                .get(index)
-                .is_some_and(|token| token.kind == crate::syntax::TokenKind::Semicolon)
-            {
-                index += 1;
-            }
-            let Some(first) = tokens.get(index) else {
-                break;
-            };
-            if first.kind == crate::syntax::TokenKind::RBrace {
-                break;
-            }
-            let start = index;
-            let mut nesting = 0usize;
-            let mut end = index;
-            while index < tokens.len() {
-                let kind = tokens[index].kind;
-                if nesting == 0
-                    && matches!(
-                        kind,
-                        crate::syntax::TokenKind::Semicolon | crate::syntax::TokenKind::RBrace
-                    )
-                {
-                    end = index;
-                    if kind == crate::syntax::TokenKind::Semicolon {
-                        index += 1;
-                    }
-                    break;
-                }
-                match kind {
-                    crate::syntax::TokenKind::LParen
-                    | crate::syntax::TokenKind::LBrack
-                    | crate::syntax::TokenKind::LBrace => nesting += 1,
-                    crate::syntax::TokenKind::RParen
-                    | crate::syntax::TokenKind::RBrack
-                    | crate::syntax::TokenKind::RBrace => nesting = nesting.saturating_sub(1),
-                    _ => {}
-                }
-                index += 1;
-                end = index;
-            }
-            let Some(header) = tokens.get(start..end) else {
-                break;
-            };
-            let Some(first) = header.first() else {
-                continue;
-            };
-            if first.kind == crate::syntax::TokenKind::RBrace {
-                break;
-            }
-            if first.kind != crate::syntax::TokenKind::Ident {
-                continue;
-            }
-            let name = body.get(first.span.clone()).unwrap_or("");
-            if header
-                .get(1)
-                .is_some_and(|token| token.kind == crate::syntax::TokenKind::LParen)
-            {
-                // gopls lists only promoted methods for interface types, not
-                // the interface's own declared methods.
-                if depth == 0 {
-                    continue;
-                }
-                if !crate::syntax::is_exported_name(name) && !same_package {
-                    continue;
-                }
-                let Some(last) = header.last() else {
-                    continue;
-                };
-                let Some(annotation) = body.get(header[1].span.start..last.span.end) else {
-                    continue;
-                };
-                if let Some(label) = render::interface_source_label(context, file, name, annotation)
-                {
-                    entries.push((
-                        name.to_owned(),
-                        depth,
-                        format!("func ({owner_display}) {label}"),
-                    ));
-                }
-            } else {
-                let Some(last) = header.last() else {
-                    continue;
-                };
-                let Some(text) = body.get(first.span.start..last.span.end) else {
-                    continue;
-                };
-                let name = text.split(['[', ' ']).next().unwrap_or(text).trim();
-                recurse_promoted(context, file, name, depth + 1, visited, entries);
-            }
-            if tokens
-                .get(index)
-                .is_some_and(|token| token.kind == crate::syntax::TokenKind::RBrace)
-            {
-                break;
-            }
-        }
-        return;
-    }
-    let Some(frames) = super::size::struct_fields(context, file, symbol) else {
-        return;
-    };
-    for frame in frames {
-        if !frame.embedded {
-            continue;
-        }
-        // Exported methods remain promoted through unexported embeddings.
-        // Visibility is checked on each resulting method, not on the path.
-        let annotation = frame.annotation.trim().trim_start_matches('*').trim();
-        let Some(name) = annotation.split('[').next().map(str::trim) else {
-            continue;
-        };
-        recurse_promoted(context, file, name, depth + 1, visited, entries);
-    }
-}
-
-fn recurse_promoted(
-    context: &Context<'_>,
-    file: &Path,
-    name: &str,
-    depth: usize,
-    visited: &mut Vec<(std::path::PathBuf, usize)>,
-    entries: &mut Vec<(String, usize, String)>,
-) {
-    if name.is_empty() {
-        return;
-    }
-    let workspace = context.workspace();
-    let consumer = context.file();
-    let Some((target_file, target)) =
-        crate::analysis::resolve::resolve_type_declaration(workspace, file, name)
-    else {
-        return;
-    };
-    if target.generic
-        || visited
-            .iter()
-            .any(|(visited_file, start)| visited_file == target_file && *start == target.start)
-    {
-        return;
-    }
-    let same_package = super::same_package(context, consumer, target_file);
-    let mut methods: Vec<(&std::path::PathBuf, &Symbol)> =
-        crate::analysis::types::lookup::scoped_receiver_methods(
-            workspace,
-            consumer,
-            target_file,
-            &target.name,
-        )
-        .into_iter()
-        .filter(|(_, method)| same_package || crate::syntax::is_exported_name(&method.name))
-        .take(MAX_METHODS)
-        .collect();
-    methods.sort_by(|left, right| left.1.name.cmp(&right.1.name));
-    for (path, method) in methods {
-        let Some(source) = workspace.source(path) else {
-            continue;
-        };
-        if let Some(line) = method_line(context, path, &source, method) {
-            entries.push((method.name.clone(), depth, line));
-        }
-    }
-    let Some(source) = render::declaration_source(context, target_file) else {
-        return;
-    };
-    let source = source.text().to_owned();
-    visited.push((target_file.clone(), target.start));
-    collect_promoted_methods(
-        context,
-        target_file,
-        &source,
-        target,
-        depth,
-        visited,
-        entries,
-    );
-    visited.pop();
-}
-
-fn method_line(
-    context: &Context<'_>,
-    origin: &Path,
-    source: &str,
-    method: &Symbol,
-) -> Option<String> {
-    let workspace = context.workspace();
-    let consumer = context.file();
-    let declaration = method.declaration()?;
-    let end = method.body().map_or(declaration.end, |body| body.start);
-    let header = source.get(declaration.start..end)?;
-    if header.len() > MAX_DECLARATION_BYTES {
-        return None;
-    }
-    let parsed = crate::syntax::parse_signature(header);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let (signature, _) = crate::analysis::query::signatures::label::declared_signature(
-        workspace,
-        consumer,
-        origin,
-        header,
-        &parsed,
-        &method.name,
-    )?;
-    let receiver = receiver_line(context, origin, header, &parsed)?;
-    Some(format!(
-        "func {receiver} {}",
-        render::normalize_signature(&signature.label)
-    ))
-}
-
-/// Ordinal and inherited expression/type for a constant inside a grouped
-/// declaration: `const ( A = iota; B; C )`.
-pub(super) struct ConstGroupContext {
-    pub(super) iota_index: usize,
-    pub(super) last_annotation: Option<String>,
-    pub(super) last_expression: Option<String>,
-}
-
-pub(super) fn const_group_context(source: &str, symbol_start: usize) -> Option<ConstGroupContext> {
-    let mut keyword_end = None;
-    let mut expecting_paren = false;
-    let mut group = None;
-    for token in crate::syntax::Lexer::new(source) {
-        if token.span.start > symbol_start {
-            break;
-        }
-        if token.inserted {
-            continue;
-        }
-        match token.kind {
-            TokenKind::Const => {
-                keyword_end = Some(token.span.end);
-                expecting_paren = true;
-            }
-            TokenKind::LParen if expecting_paren => {
-                group = Some((keyword_end?, token.span.end));
-                expecting_paren = false;
-            }
-            _ => expecting_paren = false,
-        }
-    }
-    let (_, group_start) = group?;
-    let text = source.get(group_start..)?;
-    let tokens: Vec<crate::syntax::Token> = Lexer::new(text).collect();
-    let mut specs: Vec<(usize, usize)> = Vec::new();
-    let mut start = 0usize;
-    let mut depth = 0usize;
-    for (index, token) in tokens.iter().enumerate() {
-        match token.kind {
-            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
-            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                if depth == 0 {
-                    specs.push((start, index));
-                    break;
-                }
-                depth = depth.saturating_sub(1);
-            }
-            TokenKind::Semicolon if depth == 0 => {
-                specs.push((start, index));
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    let mut last_annotation: Option<String> = None;
-    let mut last_expression: Option<String> = None;
-    for (iota_index, (begin, end)) in specs.iter().enumerate() {
-        let spec_tokens = tokens.get(*begin..*end)?;
-        if spec_tokens.is_empty() {
-            continue;
-        }
-        let spec_start = group_start + spec_tokens.first()?.span.start;
-        let spec_end = group_start + spec_tokens.last()?.span.end;
-        if spec_start <= symbol_start && symbol_start <= spec_end {
-            return Some(ConstGroupContext {
-                iota_index,
-                last_annotation,
-                last_expression,
-            });
-        }
-        let Some(assign) = spec_tokens
-            .iter()
-            .position(|token| token.kind == TokenKind::Assign)
-        else {
-            continue;
-        };
-        let assign_start = group_start + spec_tokens[assign].span.start;
-        let spec_text = source.get(spec_start..spec_end)?;
-        let shape = value_shape(spec_text)?;
-        last_annotation = shape.annotation.map(str::to_owned);
-        last_expression = Some(
-            spec_text
-                .get(assign_start - spec_start..)?
-                .trim_start_matches('=')
-                .trim()
-                .to_owned(),
-        );
-    }
-    None
-}
-
-/// Declared type of a constant conversion expression such as `int64(...)`.
-fn conversion_expression_type(
-    context: &Context<'_>,
-    origin: &Path,
-    expression: &str,
-) -> Option<String> {
-    let parsed = crate::syntax::parse_expression(expression);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let root = parsed.nodes.get(parsed.root.0)?;
-    let crate::syntax::ExprKind::Call {
-        function,
-        arguments,
-        ..
-    } = &root.kind
-    else {
-        return None;
-    };
-    if arguments.len() != 1 {
-        return None;
-    }
-    let callee = parsed.nodes.get(function.0)?;
-    let text = match &callee.kind {
-        crate::syntax::ExprKind::Name => expression.get(callee.span.clone())?,
-        crate::syntax::ExprKind::Selector { operand, field } => {
-            let operand = parsed.nodes.get(operand.0)?;
-            if !matches!(operand.kind, crate::syntax::ExprKind::Name) {
-                return None;
-            }
-            let alias = expression.get(operand.span.clone())?;
-            let name = expression.get(field.clone())?;
-            let workspace = context.workspace();
-            if !crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
-                .any(|(_, symbol)| symbol.is_type() && symbol.name == name)
-            {
-                return None;
-            }
-            expression.get(callee.span.clone())?
+        ObjectRef::Method(MethodOrigin::Interface(member)) if member.builtin => return Some(None),
+        ObjectRef::Method(MethodOrigin::Interface(member)) => {
+            let member = member.indexed(context.workspace())?;
+            let owner = member.owner?;
+            (
+                member.file,
+                owner.end..owner.declaration()?.end,
+                Some(member),
+            )
         }
         _ => return None,
     };
-    let workspace = context.workspace();
-    let builtin = matches!(
-        text,
-        "int"
-            | "int8"
-            | "int16"
-            | "int32"
-            | "int64"
-            | "uint"
-            | "uint8"
-            | "uint16"
-            | "uint32"
-            | "uint64"
-            | "uintptr"
-            | "float32"
-            | "float64"
-            | "rune"
-            | "byte"
-    );
-    if !builtin {
-        let name = text.split('.').next_back()?;
-        let is_type = crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
-            .is_some_and(|(_, symbol)| symbol.is_type());
-        if !is_type {
-            return None;
-        }
+    if span.len() > HEADER_BYTES {
+        return None;
     }
-    crate::analysis::query::signatures::label::signature_type(
-        workspace,
-        context.file(),
-        origin,
-        text,
-    )
-    .map(|rendered| render::normalize_type(&rendered))
-    .or_else(|| Some(render::normalize_type(text)))
-}
-
-/// Declared type of a typed constant referenced by a constant expression.
-fn expression_const_type(context: &Context<'_>, origin: &Path, expression: &str) -> Option<String> {
-    expression_const_type_at(context, origin, expression, 0)
-}
-
-fn expression_const_type_at(
-    context: &Context<'_>,
-    origin: &Path,
-    expression: &str,
-    depth: usize,
-) -> Option<String> {
-    let tokens: Vec<_> = Lexer::new(expression)
-        .filter(|token| !token.inserted)
-        .collect();
-    for (index, token) in tokens.iter().enumerate() {
-        if token.kind != TokenKind::Ident {
-            continue;
-        }
-        let mut name = expression.get(token.span.clone())?.to_owned();
-        if tokens
-            .get(index + 1)
-            .is_some_and(|token| token.kind == TokenKind::Period)
-            && let Some(part) = tokens
-                .get(index + 2)
-                .filter(|token| token.kind == TokenKind::Ident)
-        {
-            name.push('.');
-            name.push_str(expression.get(part.span.clone())?);
-        }
-        let workspace = context.workspace();
-        let resolved = if let Some((alias, constant)) = name.split_once('.') {
-            crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
-                .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
-                .map(|(path, symbol)| (path.clone(), symbol))
-        } else {
-            crate::analysis::resolve::unqualified_symbol(workspace, origin, &name)
-                .filter(|(_, symbol)| symbol.is_const())
-                .map(|(path, symbol)| (path.clone(), symbol))
-        };
-        let Some((file, symbol)) = resolved else {
-            continue;
-        };
-        let Some(source_text) = render::declaration_source(context, &file) else {
-            continue;
-        };
-        let source = source_text.text();
-        let declaration = symbol.declaration()?;
-        let spec = source.get(declaration)?;
-        let shape = value_shape(spec);
-        let group = const_group_context(source, symbol.start);
-        let (annotation, value_text) =
-            if let Some(value) = shape.as_ref().and_then(|s| s.value_text) {
-                (shape.as_ref().and_then(|s| s.annotation), Some(value))
-            } else {
-                let Some(group) = group.as_ref() else {
-                    continue;
-                };
-                (
-                    group.last_annotation.as_deref(),
-                    group.last_expression.as_deref(),
-                )
-            };
-        if let Some(annotation) = annotation {
-            let consumer = context.file();
-            let rendered = crate::analysis::query::signatures::label::signature_type(
-                workspace, consumer, &file, annotation,
-            )?;
-            let consumer_package = workspace
-                .files
-                .get(consumer)
-                .map(|stub| stub.package.as_str());
-            let origin_package = workspace.files.get(&file).map(|stub| stub.package.as_str());
-            if !rendered.contains('.')
-                && !annotation.contains('.')
-                && consumer_package != origin_package
-            {
-                return Some(
-                    alias_rhs_text(context, &file, annotation).unwrap_or_else(|| {
-                        format!("{}.{}", render::package_name(workspace, &file), rendered)
-                    }),
-                );
-            }
-            return Some(rendered);
-        }
-        if depth >= 16 {
-            return None;
-        }
-        let Some(value_text) = value_text else {
-            continue;
-        };
-        if let Some(inferred) = expression_const_type_at(context, &file, value_text, depth + 1) {
-            return Some(inferred);
-        }
+    *read_bytes = read_bytes.checked_add(span.len())?;
+    if *read_bytes > 64 * 1024 {
+        return None;
     }
-    None
+    let source = context.workspace().source_slice(file, span.clone())?;
+    let header = if let Some(member) = interface {
+        let entries = crate::syntax::aggregate_members(&source);
+        let entry = entries.iter().find(|entry| {
+            span.start + entry.selection.start == member.selection[0] as usize
+                && span.start + entry.selection.end == member.selection[1] as usize
+        })?;
+        format!(
+            "func {}{}",
+            method.name,
+            source.get(entry.annotation.clone())?
+        )
+    } else {
+        source
+    };
+    let parsed = crate::syntax::parse_signature(&header);
+    if !parsed.diagnostics.is_empty() {
+        return None;
+    }
+    Some(Some((header, parsed)))
 }
 
 /// Evaluate a named constant expression (possibly inherited from its group).
@@ -959,61 +460,57 @@ fn evaluate_named_constant(
     origin: &Path,
     name: &str,
     depth: usize,
-) -> Option<(Option<String>, String)> {
+    budget: &mut super::value::TextBudget,
+) -> Option<String> {
+    budget.step()?;
     if depth >= 16 || name.is_empty() {
         return None;
     }
-    let workspace = context.workspace();
     let resolved = if let Some((alias, constant)) = name.split_once('.') {
-        crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
+        context
+            .resolver()
+            .imported_symbol_iter(origin, alias)
             .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
             .map(|(path, symbol)| (path.clone(), symbol))
     } else {
-        crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
+        context
+            .resolver()
+            .unqualified_symbol(origin, name)
             .filter(|(_, symbol)| symbol.is_const())
             .map(|(path, symbol)| (path.clone(), symbol))
     };
     let (file, symbol) = resolved?;
-    let source_text = render::declaration_source(context, &file)?;
-    let source = source_text.text();
-    let declaration = symbol.declaration()?;
-    let spec = source.get(declaration.clone())?;
-    let shape = value_shape(spec)?;
-    let group = const_group_context(source, symbol.start);
-    let (annotation, expression) = if let Some(value) = shape.value_text {
-        (shape.annotation.map(str::to_owned), value.to_owned())
-    } else {
-        let group = group.as_ref()?;
-        (
-            group.last_annotation.clone(),
-            group.last_expression.clone()?,
-        )
-    };
-    let iota = group.as_ref().map_or(0, |group| group.iota_index);
-    let substituted = super::value::substitute_iota(&expression, iota);
+    let span = super::value::declaration_span(context, &file, symbol)?;
+    budget.read(span.len())?;
+    let source = context.workspace().source_slice(&file, span.clone())?;
+    let display = super::value::declaration_in(context, &file, &source, span.start, symbol)?;
+    let substituted = super::value::substitute_iota(display.value?, display.iota);
     if let Some(literal) = super::value::literal(&substituted) {
-        return Some((annotation, literal.value));
+        return Some(literal.value);
     }
     if let Some(value) = super::value::integer_expression(&substituted) {
-        return Some((annotation, value.to_string()));
+        return Some(value.to_string());
     }
     let trimmed = substituted.trim();
-    evaluate_named_constant(context, &file, trimmed, depth + 1)
-        .map(|(_, value)| (annotation, value))
+    evaluate_named_constant(context, &file, trimmed, depth + 1, budget)
 }
 
 /// Resolve a constant by its unqualified or import-qualified name.
 fn resolve_constant<'a>(
-    workspace: &'a crate::workspace::Workspace,
+    context: &Context<'a>,
     origin: &Path,
     name: &str,
 ) -> Option<(std::path::PathBuf, &'a Symbol)> {
     if let Some((alias, constant)) = name.split_once('.') {
-        crate::analysis::resolve::imported_symbol_iter(workspace, origin, alias)
+        context
+            .resolver()
+            .imported_symbol_iter(origin, alias)
             .find(|(_, symbol)| symbol.is_const() && symbol.name == constant)
             .map(|(path, symbol)| (path.clone(), symbol))
     } else {
-        crate::analysis::resolve::unqualified_symbol(workspace, origin, name)
+        context
+            .resolver()
+            .unqualified_symbol(origin, name)
             .filter(|(_, symbol)| symbol.is_const())
             .map(|(path, symbol)| (path.clone(), symbol))
     }
@@ -1030,58 +527,42 @@ fn evaluate_string_constant(
     origin: &Path,
     expression: &str,
     depth: usize,
-) -> Option<(Option<String>, Vec<u8>)> {
+    budget: &mut super::value::TextBudget,
+) -> Option<Vec<u8>> {
     if depth >= MAX_STRING_CONSTANT_DEPTH {
         return None;
     }
-    super::value::string_expression(expression, depth, &mut |name, next| {
-        let (file, symbol) = resolve_constant(context.workspace(), origin, name)?;
-        let source_text = render::declaration_source(context, &file)?;
-        let source = source_text.text();
-        let declaration = symbol.declaration()?;
-        let spec = source.get(declaration)?;
-        let shape = value_shape(spec)?;
-        let group = const_group_context(source, symbol.start);
-        let (annotation, expression) = if let Some(value) = shape.value_text {
-            (shape.annotation.map(str::to_owned), value.to_owned())
-        } else {
-            let group = group.as_ref()?;
-            (
-                group.last_annotation.clone(),
-                group.last_expression.clone()?,
-            )
-        };
-        let iota = group.as_ref().map_or(0, |group| group.iota_index);
-        let substituted = super::value::substitute_iota(&expression, iota);
-        let (nested, bytes) = evaluate_string_constant(context, &file, &substituted, next)?;
-        let annotation = annotation.or(nested).map(|text| {
-            crate::analysis::resolve::requalified_type(
-                context.workspace(),
-                context.file(),
-                &file,
-                text.trim(),
-            )
-            .unwrap_or(text)
-        });
-        Some((annotation, bytes))
+    super::value::string_expression(expression, depth, budget, &mut |name, next, budget| {
+        let (file, symbol) = resolve_constant(context, origin, name)?;
+        let span = super::value::declaration_span(context, &file, symbol)?;
+        budget.read(span.len())?;
+        let source = context.workspace().source_slice(&file, span.clone())?;
+        let display = super::value::declaration_in(context, &file, &source, span.start, symbol)?;
+        let substituted = super::value::substitute_iota(display.value?, display.iota);
+        evaluate_string_constant(context, &file, &substituted, next, budget)
     })
 }
 
-/// RHS source text of an alias declaration (`type FileMode = fs.FileMode`).
-fn alias_rhs_text(context: &Context<'_>, origin: &Path, name: &str) -> Option<String> {
-    let workspace = context.workspace();
-    let (file, symbol) =
-        crate::analysis::resolve::resolve_type_declaration(workspace, origin, name)?;
-    if !symbol.alias {
-        return None;
-    }
-    let source_text = render::declaration_source(context, file)?;
-    let source = source_text.text();
-    let declaration = symbol.declaration()?;
-    let text = source.get(declaration)?;
-    let equals = text.find('=')?;
-    let rhs = text.get(equals + 1..)?.trim();
-    (!rhs.is_empty()).then(|| rhs.to_owned())
+/// Type display comes only from the checked declaration operand.
+fn declaration_value_type(
+    context: &Context<'_>,
+    origin: &Path,
+    symbol: &Symbol,
+) -> Option<(String, Option<crate::analysis::types::Constant>)> {
+    let (file, stub) = context.workspace().files.get_key_value(origin)?;
+    let symbol = stub.symbols.iter().find(|candidate| {
+        candidate.start == symbol.start
+            && candidate.end == symbol.end
+            && candidate.kind == symbol.kind
+    })?;
+    context.with_sema(|sema| {
+        let operand = sema.operand_of_decl(crate::analysis::obj::DeclId { file, symbol })?;
+        let text = sema.arena_mut().format_type(
+            operand.ty,
+            crate::analysis::types::Qualifier::Presentation(context.file()),
+        )?;
+        Some((render::normalize_type(&text), operand.value))
+    })
 }
 
 fn value_symbol(
@@ -1090,70 +571,49 @@ fn value_symbol(
     source: &str,
     symbol: &Symbol,
     range: super::SourceRange,
-    declaring: bool,
 ) -> Option<HoverContent> {
     let workspace = context.workspace();
-    let consumer = context.file();
     let declaration = symbol.declaration()?;
-    let spec = source.get(declaration.clone())?;
-    if spec.len() > MAX_DECLARATION_BYTES {
-        return None;
-    }
-    let shape = value_shape(spec)?;
+    let display = super::value::declaration(context, origin, source, symbol)?;
     let mut content = HoverContent::new(range);
-    let qualifier = import_qualifier(context, consumer, origin)?;
+    let qualifier = import_qualifier(context, context.file(), origin)?;
+    let (ty, constant) = declaration_value_type(context, origin, symbol)?;
     let code = match symbol.kind {
         SymbolKind::Constant => {
-            let group = const_group_context(source, symbol.start);
-            let (annotation, expression, own) = if let Some(value) = shape.value_text {
-                (shape.annotation.map(str::to_owned), value.to_owned(), true)
-            } else if let Some(group) = &group {
-                (
-                    group.last_annotation.clone(),
-                    group.last_expression.clone()?,
-                    false,
-                )
-            } else {
-                return None;
-            };
-            let iota = group.as_ref().map_or(0, |group| group.iota_index);
-            let substituted = super::value::substitute_iota(&expression, iota);
+            let expression = display.value?.to_owned();
+            let own = display.own;
+            let substituted = super::value::substitute_iota(&expression, display.iota);
             let mut literal = super::value::literal(&substituted);
             let mut evaluated = None;
-            let mut named_type = None;
             if literal.is_none() {
-                let simple = super::value::integer_expression(&substituted);
-                let resolved = if simple.is_none() {
-                    super::size::const_integer(context, origin, &substituted)
-                } else {
-                    None
-                };
-                if let Some(value) = simple.or(resolved) {
-                    evaluated = Some(value);
+                let mut budget = super::value::TextBudget::new();
+                if let Some(crate::analysis::types::Constant::Int(value)) = constant {
+                    evaluated = i64::try_from(value).ok();
                     literal = Some(super::value::Literal {
                         value: value.to_string(),
                         declaration: own.then(|| expression.clone()),
                         untyped: Some("int"),
                     });
-                } else if let Some((ty, value)) =
-                    evaluate_named_constant(context, origin, substituted.trim(), 0)
+                } else if matches!(
+                    constant,
+                    Some(crate::analysis::types::Constant::String { .. })
+                ) {
+                    let bytes =
+                        evaluate_string_constant(context, origin, &substituted, 0, &mut budget)?;
+                    literal = Some(super::value::Literal {
+                        value: super::value::quote_bytes(&bytes),
+                        declaration: None,
+                        untyped: Some("string"),
+                    });
+                } else if let Some(value) =
+                    evaluate_named_constant(context, origin, substituted.trim(), 0, &mut budget)
                 {
-                    named_type = ty;
                     literal = Some(super::value::Literal {
                         value: value.clone(),
                         declaration: own.then(|| expression.clone()),
                         untyped: None,
                     });
                     evaluated = value.parse().ok();
-                } else if let Some((ty, bytes)) =
-                    evaluate_string_constant(context, origin, &substituted, 0)
-                {
-                    named_type = ty;
-                    literal = Some(super::value::Literal {
-                        value: super::value::quote_bytes(&bytes),
-                        declaration: own.then(|| expression.clone()),
-                        untyped: Some("string"),
-                    });
                 }
             }
             let mut literal = literal?;
@@ -1164,40 +624,6 @@ fn value_symbol(
             } else {
                 literal.declaration = None;
             }
-            let ty = match annotation {
-                Some(annotation) => match render::alias_text(&annotation) {
-                    Some(alias) => alias.to_owned(),
-                    None => {
-                        let rendered = crate::analysis::query::signatures::label::signature_type(
-                            workspace,
-                            consumer,
-                            origin,
-                            &annotation,
-                        )?;
-                        if annotation.contains('.') && !rendered.contains('.') {
-                            annotation.trim().to_owned()
-                        } else if !rendered.contains('.')
-                            && !annotation.contains('.')
-                            && workspace
-                                .files
-                                .get(consumer)
-                                .zip(workspace.files.get(origin))
-                                .is_some_and(|(a, b)| a.package != b.package)
-                        {
-                            alias_rhs_text(context, origin, &annotation).unwrap_or_else(|| {
-                                format!("{}.{}", render::package_name(workspace, origin), rendered)
-                            })
-                        } else {
-                            rendered
-                        }
-                    }
-                },
-                None => named_type
-                    .or_else(|| conversion_expression_type(context, origin, &expression))
-                    .or_else(|| expression_const_type(context, origin, &expression))
-                    .unwrap_or_else(|| format!("untyped {}", literal.untyped.unwrap_or("int"))),
-            };
-            let ty = render::normalize_type(&ty);
             let assigned = match (evaluated, ty == "time.Duration") {
                 (Some(value), true) => {
                     let duration = super::value::duration_string(value);
@@ -1208,60 +634,12 @@ fn value_symbol(
                 }
                 _ => literal.assigned(),
             };
-            let _ = declaring;
             format!("const {qualifier}{} {ty} = {assigned}", symbol.name)
         }
         _ => {
-            if let Some(annotation) = shape.annotation {
-                let ty = match render::alias_text(annotation) {
-                    Some(alias) => alias.to_owned(),
-                    None => {
-                        let rendered = crate::analysis::query::signatures::label::signature_type(
-                            workspace, consumer, origin, annotation,
-                        )?;
-                        if annotation.contains('.') && !rendered.contains('.') {
-                            annotation.trim().to_owned()
-                        } else {
-                            render::normalize_type(&rendered)
-                        }
-                    }
-                };
-                format!("var {qualifier}{} {ty}", symbol.name)
-            } else {
-                let inferred = shape
-                    .value_text
-                    .and_then(|text| super::value::inferred_array_literal(workspace, origin, text));
-                let ty = if let Some(inferred) = inferred {
-                    render::normalize_type(&inferred?.text)
-                } else {
-                    shape
-                        .value_text
-                        .and_then(|text| {
-                            render::call_result_type(context, origin, text, 0, 1, true)
-                        })
-                        .or_else(|| {
-                            shape
-                                .value_text
-                                .and_then(|text| render::conversion_type(context, origin, text))
-                        })
-                        .or_else(|| shape.value_text.and_then(render::function_literal_text))
-                        .or_else(|| {
-                            shape
-                                .value_text
-                                .and_then(|text| render::function_value_type(context, origin, text))
-                        })
-                        .or_else(|| {
-                            shape
-                                .value_text
-                                .and_then(super::value::default_type)
-                                .map(|text| render::normalize_type(&text))
-                        })?
-                };
-                format!("var {qualifier}{} {ty}", symbol.name)
-            }
+            format!("var {qualifier}{} {ty}", symbol.name)
         }
     };
-    let code = render::fold_array_lengths(context, origin, &code);
     content.code = Some(code);
     content.doc = attach(
         context,
@@ -1287,70 +665,6 @@ fn value_symbol(
         ),
     );
     Some(content)
-}
-
-struct ValueShape<'a> {
-    annotation: Option<&'a str>,
-    value_text: Option<&'a str>,
-}
-
-/// Split one value spec into its optional written type and first initializer.
-fn value_shape(spec: &str) -> Option<ValueShape<'_>> {
-    let tokens: Vec<_> = Lexer::new(spec).collect();
-    let mut index = 0;
-    if tokens
-        .get(index)
-        .is_some_and(|token| token.kind == TokenKind::Ident)
-    {
-        index += 1;
-        while tokens
-            .get(index)
-            .is_some_and(|token| token.kind == TokenKind::Comma)
-            && tokens
-                .get(index + 1)
-                .is_some_and(|token| token.kind == TokenKind::Ident)
-        {
-            index += 2;
-        }
-    }
-    let rest_start = tokens.get(index)?.span.start;
-    for token in tokens.iter().skip(index) {
-        if token.kind != TokenKind::Assign {
-            continue;
-        }
-        let values = spec.get(token.span.end..)?;
-        return Some(ValueShape {
-            annotation: spec
-                .get(rest_start..token.span.start)
-                .map(str::trim)
-                .filter(|text| !text.is_empty()),
-            value_text: first_value(values),
-        });
-    }
-    Some(ValueShape {
-        annotation: spec
-            .get(rest_start..)
-            .map(str::trim)
-            .filter(|text| !text.is_empty()),
-        value_text: None,
-    })
-}
-
-/// First comma-separated initializer after `=`.
-fn first_value(text: &str) -> Option<&str> {
-    let mut depth = 0usize;
-    for token in Lexer::new(text) {
-        match token.kind {
-            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
-            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                depth = depth.saturating_sub(1);
-            }
-            TokenKind::Comma if depth == 0 => return text.get(..token.span.start).map(str::trim),
-            _ => {}
-        }
-    }
-    let trimmed = text.trim();
-    (!trimmed.is_empty()).then_some(trimmed)
 }
 
 fn attach(

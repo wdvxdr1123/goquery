@@ -1,12 +1,12 @@
 //! Package identity and import-qualified lookup over declaration metadata.
 mod candidates;
+mod members;
 mod names;
 mod unqualified;
-pub(crate) use candidates::{dependent_candidates, reference_candidates, trace_candidates};
-pub(crate) use names::NameIndex;
-pub(crate) use unqualified::{
-    UnqualifiedLookup, file_symbol_iter, unqualified_lookup, unqualified_symbol,
-};
+pub(crate) use candidates::trace_candidates;
+pub(crate) use members::{MemberDescription, MemberId, MemberIds, member_id};
+pub(crate) use names::NameProbe;
+pub(crate) use unqualified::{UnqualifiedLookup, file_symbol_iter, unqualified_symbol};
 
 use crate::index::IndexedSymbol as Symbol;
 use crate::workspace;
@@ -14,12 +14,180 @@ use crate::workspace::Workspace;
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
 
-pub(crate) fn imported_symbols<'a>(
-    workspace: &'a Workspace,
-    file: &Path,
-    alias: &str,
-) -> Vec<(&'a PathBuf, &'a Symbol)> {
-    imported_symbol_iter(workspace, file, alias).collect()
+/// Metadata lookup in the immutable build context of one semantic request.
+#[derive(Clone, Copy)]
+pub(crate) struct View<'a> {
+    pub(super) workspace: &'a Workspace,
+    pub(super) build: crate::workspace::BuildView<'a>,
+}
+
+impl<'a> View<'a> {
+    pub(crate) fn new(workspace: &'a Workspace, build: crate::workspace::BuildView<'a>) -> Self {
+        Self { workspace, build }
+    }
+    pub(crate) fn for_file(workspace: &'a Workspace, file: &Path) -> Self {
+        Self::new(workspace, workspace.build_view(Some(file)))
+    }
+    pub(crate) fn file_visible(self, file: &Path) -> bool {
+        self.build.visible(self.workspace, file)
+    }
+    pub(crate) fn reference_candidates(
+        self,
+        file: &Path,
+        symbol: &Symbol,
+    ) -> Vec<(&'a PathBuf, &'a crate::index::IndexedFile)> {
+        candidates::reference_candidates(self, file, symbol)
+    }
+    pub(crate) fn dependent_candidates(
+        self,
+        file: &Path,
+    ) -> Vec<(&'a PathBuf, &'a crate::index::IndexedFile)> {
+        candidates::dependent_candidates(self, file)
+    }
+    pub(crate) fn file_symbol_iter(
+        self,
+        file: &Path,
+    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+        unqualified::file_symbol_iter_in_view(self, file)
+    }
+
+    /// Candidate inventories include selected test variants; selector visibility
+    /// is applied separately when a name denotes a source-level object.
+    pub(crate) fn package_symbols(
+        self,
+        file: &Path,
+    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+        self.workspace
+            .package_files_in_view(file, self.build)
+            .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
+    }
+
+    /// Documentation names occupy package scope, independent of file imports.
+    pub(crate) fn package_symbol(
+        self,
+        file: &Path,
+        name: &str,
+    ) -> Option<(&'a PathBuf, &'a Symbol)> {
+        let probe = crate::bloom::Fingerprint::new(name.as_bytes());
+        let mut candidates = self
+            .workspace
+            .package_files_in_view(file, self.build)
+            .filter(|(path, _)| {
+                self.workspace
+                    .selector_file_visible_in_view(file, path, self.build)
+            })
+            .filter(|(_, stub)| stub.declarations.may_contain_fingerprint(probe))
+            .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
+            .filter(|(_, symbol)| symbol.receiver.is_none() && symbol.name == name);
+        let selected = candidates.next()?;
+        candidates.next().is_none().then_some(selected)
+    }
+
+    pub(crate) fn import_path_symbols(
+        self,
+        file: &Path,
+        import: &'a str,
+    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+        symbols_for_import(self.workspace, file, import, None, self.build)
+    }
+    pub(crate) fn unqualified_lookup(self, file: &Path, name: &str) -> UnqualifiedLookup<'a> {
+        unqualified::unqualified_lookup_in_view(self, file, name)
+    }
+    pub(crate) fn unqualified_symbol(
+        self,
+        file: &Path,
+        name: &str,
+    ) -> Option<(&'a PathBuf, &'a Symbol)> {
+        match self.unqualified_lookup(file, name) {
+            UnqualifiedLookup::Found(file, symbol) => Some((file, symbol)),
+            UnqualifiedLookup::Ambiguous | UnqualifiedLookup::NotFound => None,
+        }
+    }
+    pub(crate) fn declared_package_name(self, file: &Path, import: &str) -> Option<&'a str> {
+        if !self.build.includes_detached()
+            && let Some(name) = self.workspace.declared_package_name(import)
+        {
+            return Some(name);
+        }
+        let test_package = self.workspace.files.get(file).and_then(|stub| {
+            (!workspace::production_file(file)
+                && self.workspace.import_path(file).as_deref() == Some(import))
+            .then(|| stub.package.strip_suffix("_test"))
+            .flatten()
+        });
+        let directories = import_directories(self.workspace, import);
+        let mut packages = directories
+            .iter()
+            .flat_map(|directory| {
+                self.workspace
+                    .files
+                    .range::<Path, _>((Bound::Included(directory.as_path()), Bound::Unbounded))
+                    .take_while(move |(path, _)| path.starts_with(directory))
+                    .filter(move |(path, _)| path.parent() == Some(directory.as_path()))
+            })
+            .filter(|(path, stub)| {
+                self.build.visible(self.workspace, path)
+                    && !stub.package.is_empty()
+                    && (workspace::production_file(path)
+                        || test_package == Some(stub.package.as_str()))
+            })
+            .map(|(_, stub)| stub.package.as_str());
+        packages
+            .next()
+            .filter(|first| packages.all(|package| package == *first))
+    }
+    pub(crate) fn import_name<'i>(
+        self,
+        file: &Path,
+        import: &'i crate::syntax::Import,
+    ) -> Option<&'i str>
+    where
+        'a: 'i,
+    {
+        import
+            .explicit_name()
+            .or_else(|| self.declared_package_name(file, &import.path))
+            .or_else(|| import.path.rsplit('/').next())
+    }
+    pub(crate) fn imported_name(self, file: &Path, name: &str) -> bool {
+        self.workspace.files.get(file).is_some_and(|stub| {
+            stub.imports.iter().any(|import| {
+                !import.is_dot()
+                    && !import.is_blank()
+                    && self.import_name(file, import) == Some(name)
+            })
+        })
+    }
+    fn test_import_scope(self, file: &Path, import: &str) -> Option<&'a Path> {
+        let (file, stub) = self.workspace.files.get_key_value(file)?;
+        (!workspace::production_file(file)
+            && stub.package.strip_suffix("_test") == self.declared_package_name(file, import)
+            && self.workspace.import_path(file).as_deref() == Some(import))
+        .then(|| file.parent())
+        .flatten()
+    }
+    pub(crate) fn imported_symbol_iter(
+        self,
+        file: &Path,
+        alias: &str,
+    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+        self.imported_symbol_candidates(file, alias, None)
+    }
+    pub(crate) fn imported_symbol_candidates(
+        self,
+        file: &Path,
+        alias: &str,
+        probe: Option<crate::bloom::Fingerprint>,
+    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+        imported_symbol_candidates_in_view(self, file, alias, probe)
+    }
+    pub(crate) fn resolve_type_declaration(
+        self,
+        file: &Path,
+        name: &str,
+    ) -> Option<(&'a PathBuf, &'a Symbol)> {
+        resolve_type_declaration_in_view(self, file, name)
+    }
 }
 
 pub(crate) fn imported_symbol_iter<'a>(
@@ -36,6 +204,16 @@ pub(crate) fn imported_symbol_candidates<'a>(
     alias: &str,
     probe: Option<crate::bloom::Fingerprint>,
 ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+    View::for_file(workspace, file).imported_symbol_candidates(file, alias, probe)
+}
+
+fn imported_symbol_candidates_in_view<'a>(
+    view: View<'a>,
+    file: &Path,
+    alias: &str,
+    probe: Option<crate::bloom::Fingerprint>,
+) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+    let workspace = view.workspace;
     let file = workspace
         .files
         .get_key_value(file)
@@ -47,13 +225,13 @@ pub(crate) fn imported_symbol_candidates<'a>(
             stub.imports.iter().find(|import| {
                 !import.is_dot()
                     && !import.is_blank()
-                    && workspace.import_name(import) == Some(alias)
+                    && view.import_name(file, import) == Some(alias)
             })
         })
         .map(|import| import.path.as_str());
     import
         .into_iter()
-        .flat_map(move |import| symbols_for_import(workspace, file, import, probe))
+        .flat_map(move |import| symbols_for_import(workspace, file, import, probe, view.build))
 }
 
 pub(super) fn symbols_for_import<'a>(
@@ -61,32 +239,15 @@ pub(super) fn symbols_for_import<'a>(
     file: &Path,
     import: &'a str,
     probe: Option<crate::bloom::Fingerprint>,
+    build: crate::workspace::BuildView<'a>,
 ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
-    let caller_detached = workspace.is_detached(file);
-    let test_scope = workspace.test_import_scope(file, import);
-    let expected_pkg = workspace.declared_package_name(import);
-    let mut directories: Vec<_> = workspace
-        .modules
-        .iter()
-        .filter_map(move |(root, module)| {
-            let suffix = if module == "std" {
-                Some(import)
-            } else if import == module {
-                Some("")
-            } else {
-                import
-                    .strip_prefix(module.as_str())
-                    .and_then(|rest| rest.strip_prefix('/'))
-            };
-            suffix.map(|suffix| root.join(suffix))
-        })
-        .collect();
-    directories.sort();
-    directories.dedup();
-    directories.retain(|directory| {
-        expected_pkg.is_some()
-            && workspace.directory_import_path(directory).as_deref() == Some(import)
-    });
+    let file = workspace
+        .files
+        .get_key_value(file)
+        .map_or(Path::new(""), |(path, _)| path.as_path());
+    let test_scope = View::new(workspace, build).test_import_scope(file, import);
+    let directories = import_directories(workspace, import);
+    let expected_pkg = View::new(workspace, build).declared_package_name(file, import);
     directories
         .into_iter()
         .flat_map(move |directory| {
@@ -100,7 +261,7 @@ pub(super) fn symbols_for_import<'a>(
         .filter(move |(_, stub)| {
             probe.is_none_or(|probe| stub.declarations.may_contain_fingerprint(probe))
         })
-        .filter(move |(path, _)| caller_detached || !workspace.is_detached(path))
+        .filter(move |(path, _)| build.visible(workspace, path))
         .filter(move |(path, _)| {
             workspace::production_file(path)
                 || test_scope.is_some_and(|scope| Some(scope) == path.parent())
@@ -119,28 +280,28 @@ pub(crate) fn resolve_type_declaration<'a>(
     file: &Path,
     name: &str,
 ) -> Option<(&'a PathBuf, &'a Symbol)> {
+    View::for_file(workspace, file).resolve_type_declaration(file, name)
+}
+
+fn resolve_type_declaration_in_view<'a>(
+    view: View<'a>,
+    file: &Path,
+    name: &str,
+) -> Option<(&'a PathBuf, &'a Symbol)> {
     let name = crate::analysis::scope::named_root(name);
     if let Some((alias, member)) = name.split_once('.') {
-        let mut matches = imported_symbol_candidates(
-            workspace,
-            file,
-            alias,
-            Some(crate::bloom::Fingerprint::new(member.as_bytes())),
-        )
-        .filter(|(_, symbol)| symbol.is_type() && symbol.name == member);
+        let mut matches = view
+            .imported_symbol_candidates(
+                file,
+                alias,
+                Some(crate::bloom::Fingerprint::new(member.as_bytes())),
+            )
+            .filter(|(_, symbol)| symbol.is_type() && symbol.name == member);
         let first = matches.next()?;
-        let Some(second) = matches.next() else {
-            return Some(first);
-        };
-        let target = workspace.orphan_view_target(file)?;
-        let mut filtered = [first, second]
-            .into_iter()
-            .chain(matches)
-            .filter(|(path, _)| workspace.file_matches_target(path, &target));
-        let winner = filtered.next()?;
-        filtered.next().is_none().then_some(winner)
+        matches.next().is_none().then_some(first)
     } else {
-        unqualified_symbol(workspace, file, name).filter(|(_, symbol)| symbol.is_type())
+        view.unqualified_symbol(file, name)
+            .filter(|(_, symbol)| symbol.is_type())
     }
 }
 
@@ -248,4 +409,29 @@ pub(crate) fn result_type(
     };
     let (resolved_path, resolved) = resolve_type_declaration(workspace, file, &candidate)?;
     (resolved_path == path && resolved.start == symbol.start).then_some(candidate)
+}
+
+fn import_directories(workspace: &Workspace, import: &str) -> Vec<PathBuf> {
+    let mut directories: Vec<_> = workspace
+        .modules
+        .iter()
+        .filter_map(move |(root, module)| {
+            let suffix = if module == "std" {
+                Some(import)
+            } else if import == module {
+                Some("")
+            } else {
+                import
+                    .strip_prefix(module.as_str())
+                    .and_then(|rest| rest.strip_prefix('/'))
+            };
+            suffix.map(|suffix| root.join(suffix))
+        })
+        .collect();
+    directories.sort();
+    directories.dedup();
+    directories
+        .retain(|directory| workspace.directory_import_path(directory).as_deref() == Some(import));
+
+    directories
 }

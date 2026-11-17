@@ -3,7 +3,6 @@ mod candidates;
 mod embedding;
 pub(crate) mod relations;
 use super::{Context, SourceRange};
-use crate::analysis::scope::Locals;
 use crate::analysis::types::TypeForm;
 use crate::index::IndexedSymbol as Symbol;
 use std::path::Path;
@@ -19,7 +18,18 @@ impl<'a, View> Context<'a, View> {
         name: Option<&str>,
         selection: Option<SourceRange>,
         start: Option<u64>,
+        view_origin: Option<&Path>,
     ) -> Result<SymbolTarget<'a>, (i32, String)> {
+        if view_origin.is_some_and(|file| !self.workspace.files.contains_key(file)) {
+            return Err((-32801, "type hierarchy view is unavailable".into()));
+        }
+        self.select_query_file(view_origin.unwrap_or(file))?;
+        if !self.resolver().file_visible(file) {
+            return Err((
+                -32801,
+                "type hierarchy item is outside the selected view".into(),
+            ));
+        }
         let (file, stub) = self
             .workspace
             .files
@@ -44,12 +54,8 @@ impl<'a, View> Context<'a, View> {
     }
     pub(crate) fn type_is_interface(&self, file: &Path, symbol: &Symbol) -> bool {
         matches!(
-            crate::analysis::types::type_form_in_scope(
-                self.workspace,
-                file,
-                &symbol.name,
-                &Locals::empty(),
-                0,
+            self.with_sema(
+                |sema| sema.declaration_form(crate::analysis::obj::DeclId { file, symbol })
             ),
             Some(TypeForm::Interface)
         )

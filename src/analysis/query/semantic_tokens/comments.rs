@@ -8,22 +8,21 @@
 //! Lookup of doc-link names in package scope and imports.
 //!
 //! Mirrors `tokenVisitor.comment`'s `lookupObjects`: an optional import
-//! qualifier, then either a package-scope name or `Type.Member`. Unresolved or
-//! unexported names produce no tokens, leaving the comment untouched.
-use crate::analysis::obj::ReceiverMember;
+//! qualifier, then either a package-scope name or `Type.Member`. Unresolved links stay comments. Bare non-exported names also stay comments;
+//! members of a named package type follow native package visibility.
+use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
 use crate::analysis::resolve;
-use crate::index::IndexedSymbol;
-use crate::syntax::{MemberKind, TypeConstructor};
-use crate::workspace::Workspace;
+use crate::analysis::types::TypeArena;
+use crate::syntax::TypeConstructor;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::SemanticTokenKind;
 
 const COMMENT: SemanticTokenKind = SemanticTokenKind::Comment;
 
 pub(super) fn split(
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
     file: &Path,
     source: &str,
     span: &Range<usize>,
@@ -41,7 +40,7 @@ pub(super) fn split(
     let mut offset = span.start;
     for line in text.split('\n') {
         let line_end = offset + line.len();
-        split_line(workspace, file, line, offset, line_end, &mut tokens);
+        split_line(arena, file, line, offset, line_end, &mut tokens);
         offset = line_end + 1;
     }
     if tokens.is_empty() {
@@ -89,7 +88,7 @@ fn godirective(text: &str, start: usize) -> Option<Vec<(Range<usize>, SemanticTo
 }
 
 fn split_line(
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
     file: &Path,
     line: &str,
     base: usize,
@@ -109,7 +108,7 @@ fn split_line(
             continue;
         };
         let name = &line[name_start..name_end];
-        let objects = lookup(workspace, file, name);
+        let objects = lookup(arena, file, name);
         if objects.is_empty() {
             index += 1;
             continue;
@@ -177,19 +176,19 @@ struct Found {
     modifiers: u64,
 }
 
-fn lookup(workspace: &Workspace, file: &Path, name: &str) -> Vec<Found> {
+fn lookup(arena: &mut TypeArena<'_>, file: &Path, name: &str) -> Vec<Found> {
     let parts: Vec<&str> = name.split('.').collect();
     if parts.is_empty() || parts.len() > 3 {
         return Vec::new();
     }
     if parts.len() > 1 {
-        if import_path(workspace, file, parts[0]).is_some() {
-            return imported(workspace, file, parts[0], &parts[1..]);
+        if import_path(arena, file, parts[0]).is_some() {
+            return imported(arena, file, parts[0], &parts[1..]);
         }
         // `T.M` resolves in the current package.
-        return current_member(workspace, file, parts[0], parts[1], parts.len() == 3);
+        return current_member(arena, file, parts[0], parts[1], parts.len() == 3);
     }
-    let Some((_, symbol)) = package_object(workspace, file, parts[0]) else {
+    let Some((_, symbol)) = arena.resolver().package_symbol(file, parts[0]) else {
         return Vec::new();
     };
     if !exported(&symbol.name) {
@@ -204,37 +203,23 @@ fn lookup(workspace: &Workspace, file: &Path, name: &str) -> Vec<Found> {
 }
 
 /// Resolves an import alias to its canonical import path.
-fn import_path<'a>(workspace: &'a Workspace, file: &Path, alias: &str) -> Option<&'a str> {
-    workspace.files.get(file).and_then(|stub| {
-        stub.imports
-            .iter()
-            .find(|import| {
-                !import.is_dot()
-                    && !import.is_blank()
-                    && workspace.import_name(import) == Some(alias)
-            })
-            .map(|import| import.path.as_str())
-    })
+fn import_path<'a>(arena: &TypeArena<'a>, file: &Path, alias: &str) -> Option<&'a str> {
+    let resolver = arena.resolver();
+    arena
+        .workspace()
+        .files
+        .get(file)?
+        .imports
+        .iter()
+        .find(|import| {
+            !import.is_dot()
+                && !import.is_blank()
+                && resolver.import_name(file, import) == Some(alias)
+        })
+        .map(|import| import.path.as_str())
 }
 
-/// Doc links use package scope, not names brought into a file by dot imports.
-fn package_object<'a>(
-    workspace: &'a Workspace,
-    file: &Path,
-    name: &str,
-) -> Option<(&'a PathBuf, &'a IndexedSymbol)> {
-    let mut candidates = workspace
-        .package_symbol_candidates(file, crate::bloom::Fingerprint::new(name.as_bytes()))
-        .filter(|(origin, symbol)| {
-            symbol.receiver.is_none()
-                && symbol.name == name
-                && workspace.selector_file_visible(file, origin)
-        });
-    let selected = candidates.next()?;
-    candidates.next().is_none().then_some(selected)
-}
-
-fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> Vec<Found> {
+fn imported(arena: &mut TypeArena<'_>, file: &Path, alias: &str, rest: &[&str]) -> Vec<Found> {
     let mut objects = vec![Found {
         name: alias.to_owned(),
         kind: SemanticTokenKind::Namespace,
@@ -242,13 +227,15 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
     }];
     if rest.len() == 1 {
         let name = rest[0];
-        let Some((_, symbol)) = crate::analysis::resolve::imported_symbol_candidates(
-            workspace,
-            file,
-            alias,
-            Some(crate::bloom::Fingerprint::new(name.as_bytes())),
-        )
-        .find(|(_, symbol)| symbol.name == name && symbol.receiver.is_none()) else {
+        let Some((_, symbol)) = arena
+            .resolver()
+            .imported_symbol_candidates(
+                file,
+                alias,
+                Some(crate::bloom::Fingerprint::new(name.as_bytes())),
+            )
+            .find(|(_, symbol)| symbol.name == name && symbol.receiver.is_none())
+        else {
             return Vec::new();
         };
         if !exported(name) {
@@ -266,22 +253,19 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
         return Vec::new();
     }
     let (receiver_name, member_name) = (rest[0], rest[1]);
-    if !exported(receiver_name) || !exported(member_name) {
-        return Vec::new();
-    }
-    let Some((origin, receiver)) = crate::analysis::resolve::resolve_type_declaration(
-        workspace,
-        file,
-        &format!("{alias}.{receiver_name}"),
-    )
-    .filter(|(origin, _)| workspace.selector_file_visible(file, origin)) else {
+    let Some((origin, receiver)) = arena
+        .resolver()
+        .resolve_type_declaration(file, &format!("{alias}.{receiver_name}"))
+        .filter(|(_, receiver)| !receiver.alias)
+    else {
         return Vec::new();
     };
-    let Some(member) = crate::analysis::types::lookup::scoped_receiver_member(
-        workspace,
+    let Some(member) = arena.declaration_member(
+        DeclId {
+            file: origin,
+            symbol: receiver,
+        },
         file,
-        origin,
-        &receiver.name,
         member_name,
     ) else {
         return Vec::new();
@@ -304,25 +288,28 @@ fn imported(workspace: &Workspace, file: &Path, alias: &str, rest: &[&str]) -> V
 }
 
 fn current_member(
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
     file: &Path,
     receiver_name: &str,
     member_name: &str,
     has_extra: bool,
 ) -> Vec<Found> {
-    if has_extra || !exported(receiver_name) || !exported(member_name) {
+    if has_extra {
         return Vec::new();
     }
-    let Some((origin, receiver)) =
-        package_object(workspace, file, receiver_name).filter(|(_, symbol)| symbol.is_type())
+    let Some((origin, receiver)) = arena
+        .resolver()
+        .package_symbol(file, receiver_name)
+        .filter(|(_, symbol)| symbol.is_type() && !symbol.alias)
     else {
         return Vec::new();
     };
-    let Some(member) = crate::analysis::types::lookup::scoped_receiver_member(
-        workspace,
+    let Some(member) = arena.declaration_member(
+        DeclId {
+            file: origin,
+            symbol: receiver,
+        },
         file,
-        origin,
-        &receiver.name,
         member_name,
     ) else {
         return Vec::new();
@@ -344,15 +331,15 @@ fn current_member(
     objects
 }
 
-fn member_style(member: ReceiverMember<'_>) -> Option<(SemanticTokenKind, u64)> {
+fn member_style(member: ObjectRef<'_>) -> Option<(SemanticTokenKind, u64)> {
     use super::modifiers::SIGNATURE;
     match member {
-        ReceiverMember::Method(_, method) => Some(style(method)),
-        ReceiverMember::Declaration(member) => match member.kind {
-            MemberKind::Method => Some((SemanticTokenKind::Method, SIGNATURE)),
-            MemberKind::Field => Some((SemanticTokenKind::Property, 0)),
-            MemberKind::Interface => None,
-        },
+        ObjectRef::Method(MethodOrigin::Concrete(decl)) => Some(style(decl.symbol)),
+        ObjectRef::Method(MethodOrigin::Interface(_)) => {
+            Some((SemanticTokenKind::Method, SIGNATURE))
+        }
+        ObjectRef::Field(_) => Some((SemanticTokenKind::Property, 0)),
+        _ => None,
     }
 }
 

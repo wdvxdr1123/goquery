@@ -693,6 +693,7 @@ impl Workspace {
             return None;
         }
         let mut stub = index::index_source(source);
+        stub.build_targets = self.build_membership(file, source);
         stub.stamp = index::DiskStamp::of(file);
         // A cgo-disabled build context excludes files importing "C", exactly as
         // the Go build system does; an enabled context contributes the `cgo` tag.
@@ -717,6 +718,7 @@ impl Workspace {
             return None;
         }
         let mut stub = index::index_source(source);
+        stub.build_targets = self.build_membership(file, source);
         stub.stamp = index::DiskStamp::of(file);
         if self.cgo_disabled && stub.imports.iter().any(|import| import.path == "C") {
             return None;
@@ -748,7 +750,10 @@ impl Workspace {
         let target = self.orphan_view_target(file);
         let mut bytes = 0usize;
         let mut admitted = 0usize;
-        for entry in entries.flatten() {
+        for entry in entries
+            .take(super::views::MAX_VIEW_DIRECTORY_ENTRIES)
+            .flatten()
+        {
             if admitted >= MAX_DETACHED_SIBLINGS || bytes >= MAX_DETACHED_SIBLING_BYTES {
                 break;
             }
@@ -765,9 +770,11 @@ impl Workspace {
             if !self.roots.iter().any(|root| path.starts_with(root)) {
                 continue;
             }
-            let Some(source) = self.source(&path) else {
+            let Some(source) = self.source_with_limit(&path, MAX_DETACHED_SIBLING_BYTES - bytes)
+            else {
                 continue;
             };
+            bytes += source.len();
             let matches = match &target {
                 Some(target) => {
                     target.matches_filename(name) && target.matches_file(name, &source) == Ok(true)
@@ -786,7 +793,6 @@ impl Workspace {
             if stub.package != package {
                 continue;
             }
-            bytes += source.len();
             admitted += 1;
             self.files.insert(path.clone(), stub);
             self.detached.insert(path);
@@ -833,6 +839,21 @@ impl Workspace {
         for path in removable {
             self.files.remove(&path);
             self.detached.remove(&path);
+            let Some(directory) = path.parent() else {
+                continue;
+            };
+            let has_files = self
+                .files
+                .range::<Path, _>((
+                    std::ops::Bound::Included(directory),
+                    std::ops::Bound::Unbounded,
+                ))
+                .take_while(|(file, _)| file.starts_with(directory))
+                .any(|(file, _)| file.parent() == Some(directory));
+            if !has_files {
+                self.sdk_packages.remove(directory);
+                self.dependency_packages.remove(directory);
+            }
         }
     }
 }

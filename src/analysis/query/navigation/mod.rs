@@ -2,20 +2,16 @@
 pub(in crate::analysis::query) mod anonymous;
 mod decl_targets;
 use super::Context;
-use crate::analysis::obj::MemberDeclaration;
+use crate::analysis::obj::MemberDeclId;
 use crate::analysis::obj::{MethodOrigin, ObjectRef, SymbolOrigin};
-use crate::analysis::resolve::NameIndex;
+use crate::analysis::resolve::NameProbe;
 use crate::analysis::scope::Locals;
-use crate::analysis::scope::universe;
+use crate::analysis::scope::occurrences::{Occurrences, Role};
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::{Role, SourceAnalysis};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{Lexer, TokenKind};
 use crate::text::SourceMap;
-use crate::workspace::Workspace;
-pub(in crate::analysis::query) use decl_targets::{
-    declaration_type_target, member_declaration_target,
-};
+pub(in crate::analysis::query) use decl_targets::member_declaration_target;
 use std::borrow::Cow;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -24,7 +20,7 @@ pub(crate) enum Target<'a> {
     Unresolved,
     Local(Range<usize>),
     Global(&'a PathBuf, &'a Symbol),
-    Member(MemberDeclaration<'a>),
+    Member(MemberDeclId<'a>),
 }
 
 pub(crate) struct NavigationTarget<'a> {
@@ -40,7 +36,7 @@ pub(crate) struct NavigationTarget<'a> {
 
 pub(crate) enum ReferenceTarget<'a> {
     Global(&'a PathBuf, &'a Symbol),
-    Member(MemberDeclaration<'a>),
+    Member(MemberDeclId<'a>),
     Local(Vec<Range<usize>>),
     AnonymousField(anonymous::InlineField),
     Unresolved,
@@ -58,10 +54,12 @@ struct ImportSite {
 /// the imported package's declared name; otherwise to the explicit alias name.
 /// The equal-name form mirrors gopls' `PkgName` range heuristic: range start at
 /// the spec's name position (the alias when written) and length `len(path)+2`.
-fn import_qualifier_target(workspace: &Workspace, site: &ImportSite, source: &str) -> Range<usize> {
+fn import_qualifier_target(context: &Context<'_>, site: &ImportSite, source: &str) -> Range<usize> {
     match &site.alias {
         Some(alias) => {
-            let declared = workspace.declared_package_name(&site.import_path);
+            let declared = context
+                .resolver()
+                .declared_package_name(context.file(), &site.import_path);
             if declared.is_some_and(|name| name == &source[alias.clone()]) {
                 let end = (alias.start + site.import_path.len() + 2).min(source.len());
                 alias.start..end
@@ -76,7 +74,9 @@ fn import_qualifier_target(workspace: &Workspace, site: &ImportSite, source: &st
 /// Import specs in source order. `path` is the quoted literal span; `name` is
 /// the package identifier the file uses for it (explicit alias or the imported
 /// package's declared name from indexed metadata, never a path suffix guess).
-fn import_sites(workspace: &Workspace, file: &Path, source: &str) -> Vec<ImportSite> {
+fn import_sites(context: &Context<'_>, source: &str) -> Vec<ImportSite> {
+    let workspace = context.workspace();
+    let file = context.file();
     let mut sites = Vec::new();
     let mut tokens = Lexer::new(source);
     while let Some(token) = tokens.next() {
@@ -140,7 +140,10 @@ fn import_sites(workspace: &Workspace, file: &Path, source: &str) -> Vec<ImportS
         {
             continue;
         }
-        site.name = workspace.import_name(import).map(str::to_owned);
+        site.name = import
+            .explicit_name()
+            .or_else(|| context.resolver().declared_package_name(file, &import.path))
+            .map(str::to_owned);
     }
     sites
 }
@@ -158,19 +161,6 @@ fn package_clause_name(source: &str) -> Option<Range<usize>> {
             _ => return None,
         }
     }
-}
-
-/// True when the identifier is a selector field (`x.field`).
-fn preceded_by_dot(source: &str, start: usize) -> bool {
-    let mut end = start;
-    while let Some((offset, character)) = source[..end].char_indices().next_back() {
-        if character.is_whitespace() {
-            end = offset;
-            continue;
-        }
-        return character == '.';
-    }
-    false
 }
 
 /// True when a comment group ends on the line directly before the package
@@ -204,143 +194,40 @@ fn has_package_doc(source: &str) -> bool {
 /// gopls links the package clause to the first compiled file that documents the
 /// package; file order follows the indexed path order of the same package.
 fn package_definition(
-    workspace: &Workspace,
+    context: &Context<'_>,
     file: &Path,
     source: &str,
 ) -> Option<(PathBuf, Range<usize>)> {
-    let package = workspace.files.get(file)?.package.clone();
-    let directory = file.parent()?;
-    // Orphaned buffers see exactly their admitted orphan package view; real
-    // packages exclude stubs that belong to an orphaned editor buffer.
-    let detached = workspace.is_detached(file);
-    // Orphaned test files form their own test package: the production siblings
-    // admitted for a detached buffer belong to the non-test package, so gopls'
-    // orphan view links the clause to itself.
-    if detached
-        && file
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().ends_with("_test.go"))
-    {
+    let workspace = context.workspace();
+    if workspace.is_detached(file) && !crate::workspace::production_file(file) {
         return None;
     }
-    let mut candidates: Vec<&PathBuf> = workspace
-        .files
-        .iter()
-        .filter(|(path, candidate)| {
-            path.parent() == Some(directory)
-                && candidate.package == package
-                && (detached || !workspace.is_detached(path))
-        })
-        .map(|(path, _)| path)
-        .collect();
-    candidates.sort();
-    // Bounded search: the package doc file is normally early in Go's compiled
-    // file order, but large packages (runtime: ~590 files) need a wider window.
-    candidates.truncate(256);
-    for candidate in candidates {
+    let view = context.build_view.get()?;
+    let mut read_bytes = 0usize;
+    for (candidate, _) in workspace.package_files_in_view(file, view).take(256) {
+        let remaining = (1024 * 1024usize).checked_sub(read_bytes)?;
+        if remaining == 0 {
+            return None;
+        }
+        let limit = remaining.min(64 * 1024);
         let text = if candidate == file {
-            Cow::Borrowed(source)
-        } else {
-            match workspace.source(candidate) {
-                Some(source) => Cow::Owned(source),
-                None => continue,
+            let mut end = source.len().min(limit);
+            while !source.is_char_boundary(end) {
+                end -= 1;
             }
+            Cow::Borrowed(&source[..end])
+        } else {
+            let Some(source) = workspace.source_prefix(candidate, limit) else {
+                continue;
+            };
+            Cow::Owned(source)
         };
-        if !has_package_doc(&text) {
-            continue;
+        read_bytes += text.len();
+        if has_package_doc(&text) {
+            return (candidate != file)
+                .then(|| Some((candidate.clone(), package_clause_name(&text)?)))
+                .flatten();
         }
-        if candidate == file {
-            return None;
-        }
-        let name = package_clause_name(&text)?;
-        return Some((candidate.clone(), name));
-    }
-    // Unindexed siblings (e.g. platform-only command directories) can still own
-    // the package doc comment. Orphan packages only see their admitted view, and
-    // a test file's package doc comes from test files, never unindexed
-    // production files.
-    if detached
-        || file
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().ends_with("_test.go"))
-    {
-        return None;
-    }
-    let mut extra: Vec<PathBuf> = std::fs::read_dir(directory)
-        .ok()?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension().is_some_and(|extension| extension == "go")
-                && !workspace.files.contains_key(path)
-                && path != file
-        })
-        .collect();
-    extra.sort();
-    extra.truncate(32);
-    for candidate in extra {
-        let Some(text) = workspace.source(&candidate) else {
-            continue;
-        };
-        if !has_package_doc(&text) {
-            continue;
-        }
-        let name = package_clause_name(&text)?;
-        if !text[name.clone()].eq(package.as_str()) {
-            continue;
-        }
-        return Some((candidate, name));
-    }
-    None
-}
-
-/// `alias.Name` where `alias` is an imported package name: resolve the package
-/// member through shared import metadata (constants, variables, types, funcs).
-fn qualified_selector<'a>(
-    workspace: &'a Workspace,
-    file: &Path,
-    source: &str,
-    selection: &Range<usize>,
-) -> Option<(&'a PathBuf, &'a Symbol)> {
-    let mut tokens = Lexer::new(source).filter(|token| token.kind != TokenKind::Comment);
-    let mut previous: Option<crate::syntax::Token> = None;
-    let mut before: Option<crate::syntax::Token> = None;
-    for token in tokens.by_ref() {
-        if token.kind != TokenKind::Ident || token.span != *selection {
-            before = previous;
-            previous = Some(token);
-            continue;
-        }
-        let (Some(period), Some(alias)) = (previous, before) else {
-            return None;
-        };
-        if period.kind != TokenKind::Period || alias.kind != TokenKind::Ident {
-            return None;
-        }
-        let alias_name = &source[alias.span];
-        if !universe::imported_name(workspace, file, alias_name) {
-            return None;
-        }
-        let field = &source[selection.clone()];
-        let probe = crate::bloom::Fingerprint::new(field.as_bytes());
-        let candidates: Vec<_> = crate::analysis::resolve::imported_symbol_candidates(
-            workspace,
-            file,
-            alias_name,
-            Some(probe),
-        )
-        .filter(|(_, symbol)| symbol.receiver.is_none() && symbol.name == field)
-        .collect();
-        // An orphaned file answers in a view selected by its own build
-        // constraints, so variants of the imported package that the host build
-        // excludes (for example windows syscall files) must not compete.
-        let view = workspace.orphan_view_target(file);
-        let mut matches = candidates.into_iter().filter(|(path, _)| {
-            view.as_ref()
-                .is_none_or(|target| workspace.file_matches_target(path, target))
-        });
-        let (path, symbol) = matches.next()?;
-        return matches.next().is_none().then_some((path, symbol));
     }
     None
 }
@@ -353,7 +240,6 @@ impl<'a> Context<'a> {
         let workspace = self.workspace;
         let file = self.view.file;
         let source = self.source();
-        let map = SourceMap::new(source);
         let selection = crate::syntax::Lexer::new(source)
             .take_while(|token| token.span.start <= offset)
             .find(|token| {
@@ -370,10 +256,10 @@ impl<'a> Context<'a> {
                 target: Target::Local(name.clone()),
                 fallback: false,
                 builtin: None,
-                location: package_definition(workspace, file, source),
+                location: package_definition(self, file, source),
             });
         }
-        let sites = import_sites(workspace, file, source);
+        let sites = import_sites(self, source);
         // Cursor inside an import path literal: gopls links the literal itself.
         if let Some(site) = sites
             .iter()
@@ -399,191 +285,24 @@ impl<'a> Context<'a> {
                 location: None,
             });
         }
-        let mut target = if let Some(selection) = &selection {
-            if let Some(symbol) = workspace.files[file]
-                .symbols
-                .iter()
-                .find(|symbol| symbol.start == selection.start && symbol.end == selection.end)
-            {
-                Target::Global(
-                    workspace
-                        .files
-                        .get_key_value(file)
-                        .expect("indexed source")
-                        .0,
-                    symbol,
-                )
-            } else if let Some(target) =
-                declaration_type_target(workspace, file, source, selection, &map)
-            {
-                target
-            } else if let Some(target) =
-                member_declaration_target(workspace, file, source, selection, &map)
-            {
-                Target::Member(target)
-            } else if let Some(nav) = self.sema_navigation_target(offset, selection) {
-                return Ok(nav);
-            } else if &source[selection.clone()] == "_"
-                && let Some(function) = super::cursor_function(workspace, file, source, offset)
-                && let Some(binding) = Locals::scope_at_cursor(source, offset, Some(function))?
-                    .locals
-                    .range_blank_at(selection)
-            {
-                Target::Local(binding.selection.clone())
-            } else {
-                Target::Unresolved
-            }
+        if let Some(selection) = &selection
+            && let Some(target) = self.sema_navigation_target(selection)
+        {
+            return Ok(target);
+        }
+        // Blank range declarations are protocol self-anchors, like import
+        // literals; the Go universe does not give the blank identifier an object.
+        let target = if let Some(selection) = &selection
+            && &source[selection.clone()] == "_"
+            && let Some(function) = super::cursor_function(workspace, file, source, offset)
+            && let Some(binding) = Locals::scope_at_cursor(source, offset, Some(function))?
+                .locals
+                .range_blank_at(selection)
+        {
+            Target::Local(binding.selection.clone())
         } else {
             Target::Unresolved
         };
-        let builtin_name = |selection: &Range<usize>| -> Option<String> {
-            let name = &source[selection.clone()];
-            (!preceded_by_dot(source, selection.start)
-                && !universe::imported_name(workspace, file, name)
-                && crate::analysis::resolve::unqualified_symbol(workspace, file, name).is_none()
-                && universe::builtin(name))
-            .then(|| name.to_string())
-        };
-        // An orphaned file resolves imported members in the view selected by its
-        // own build constraints. Do this before host-context type resolution so
-        // variant-specific declarations win (for example unix syscall types).
-        if matches!(target, Target::Unresolved)
-            && workspace.orphan_view_target(file).is_some()
-            && let Some(selection) = &selection
-            && !preceded_by_dot(source, selection.start)
-            && let Some((path, symbol)) = qualified_selector(workspace, file, source, selection)
-        {
-            target = Target::Global(path, symbol);
-        }
-        // Inline `struct{...}` fields have no named owner symbol; the literal's
-        // own type expression declares them. Selector chains ending at a named
-        // struct field resolve through the chain's declaration annotations.
-        if matches!(target, Target::Unresolved)
-            && let Some(selection) = &selection
-        {
-            if let Some(field) = anonymous::field_target(source, selection) {
-                target = Target::Local(field);
-            } else if let Some((path, span)) =
-                anonymous::chain_location(workspace, file, source, selection, offset)
-            {
-                if path == file {
-                    target = Target::Local(span);
-                } else {
-                    return Ok(NavigationTarget {
-                        target,
-                        fallback: false,
-                        builtin: None,
-                        location: Some((path, span)),
-                    });
-                }
-            }
-        }
-        // A package member selected through its import qualifier (`pkg.Name`).
-        if matches!(target, Target::Unresolved)
-            && let Some(selection) = &selection
-            && let Some((path, symbol)) = qualified_selector(workspace, file, source, selection)
-        {
-            target = Target::Global(path, symbol);
-        }
-        // A qualifier (`pkg.Name`, `*pkg.Type`) links to the import alias name or,
-        // for a default import, to the path literal, as gopls does.
-        let import_path = selection
-            .as_ref()
-            .filter(|selection| !preceded_by_dot(source, selection.start))
-            .and_then(|selection| {
-                let name = &source[selection.clone()];
-                universe::imported_name(workspace, file, name)
-                    .then(|| sites.iter().find(|site| site.name.as_deref() == Some(name)))
-                    .flatten()
-                    .map(|site| import_qualifier_target(workspace, site, source))
-            });
-        if matches!(target, Target::Unresolved)
-            && let Some(import_path) = import_path
-        {
-            target = Target::Local(import_path);
-        }
-        // Unresolved non-member occurrences inspect lexical/type-signature roles
-        // before falling back to package-level or predeclared universe symbols.
-        if matches!(target, Target::Unresolved)
-            && let Some(selection) = &selection
-            && !preceded_by_dot(source, selection.start)
-        {
-            let name = &source[selection.clone()];
-            let analysis = SourceAnalysis::for_name(source, &workspace.files[file], name)?;
-            let occ = analysis.names.iter().find(|n| n.span == *selection);
-            match occ.map(|n| &n.role) {
-                Some(Role::Parameter | Role::Result) => {
-                    target = Target::Local(selection.clone());
-                }
-                Some(
-                    Role::Field
-                    | Role::Ignored
-                    | Role::BlankDeclaration { .. }
-                    | Role::Namespace
-                    | Role::Member(_)
-                    | Role::ExpressionMember(_)
-                    | Role::Type(Some(_))
-                    | Role::EmbeddedType(Some(_)),
-                ) => {}
-                Some(Role::LiteralKey(_) | Role::LiteralElementKey(_)) => {
-                    if let Some(occ) = occ {
-                        let mut resolver = IdentityResolver::new(workspace, file);
-                        if let Some(resolved) = resolver.resolve(&analysis, source, occ) {
-                            target = match resolved {
-                                Identity::Local(sel) => Target::Local(sel),
-                                Identity::Member(member) => Target::Member(member),
-                                Identity::Global(path, symbol) => Target::Global(path, symbol),
-                            };
-                        }
-                    }
-                }
-                Some(Role::FieldDeclaration(_)) => {
-                    if let Some(occ) = occ {
-                        let mut resolver = IdentityResolver::new(workspace, file);
-                        if let Some(Identity::Member(member)) =
-                            resolver.resolve(&analysis, source, occ)
-                        {
-                            target = Target::Member(member);
-                        }
-                    }
-                }
-                Some(Role::Type(None) | Role::EmbeddedType(None)) => {
-                    if let Some(binding) = analysis.locals.definition_at(selection, name) {
-                        if binding.object_kind.is_type() {
-                            target = Target::Local(binding.selection.clone());
-                        }
-                    } else if let Some((path, symbol)) =
-                        crate::analysis::resolve::unqualified_symbol(workspace, file, name)
-                            .filter(|(_, symbol)| symbol.is_type())
-                    {
-                        target = Target::Global(path, symbol);
-                    } else if let Some(builtin) = builtin_name(selection) {
-                        return Ok(NavigationTarget {
-                            target,
-                            fallback: false,
-                            builtin: Some(builtin),
-                            location: None,
-                        });
-                    }
-                }
-                Some(Role::Name) | None => {
-                    if let Some(binding) = analysis.locals.definition_at(selection, name) {
-                        target = Target::Local(binding.selection.clone());
-                    } else if let Some((path, symbol)) =
-                        crate::analysis::resolve::unqualified_symbol(workspace, file, name)
-                    {
-                        target = Target::Global(path, symbol);
-                    } else if let Some(builtin) = builtin_name(selection) {
-                        return Ok(NavigationTarget {
-                            target,
-                            fallback: false,
-                            builtin: Some(builtin),
-                            location: None,
-                        });
-                    }
-                }
-            }
-        }
         Ok(NavigationTarget {
             target,
             fallback: false,
@@ -592,24 +311,28 @@ impl<'a> Context<'a> {
         })
     }
 
-    fn sema_navigation_target(
-        &self,
-        offset: usize,
-        selection: &Range<usize>,
-    ) -> Option<NavigationTarget<'a>> {
-        let off = u32::try_from(offset).ok()?;
+    fn sema_navigation_target(&self, selection: &Range<usize>) -> Option<NavigationTarget<'a>> {
         let sel = [
             u32::try_from(selection.start).ok()?,
             u32::try_from(selection.end).ok()?,
         ];
         let file = self.view.file;
         let source = self.source();
-        let (span, obj) = self.with_sema(|sema| sema.object_at(file, source, off))?;
-        if span != sel {
-            return None;
-        }
+        let obj = self.with_sema(|sema| sema.resolve_offset(file, source, sel))?;
         match obj {
-            ObjectRef::PkgName { .. } => None,
+            ObjectRef::PkgName { .. } => {
+                let name = source.get(selection.clone())?;
+                let sites = import_sites(self, source);
+                let site = sites
+                    .iter()
+                    .find(|site| site.name.as_deref() == Some(name))?;
+                Some(NavigationTarget {
+                    target: Target::Local(import_qualifier_target(self, site, source)),
+                    fallback: false,
+                    builtin: None,
+                    location: None,
+                })
+            }
             ObjectRef::Var {
                 origin:
                     SymbolOrigin::Local {
@@ -685,7 +408,7 @@ impl<'a> Context<'a> {
                 })
             }
             ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member)) => {
-                if let Some(decl) = member.to_member_declaration(self.workspace) {
+                if let Some(decl) = member.indexed(self.workspace) {
                     Some(NavigationTarget {
                         target: Target::Member(decl),
                         fallback: false,
@@ -736,25 +459,28 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub(crate) fn reference_index(&self, offset: usize) -> Option<NameIndex<'a>> {
+    pub(crate) fn reference_probe(&self, offset: usize) -> Option<NameProbe> {
         let source = self.source();
         let selection = Lexer::new(source)
             .take_while(|token| token.span.start <= offset)
             .find(|token| token.kind == TokenKind::Ident && offset <= token.span.end)?
             .span;
-        Some(NameIndex::new(self.workspace, &source[selection]))
+        Some(NameProbe::new(&source[selection]))
     }
 
     pub(crate) fn reference_target<'index>(
         &self,
-        index: &'index NameIndex<'a>,
+        index: &'index NameProbe,
         offset: usize,
         include_declaration: bool,
-    ) -> Result<ReferenceTarget<'index>, (i32, String)> {
+    ) -> Result<ReferenceTarget<'index>, (i32, String)>
+    where
+        'a: 'index,
+    {
         let source = self.source();
         let mut resolver = IdentityResolver::for_name(self.workspace, self.view.file, index);
         let analysis =
-            SourceAnalysis::for_name(source, &self.workspace.files[self.view.file], index.name())?;
+            Occurrences::for_name(source, &self.workspace.files[self.view.file], index.name())?;
         let Some(occurrence) = analysis
             .names
             .iter()
@@ -762,14 +488,14 @@ impl<'a> Context<'a> {
         else {
             return Ok(ReferenceTarget::Unresolved);
         };
-        let target = match resolver.resolve(&analysis, source, occurrence) {
+        let target = match self.resolve_identity(&mut resolver, &analysis, source, occurrence) {
             Some(Identity::Global(file, symbol)) => ReferenceTarget::Global(file, symbol),
             Some(Identity::Member(member)) => ReferenceTarget::Member(member),
             Some(Identity::Local(selection)) => {
                 let mut locations = Vec::new();
                 for name in &analysis.names {
                     if (include_declaration || name.span != selection)
-                        && matches!(resolver.resolve(&analysis, source, name), Some(Identity::Local(ref other)) if *other == selection)
+                        && matches!(self.resolve_identity(&mut resolver, &analysis, source, name), Some(Identity::Local(ref other)) if *other == selection)
                     {
                         if locations.len() == crate::analysis::budget::MAX_REFERENCES {
                             return Err((
@@ -791,20 +517,11 @@ impl<'a> Context<'a> {
                     | Role::ExpressionMember(_)
             ) =>
             {
-                let inline = anonymous::InlineIndex::new(source);
-                anonymous::occurrence_field(
-                    self.workspace,
-                    self.view.file,
-                    source,
-                    &analysis,
-                    occurrence,
-                    &inline,
-                )
-                .map_or(ReferenceTarget::Unresolved, ReferenceTarget::AnonymousField)
+                anonymous::occurrence_field(self, self.view.file, source, &analysis, occurrence)
+                    .map_or(ReferenceTarget::Unresolved, ReferenceTarget::AnonymousField)
             }
             None => ReferenceTarget::Unresolved,
         };
-        drop(resolver);
         Ok(target)
     }
 
@@ -827,18 +544,14 @@ impl<'a> Context<'a> {
 
     pub(crate) fn member_selection(
         &self,
-        member: MemberDeclaration<'_>,
+        member: MemberDeclId<'_>,
         current_map: &SourceMap<'_>,
     ) -> Option<super::SourceRange> {
-        let data = if member.file == self.view.file {
-            member.data_in_source(self.source(), current_map)
-        } else {
-            member.data(self.workspace)
-        }?;
-        Some(super::SourceRange::coordinates(
-            (data.selection.start.line, data.selection.start.character),
-            (data.selection.end.line, data.selection.end.character),
-        ))
+        self.cross_file_range(
+            member.file,
+            &(member.selection[0] as usize..member.selection[1] as usize),
+            current_map,
+        )
     }
 
     /// gopls links a body-less Go function to its assembler `TEXT` declaration.

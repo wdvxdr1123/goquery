@@ -1,20 +1,11 @@
 //! Checked completion labels/types share query scope, never protocol item edits.
 use super::signatures::signature_in_source;
-use super::{
-    CallableSignature, CompletionReceiver, Context, Kind, PreparedMethods, Presentation,
-    SignatureSource,
-};
-use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
+use super::{CallableSignature, Context, Kind, Presentation, SignatureSource};
 use crate::analysis::scope::{Binding, Locals};
-use crate::analysis::types::lookup::ScopedOwnerEnv;
-use crate::analysis::types::{
-    TypeForm, TypePresentation, completion_inferable, declared_type_presentation,
-    local_type_presentation,
-};
+use crate::analysis::types::{TypeForm, completion_inferable};
 use crate::index::IndexedSymbol as Symbol;
-use crate::syntax::{AggregateMember, MemberKind, TokenKind};
+use crate::syntax::{AggregateMember, TokenKind};
 use crate::text::SourceMap;
-use std::path::Path;
 
 impl Context<'_> {
     pub(super) fn generic_completion(
@@ -51,7 +42,10 @@ impl Context<'_> {
             .map(|parameter| &header[parameter.annotation.clone()])
             .collect();
         // Inference uncertainty must keep explicit arguments, never erase them.
-        let inferred = completion_inferable(self.workspace, location.origin, &formals, &inputs)
+        let inferred = self
+            .with_sema(|sema| {
+                completion_inferable(sema.arena_mut(), location.origin, &formals, &inputs)
+            })
             .unwrap_or_else(|| vec![false; formals.len()]);
         let keep = inferred
             .iter()
@@ -92,69 +86,33 @@ impl Context<'_> {
 }
 
 impl Context<'_> {
-    pub(super) fn aggregate_type_completion(
+    fn type_presentation(
         &self,
-        file: &Path,
-        symbol: &Symbol,
+        view: crate::analysis::sema::CompletionTypeView,
     ) -> Option<Presentation> {
-        let info = symbol
-            .type_info
-            .as_ref()
-            .filter(|info| info.target.is_none())?;
-        self.type_presentation(
-            file,
-            TypePresentation {
-                form: if info.is_interface() {
-                    TypeForm::Interface
-                } else {
-                    TypeForm::Struct
-                },
-                text: if info.is_interface() {
-                    "interface{...}"
-                } else {
-                    "struct{...}"
-                }
-                .to_owned(),
-            },
-        )
-    }
-    pub(super) fn type_completion(
-        &self,
-        file: &Path,
-        origin: &Path,
-        symbol: &Symbol,
-        source: &str,
-        map: &SourceMap<'_>,
-    ) -> Option<Presentation> {
-        let declaration = source.get(symbol.end..map.offset(symbol.range.end)?)?;
-        let presentation = declared_type_presentation(self.workspace, file, origin, declaration)?;
-        self.type_presentation(file, presentation)
-    }
-
-    pub(super) fn type_presentation(
-        &self,
-        file: &Path,
-        presentation: TypePresentation,
-    ) -> Option<Presentation> {
-        let kind = match presentation.form {
+        let kind = match view.form {
             TypeForm::Struct => Kind::Struct,
             TypeForm::Interface => Kind::Interface,
             _ => Kind::TypeName,
         };
-        let detail = if matches!(presentation.form, TypeForm::Signature) {
-            let parsed = crate::syntax::parse_literal_signature(&presentation.text);
-            let (information, _) =
-                crate::analysis::query::signatures::label::signature_from_parsed(
-                    self.workspace,
-                    file,
-                    file,
-                    &presentation.text,
-                    &parsed,
-                    "",
-                )?;
-            format!("func{}", information.label)
+        let detail = if let Some(callable) = view.callable {
+            let signature = view
+                .header
+                .as_deref()
+                .and_then(|header| {
+                    crate::analysis::query::signatures::label::signature_from_view(
+                        header,
+                        &crate::syntax::parse_literal_signature(header),
+                        "",
+                        &callable,
+                    )
+                })
+                .or_else(|| {
+                    crate::analysis::query::signatures::label::unnamed_signature_view("", &callable)
+                })?;
+            format!("func{}", signature.0.label)
         } else {
-            presentation.text
+            view.text
         };
         Some(Presentation {
             detail: Some(detail),
@@ -166,127 +124,140 @@ impl Context<'_> {
 }
 
 impl Context<'_> {
-    pub(crate) fn member_presentation(
+    pub(in crate::analysis::query) fn aggregate_members(
         &self,
-        types: Option<&ScopedOwnerEnv<'_>>,
-        member: &MemberDeclaration<'_>,
+        declaration: &str,
+    ) -> Vec<AggregateMember> {
+        crate::syntax::aggregate_members(declaration)
+    }
+
+    pub(super) fn member_presentation(
+        &self,
+        member: &super::CompletionMember<'_>,
+        view: Option<&crate::analysis::sema::MemberTypeView>,
+        source: Option<&str>,
+        map: Option<&SourceMap<'_>>,
         declaration: &str,
         entries: &[AggregateMember],
     ) -> Option<Presentation> {
-        let file = self.file();
-        let entry = member.entry(declaration, entries)?;
-        let annotation = declaration.get(entry.annotation.clone())?.trim();
-        if annotation.is_empty() || annotation.len() > 16 * 1024 {
-            return None;
-        }
-        let callable = member.kind == MemberKind::Method
-            || crate::syntax::Lexer::new(annotation)
-                .next()
-                .is_some_and(|token| token.kind == TokenKind::Func);
-        let header = if member.kind == MemberKind::Method {
-            format!("func {annotation}")
-        } else {
-            annotation.to_owned()
-        };
-        let generic = crate::syntax::Lexer::new(declaration)
-            .next()
-            .is_some_and(|token| token.kind == TokenKind::LBrack);
-        let instantiated = if generic {
-            Some(types?.render(&header)?)
-        } else {
-            None
-        };
-        let origin = if instantiated.is_some() {
-            file
-        } else {
-            member.file
-        };
-        let header = instantiated.as_deref().unwrap_or(&header);
-        if callable {
-            let parsed = crate::syntax::parse_literal_signature(header);
-            let signature = crate::analysis::query::signatures::label::signature_from_parsed(
-                self.workspace,
-                file,
-                origin,
-                header,
-                &parsed,
-                member.name,
-            )?;
-            let opening = signature.0.label.find('(')?;
-            let detail = Some(format!("func{}", &signature.0.label[opening..]));
-            return Some(Presentation {
-                detail,
-                signature: (member.kind == MemberKind::Method).then_some(signature),
-                type_parameters: None,
-                kind: None,
+        let view = view?;
+        let is_method = matches!(member.object, crate::analysis::obj::ObjectRef::Method(_));
+        let signature = view.callable.as_ref().and_then(|callable| {
+            let header = member.method.and_then(|(_, method)| {
+                let source = source?;
+                let start = map?.offset(method.range.start)?;
+                let end = method
+                    .body()
+                    .map(|body| body.start)
+                    .or_else(|| map?.offset(method.range.end))?;
+                let header = source.get(start..end)?;
+                (header.len() <= 16 * 1024).then_some(header)
             });
-        }
+            let annotation = member.declaration.and_then(|member| {
+                let entry = member.entry(declaration, entries)?;
+                declaration.get(entry.annotation.clone())
+            });
+            if !is_method
+                && annotation.is_none_or(|annotation| {
+                    crate::syntax::Lexer::new(annotation)
+                        .next()
+                        .is_none_or(|token| token.kind != TokenKind::Func)
+                })
+            {
+                return None;
+            }
+            let owned_header = annotation
+                .filter(|_| is_method)
+                .map(|annotation| format!("func {annotation}"));
+            let header = header.or(owned_header.as_deref()).or_else(|| {
+                annotation.filter(|annotation| {
+                    crate::syntax::Lexer::new(annotation)
+                        .next()
+                        .is_some_and(|token| token.kind == TokenKind::Func)
+                })
+            });
+            let named = header.and_then(|header| {
+                let mut parsed = if member.method.is_some() {
+                    crate::syntax::parse_signature(header)
+                } else {
+                    crate::syntax::parse_literal_signature(header)
+                };
+                if view.method_expression {
+                    parsed.parameters.insert(
+                        0,
+                        crate::syntax::Parameter {
+                            name: parsed
+                                .receiver
+                                .first()
+                                .and_then(|receiver| receiver.name.clone()),
+                            annotation: 0..0,
+                            variadic: false,
+                        },
+                    );
+                }
+                crate::analysis::query::signatures::label::signature_from_view(
+                    header,
+                    &parsed,
+                    &member.name,
+                    callable,
+                )
+            });
+            named.or_else(|| {
+                crate::analysis::query::signatures::label::unnamed_signature_view(
+                    &member.name,
+                    callable,
+                )
+            })
+        });
+        let detail = signature
+            .as_ref()
+            .and_then(|(signature, _)| {
+                let opening = signature.label.find('(')?;
+                Some(format!("func{}", &signature.label[opening..]))
+            })
+            .unwrap_or_else(|| view.type_text.clone());
         Some(Presentation {
-            detail: crate::analysis::query::signatures::label::signature_type(
-                self.workspace,
-                file,
-                origin,
-                header,
-            ),
-            signature: None,
+            detail: Some(detail),
+            signature: signature.filter(|_| is_method),
             type_parameters: None,
             kind: None,
         })
     }
 }
 
-impl<'a> Context<'a> {
-    pub(crate) fn aggregate_members(&self, declaration: &str) -> Vec<AggregateMember> {
-        crate::syntax::aggregate_members(declaration)
-    }
-    pub(crate) fn completion_members(
-        &self,
-        receiver: &CompletionReceiver<'_>,
-    ) -> Vec<ReceiverMember<'a>> {
-        crate::analysis::types::lookup::scoped_receiver_members(
-            self.workspace,
-            self.file(),
-            receiver.scope,
-            &receiver.text,
-        )
-    }
-    pub(crate) fn completion_member_types(
-        &self,
-        scope: &Path,
-        receiver: &str,
-        member: MemberDeclaration<'_>,
-        declaration: &str,
-    ) -> Option<ScopedOwnerEnv<'a>> {
-        crate::syntax::Lexer::new(declaration)
-            .next()
-            .filter(|token| token.kind == TokenKind::LBrack)?;
-        ScopedOwnerEnv::for_member(self.workspace, self.file(), scope, receiver, member)
-    }
-    pub(crate) fn binding_signature(
+impl Context<'_> {
+    pub(in crate::analysis::query) fn binding_signature(
         &self,
         _locals: &Locals,
         binding: &Binding,
     ) -> Option<(CallableSignature, bool)> {
         self.local_binding_signature(&binding.selection, binding.scope_start(), &binding.name)
     }
-    pub(crate) fn binding_detail(&self, locals: &Locals, binding: &Binding) -> Option<String> {
-        self.binding_type(locals, binding)
-    }
-    pub(crate) fn local_completion_type(
+    pub(in crate::analysis::query) fn binding_detail(
         &self,
         locals: &Locals,
         binding: &Binding,
-    ) -> Option<Presentation> {
-        let presentation =
-            local_type_presentation(self.workspace, self.file(), self.source(), locals, binding)?;
-        self.type_presentation(self.file(), presentation)
+    ) -> Option<String> {
+        self.binding_type(locals, binding)
     }
-    pub(crate) fn symbol_completion(
+    pub(in crate::analysis::query) fn local_completion_type(
         &self,
+        _locals: &Locals,
+        binding: &Binding,
+    ) -> Option<Presentation> {
+        let span = [
+            u32::try_from(binding.selection.start).ok()?,
+            u32::try_from(binding.selection.end).ok()?,
+        ];
+        let view =
+            self.with_sema(|sema| sema.local_completion_type(self.file(), self.source(), span))?;
+        self.type_presentation(view)
+    }
+    pub(in crate::analysis::query) fn symbol_completion(
+        &self,
+        origin: &std::path::Path,
         symbol: &Symbol,
         location: Option<&SignatureSource<'_>>,
-        receiver: Option<(&Path, &str)>,
-        methods: &mut Option<PreparedMethods<'a>>,
     ) -> Option<Presentation> {
         if symbol.is_callable() {
             let location = location?;
@@ -296,26 +267,23 @@ impl<'a> Context<'a> {
             {
                 return self.generic_completion(location, symbol);
             }
-            signature_in_source(self.workspace, location, symbol, receiver, methods).map(
-                |signature| Presentation {
-                    detail: None,
-                    signature: Some(signature),
-                    type_parameters: None,
-                    kind: None,
-                },
-            )
+            signature_in_source(self.workspace, location, symbol).map(|signature| Presentation {
+                detail: None,
+                signature: Some(signature),
+                type_parameters: None,
+                kind: None,
+            })
         } else if symbol.is_type() {
-            self.aggregate_type_completion(self.file(), symbol)
-                .or_else(|| {
-                    let location = location?;
-                    self.type_completion(
-                        location.file,
-                        location.origin,
+            let view = self.with_sema(|sema| {
+                sema.declaration_completion_type(
+                    crate::analysis::obj::DeclId {
+                        file: origin,
                         symbol,
-                        location.source,
-                        location.map,
-                    )
-                })
+                    },
+                    self.file(),
+                )
+            })?;
+            self.type_presentation(view)
         } else {
             None
         }

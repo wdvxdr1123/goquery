@@ -1,6 +1,7 @@
 //! Complete bounded struct fields, shared by identity, substitution and relations.
 use super::{MAX_BYTES, MAX_DEPTH, Tags, Ty, TypeArena, TypeId};
-use crate::analysis::obj::MemberDeclId;
+use super::{PromotionIndices, Selection, SelectionKind};
+use crate::analysis::obj::{MemberDeclId, ObjectRef};
 use crate::analysis::types::declaration_body;
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
@@ -225,12 +226,12 @@ impl<'a> TypeArena<'a> {
         }
     }
 
-    pub(crate) fn direct_struct_field(
+    pub(crate) fn literal_field(
         &mut self,
         target: TypeId,
         consumer: &Path,
         name: &str,
-    ) -> Option<(MemberDeclId<'a>, TypeId)> {
+    ) -> Option<Selection<'a>> {
         if name == "_" {
             return None;
         }
@@ -243,26 +244,114 @@ impl<'a> TypeArena<'a> {
         let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
             return None;
         };
+        if self
+            .workspace
+            .file_go_version(consumer)
+            .is_some_and(|version| version >= 27)
+        {
+            let mut selection = self.lookup_field_or_method(root, false, consumer, name)??;
+            if !matches!(selection.obj, ObjectRef::Field(_)) || selection.indirect {
+                return None;
+            }
+            selection.recv = target;
+            return Some(selection);
+        }
         let same_pkg =
             crate::syntax::is_exported_name(name) || self.same_field_package(origin, consumer)?;
         if !same_pkg {
             return None;
         }
-        for field in &self.fields[fields] {
+        for (ordinal, field) in self.fields[fields].iter().enumerate() {
             if field.name == name {
-                return Some((
-                    MemberDeclId {
+                return Some(Selection {
+                    kind: SelectionKind::FieldVal,
+                    recv: target,
+                    obj: ObjectRef::Field(MemberDeclId {
                         file: origin,
                         owner,
                         selection: field.selection,
                         embedded: field.embedded,
                         builtin: false,
-                    },
-                    field.ty,
-                ));
+                    }),
+                    ty: field.ty,
+                    indices: PromotionIndices::from_slice(&[u16::try_from(ordinal).ok()?])?,
+                    indirect: false,
+                });
             }
         }
         None
+    }
+
+    /// Direct field suggestions retain the checked field's identity and type.
+    /// Promoted literal keys are admitted separately by the file language view.
+    pub(crate) fn literal_fields(
+        &mut self,
+        target: TypeId,
+        consumer: &Path,
+    ) -> Option<Vec<(String, Selection<'a>)>> {
+        let unaliased = self.unalias(target)?;
+        let owner = self
+            .named_declaration(unaliased)
+            .map(|(decl, _, _)| decl.symbol);
+        let root = self.underlying(unaliased)?;
+        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
+            return None;
+        };
+        if self
+            .workspace
+            .file_go_version(consumer)
+            .is_some_and(|version| version >= 27)
+        {
+            let mut members = self.accessible_members(root, false, consumer)?;
+            members.retain(|(_, selection)| {
+                matches!(selection.obj, ObjectRef::Field(_)) && !selection.indirect
+            });
+            for (_, selection) in &mut members {
+                selection.recv = target;
+            }
+            members.sort_by(|(_, a), (_, b)| {
+                a.indices
+                    .as_slice()
+                    .len()
+                    .cmp(&b.indices.as_slice().len())
+                    .then_with(|| a.indices.as_slice().cmp(b.indices.as_slice()))
+            });
+            return Some(members);
+        }
+        let mut names = 0usize;
+        let mut result = Vec::new();
+        for (ordinal, index) in fields.enumerate() {
+            self.step()?;
+            let field = &self.fields[index];
+            if field.name == "_"
+                || !crate::syntax::is_exported_name(&field.name)
+                    && !self.same_field_package(origin, consumer)?
+            {
+                continue;
+            }
+            names = names.checked_add(field.name.len())?;
+            if names > MAX_BYTES {
+                return None;
+            }
+            result.push((
+                field.name.clone(),
+                Selection {
+                    kind: SelectionKind::FieldVal,
+                    recv: target,
+                    obj: ObjectRef::Field(MemberDeclId {
+                        file: origin,
+                        owner,
+                        selection: field.selection,
+                        embedded: field.embedded,
+                        builtin: false,
+                    }),
+                    ty: field.ty,
+                    indices: PromotionIndices::from_slice(&[u16::try_from(ordinal).ok()?])?,
+                    indirect: false,
+                },
+            ));
+        }
+        Some(result)
     }
 
     pub(crate) fn struct_positional_fields(

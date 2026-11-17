@@ -292,6 +292,16 @@ impl Workspace {
         self.folders = folders;
         self.roots = plan.roots;
         self.modules = plan.modules;
+        self.module_go_versions = plan.go_versions;
+        self.sdk_go_version = self
+            .sdk_root
+            .as_deref()
+            .and_then(|root| self.manifest(&root.join("go.mod")).ok().flatten())
+            .and_then(|manifest| {
+                manifest
+                    .go
+                    .map_or(Some(16), |version| super::language::minor(&version))
+            });
         self.main_modules = plan.mains;
         self.compiler_checkout = plan.compiler_checkout;
         self.configure_sdk_vendor();

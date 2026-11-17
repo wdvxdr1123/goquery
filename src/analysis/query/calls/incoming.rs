@@ -1,9 +1,9 @@
 //! Incoming edges follow symbol references, including callback values and closures.
 use super::{CallGroup, Groups, finish, record_call};
 use crate::analysis::query::{Context, SourceRange};
-use crate::analysis::resolve::NameIndex;
+use crate::analysis::resolve::NameProbe;
+use crate::analysis::scope::occurrences::Occurrences;
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::SourceAnalysis;
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
@@ -17,9 +17,8 @@ impl<'a, View> Context<'a, View> {
     ) -> Result<Vec<CallGroup<'a>>, (i32, String)> {
         let mut groups = Groups::new();
         let mut count = 0;
-        let index = NameIndex::new(self.workspace, &target.name);
-        let mut candidates =
-            crate::analysis::resolve::reference_candidates(self.workspace, file, target);
+        let index = NameProbe::new(&target.name);
+        let mut candidates = self.resolver().reference_candidates(file, target);
         let scope = self.workspace.reference_scope(file);
         candidates.retain(|(candidate, _)| scope.contains(candidate, file));
         crate::analysis::resolve::trace_candidates(
@@ -46,13 +45,13 @@ impl<'a, View> Context<'a, View> {
                 .imports
                 .iter()
                 .filter(|import| Some(import.path.as_str()) == import_path.as_deref())
-                .filter_map(|import| self.workspace.import_name(import))
+                .filter_map(|import| self.resolver().import_name(candidate, import))
                 .collect();
             let analysis =
                 if target.receiver.is_none() && !same_package && !qualifiers.contains(&".") {
-                    SourceAnalysis::for_qualified_name(&source, stub, &target.name, &qualifiers)?
+                    Occurrences::for_qualified_name(&source, stub, &target.name, &qualifiers)?
                 } else {
-                    SourceAnalysis::for_name(&source, stub, &target.name)?
+                    Occurrences::for_name(&source, stub, &target.name)?
                 };
             let mut resolver =
                 IdentityResolver::for_reference(self.workspace, candidate, &index, target);
@@ -60,7 +59,7 @@ impl<'a, View> Context<'a, View> {
                 if candidate == file && name.span.start == target.start {
                     continue;
                 }
-                if !matches!(resolver.resolve(&analysis, &source, name), Some(Identity::Global(path, symbol)) if path == file && symbol.start == target.start)
+                if !matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Global(path, symbol)) if path == file && symbol.start == target.start)
                 {
                     continue;
                 }

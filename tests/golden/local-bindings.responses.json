@@ -848,7 +848,21 @@
   {
     "id": 10,
     "jsonrpc": "2.0",
-    "result": null
+    "result": [
+      {
+        "range": {
+          "end": {
+            "character": 10,
+            "line": 4
+          },
+          "start": {
+            "character": 5,
+            "line": 4
+          }
+        },
+        "uri": "$LIB_URI"
+      }
+    ]
   },
   {
     "id": 11,
@@ -921,6 +935,7 @@
           }
         },
         {
+          "detail": "*external.Alias",
           "filterText": "copied",
           "insertTextFormat": 1,
           "kind": 6,
@@ -941,6 +956,7 @@
           }
         },
         {
+          "detail": "*external.Alias",
           "filterText": "explicit",
           "insertTextFormat": 1,
           "kind": 6,

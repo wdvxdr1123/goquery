@@ -172,11 +172,12 @@ impl TypeArena<'_> {
                 let header = source.get(member.annotation.clone())?;
                 let signature = crate::syntax::parse_method_signature(header);
                 let signature =
-                    self.signature(origin, header, &signature, environment, depth + 1)?;
+                    self.signature(origin, header, None, &signature, environment, depth + 1)?;
                 methods.push(Method {
                     name: name.to_owned(),
                     origin,
                     signature,
+                    declared_on: None,
                     selection: [0, 0],
                     builtin: false,
                 });

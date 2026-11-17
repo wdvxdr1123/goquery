@@ -9,6 +9,7 @@ use std::path::{Component, Path, PathBuf};
 pub(super) struct Plan {
     pub roots: Vec<PathBuf>,
     pub modules: HashMap<PathBuf, String>,
+    pub go_versions: HashMap<PathBuf, u16>,
     pub mains: HashSet<PathBuf>,
     pub compiler_checkout: bool,
 }
@@ -363,10 +364,34 @@ impl Workspace {
                 eprintln!("module mount: {name} => {}", root.display());
             }
         }
+        let mut go_versions = HashMap::new();
+        for root in modules.keys() {
+            let version = if let Some((_, manifest)) = mains.values().find(|(main, _)| main == root)
+            {
+                manifest
+                    .go
+                    .as_deref()
+                    .map_or(Some(16), super::language::minor)
+            } else {
+                self.manifest(&root.join("go.mod"))
+                    .ok()
+                    .flatten()
+                    .and_then(|manifest| {
+                        manifest
+                            .go
+                            .as_deref()
+                            .map_or(Some(16), super::language::minor)
+                    })
+            };
+            if let Some(version) = version {
+                go_versions.insert(root.clone(), version);
+            }
+        }
         let mains = mains.into_values().map(|(root, _)| root).collect();
         Ok(Plan {
             roots,
             modules,
+            go_versions,
             mains,
             compiler_checkout,
         })
@@ -473,6 +498,9 @@ pub(super) fn plan_digest(plan: &Plan) -> u64 {
     let mut modules: Vec<_> = plan.modules.iter().collect();
     modules.sort();
     modules.hash(&mut hasher);
+    let mut versions: Vec<_> = plan.go_versions.iter().collect();
+    versions.sort();
+    versions.hash(&mut hasher);
     let mut mains: Vec<_> = plan.mains.iter().collect();
     mains.sort();
     mains.hash(&mut hasher);

@@ -3,6 +3,11 @@ use super::constraints;
 use super::{MAX_DEPTH, MAX_NODES, Tags, Ty, TypeArena, TypeId};
 use crate::analysis::types::declaration_body;
 
+pub(super) enum TypePairs {
+    Mismatch,
+    Children(Vec<(TypeId, TypeId)>),
+}
+
 impl<'a> TypeArena<'a> {
     /// Test-only structural projection; no JSON machinery enters runtime queries.
     #[cfg(test)]
@@ -19,6 +24,7 @@ impl<'a> TypeArena<'a> {
         }
         let input = self.unalias(input)?;
         Some(match self.nodes.get(usize::from(input.0))? {
+            Ty::Invalid => return None,
             Ty::Parameter(_) => {
                 let (origin, selection, _) = self.local_parameter(input)?;
                 json!(["parameter", origin, selection])
@@ -205,14 +211,11 @@ impl<'a> TypeArena<'a> {
         let (file, symbol) = (declaration.file, declaration.symbol);
         let arguments = self.arguments[arguments.range()].to_vec();
         // Read a bounded declaration slice, not the defining closed file.
-        let decl_span = symbol.end..symbol.declaration()?.end;
-        let source = if let Some(slice) = self.workspace.source_slice(file, decl_span.clone()) {
-            slice
-        } else if self.symbolic && symbol.alias {
-            let full = self.workspace.source(file)?;
-            full.get(decl_span)?.to_owned()
+        let end = symbol.declaration()?.end;
+        let source = if end - symbol.end <= super::MAX_BYTES {
+            self.workspace.source_slice(file, symbol.end..end)?
         } else {
-            return None;
+            self.type_parameter_source(declaration)?
         };
         let (header, signature) = super::named::parse_type_parameters_of(&source, symbol.generic)?;
         if !signature.diagnostics.is_empty() {
@@ -230,9 +233,22 @@ impl<'a> TypeArena<'a> {
         for (index, name) in parameters.into_iter().enumerate() {
             schema.push((name, self.push(Ty::Parameter(index))?));
         }
-        let body = declaration_body(&source)?;
-        let body_offset = symbol.end + (source.len() - body.len());
-        let result = self.parse_in_at(file, body, body_offset, &schema)?;
+        let (body, body_offset) = if end - symbol.end <= super::MAX_BYTES {
+            let body = declaration_body(&source)?;
+            (
+                std::borrow::Cow::Borrowed(body),
+                symbol.end + source.len() - body.len(),
+            )
+        } else {
+            let offset = symbol
+                .end
+                .checked_add(symbol.type_info.as_ref()?.target.as_ref()?.body_start as usize)?;
+            (
+                std::borrow::Cow::Owned(self.workspace.source_slice(file, offset..end)?),
+                offset,
+            )
+        };
+        let result = self.parse_in_at(file, &body, body_offset, &schema)?;
         if (!self.symbolic || !symbol.alias)
             && matches!(self.nodes[usize::from(result.0)], Ty::Parameter(_))
         {
@@ -243,12 +259,20 @@ impl<'a> TypeArena<'a> {
         } else {
             self.substitute(result, &bindings, 0)?
         };
+        if let Ty::Interface { methods, .. } = self.nodes[usize::from(result.0)].clone() {
+            for method in &mut self.methods[methods] {
+                method.declared_on.get_or_insert(input);
+            }
+        }
         self.expansions.push((input, result));
         Some(result)
     }
 
     pub(crate) fn underlying(&mut self, mut input: TypeId) -> Option<TypeId> {
         for _ in 0..MAX_DEPTH {
+            if input == TypeId::INVALID {
+                return None;
+            }
             if matches!(
                 self.nodes.get(usize::from(input.0))?,
                 Ty::LocalDeclaration { .. }
@@ -274,6 +298,9 @@ impl<'a> TypeArena<'a> {
 
     pub(crate) fn unalias(&mut self, mut input: TypeId) -> Option<TypeId> {
         for _ in 0..MAX_DEPTH {
+            if input == TypeId::INVALID {
+                return None;
+            }
             // Local aliases are transparent too; a missing fact stays unknown.
             if let Some(expanded) = self.local_alias(input)? {
                 input = expanded;
@@ -329,156 +356,8 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
             let (left, right) = (self.unalias(left)?, self.unalias(right)?);
-            let pairs = match (
-                &self.nodes[usize::from(left.0)],
-                &self.nodes[usize::from(right.0)],
-            ) {
-                (
-                    Ty::LocalDeclaration {
-                        origin: a,
-                        selection: aa,
-                        ..
-                    },
-                    Ty::LocalDeclaration {
-                        origin: b,
-                        selection: bb,
-                        ..
-                    },
-                ) if a == b && aa == bb => Vec::new(),
-                (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. })
-                    if self.is_known_non_opaque(left) && self.is_known_non_opaque(right) =>
-                {
-                    return Some(false);
-                }
-                (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. }) => return None,
-                (Ty::Basic(a), Ty::Basic(b)) => {
-                    if a.canonical() != b.canonical() {
-                        return Some(false);
-                    }
-                    Vec::new()
-                }
-                (Ty::Parameter(_), Ty::Parameter(_)) => {
-                    if left != right {
-                        return Some(false);
-                    }
-                    Vec::new()
-                }
-                (
-                    Ty::Named {
-                        declaration: a,
-                        arguments: aa,
-                    },
-                    Ty::Named {
-                        declaration: b,
-                        arguments: ba,
-                    },
-                ) => {
-                    if a.file != b.file || a.symbol.start != b.symbol.start || aa.len() != ba.len()
-                    {
-                        return Some(false);
-                    }
-                    // A generic declaration used as a value type must be instantiated.
-                    if a.symbol.generic && aa.is_empty() {
-                        return None;
-                    }
-                    self.arguments[aa.range()]
-                        .iter()
-                        .copied()
-                        .zip(self.arguments[ba.range()].iter().copied())
-                        .collect()
-                }
-                (Ty::Tuple(a), Ty::Tuple(b)) => {
-                    if a.len() != b.len() {
-                        return Some(false);
-                    }
-                    self.arguments[a.range()]
-                        .iter()
-                        .copied()
-                        .zip(self.arguments[b.range()].iter().copied())
-                        .collect()
-                }
-                (Ty::Pointer(a), Ty::Pointer(b)) | (Ty::Slice(a), Ty::Slice(b)) => vec![(*a, *b)],
-                (Ty::Error(_), Ty::Error(_)) => Vec::new(),
-                (Ty::Interface { methods: a, .. }, Ty::Interface { methods: b, .. }) => {
-                    if !self.same_interface_methods(a.clone(), b.clone())? {
-                        return Some(false);
-                    }
-                    self.methods[a.clone()]
-                        .iter()
-                        .map(|m| m.signature)
-                        .zip(self.methods[b.clone()].iter().map(|m| m.signature))
-                        .collect()
-                }
-                (
-                    Ty::Signature {
-                        parameters: a,
-                        results: ar,
-                        variadic: av,
-                    },
-                    Ty::Signature {
-                        parameters: b,
-                        results: br,
-                        variadic: bv,
-                    },
-                ) => {
-                    if av != bv || a.len() != b.len() || ar.len() != br.len() {
-                        return Some(false);
-                    }
-                    self.arguments[a.clone()]
-                        .iter()
-                        .chain(&self.arguments[ar.clone()])
-                        .copied()
-                        .zip(
-                            self.arguments[b.clone()]
-                                .iter()
-                                .chain(&self.arguments[br.clone()])
-                                .copied(),
-                        )
-                        .collect()
-                }
-                (
-                    Ty::Struct {
-                        origin: a,
-                        fields: aa,
-                    },
-                    Ty::Struct {
-                        origin: b,
-                        fields: ba,
-                    },
-                ) => {
-                    if !self.struct_fields_with_tags(a, aa.clone(), b, ba.clone(), tags)? {
-                        return Some(false);
-                    }
-                    self.fields[aa.clone()]
-                        .iter()
-                        .map(|f| f.ty)
-                        .zip(self.fields[ba.clone()].iter().map(|f| f.ty))
-                        .collect()
-                }
-                (
-                    Ty::Array {
-                        length: a,
-                        element: ae,
-                    },
-                    Ty::Array {
-                        length: b,
-                        element: be,
-                    },
-                ) if a == b => vec![(*ae, *be)],
-                (Ty::Map { key: a, value: av }, Ty::Map { key: b, value: bv }) => {
-                    vec![(*a, *b), (*av, *bv)]
-                }
-                (
-                    Ty::Chan {
-                        direction: a,
-                        element: ae,
-                    },
-                    Ty::Chan {
-                        direction: b,
-                        element: be,
-                    },
-                ) if a == b => vec![(*ae, *be)],
-                _ => return Some(false),
+            let TypePairs::Children(pairs) = self.identity_pairs(left, right, tags)? else {
+                return Some(false);
             };
             if pending.len() + pairs.len() > MAX_NODES {
                 return None;
@@ -486,5 +365,167 @@ impl<'a> TypeArena<'a> {
             pending.extend(pairs.into_iter().map(|(a, b)| (a, b, depth + 1)));
         }
         Some(true)
+    }
+
+    /// Decompose one pair of unaliased types without deciding how formal
+    /// parameters bind. Identity and implementation schema matching share
+    /// constructor, declaration, package, field/tag and variadic rules.
+    pub(super) fn identity_pairs(
+        &mut self,
+        left: TypeId,
+        right: TypeId,
+        tags: Tags,
+    ) -> Option<TypePairs> {
+        let pairs = match (
+            &self.nodes[usize::from(left.0)],
+            &self.nodes[usize::from(right.0)],
+        ) {
+            (
+                Ty::LocalDeclaration {
+                    origin: a,
+                    selection: aa,
+                    ..
+                },
+                Ty::LocalDeclaration {
+                    origin: b,
+                    selection: bb,
+                    ..
+                },
+            ) if a == b && aa == bb => Vec::new(),
+            (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. })
+                if self.is_known_non_opaque(left) && self.is_known_non_opaque(right) =>
+            {
+                return Some(TypePairs::Mismatch);
+            }
+            (Ty::LocalDeclaration { .. }, _) | (_, Ty::LocalDeclaration { .. }) => return None,
+            (Ty::Basic(a), Ty::Basic(b)) => {
+                if a.canonical() != b.canonical() {
+                    return Some(TypePairs::Mismatch);
+                }
+                Vec::new()
+            }
+            (Ty::Parameter(_), Ty::Parameter(_)) => {
+                if left != right {
+                    return Some(TypePairs::Mismatch);
+                }
+                Vec::new()
+            }
+            (
+                Ty::Named {
+                    declaration: a,
+                    arguments: aa,
+                },
+                Ty::Named {
+                    declaration: b,
+                    arguments: ba,
+                },
+            ) => {
+                if a.file != b.file || a.symbol.start != b.symbol.start || aa.len() != ba.len() {
+                    return Some(TypePairs::Mismatch);
+                }
+                // A generic declaration used as a value type must be instantiated.
+                if a.symbol.generic && aa.is_empty() {
+                    return None;
+                }
+                self.arguments[aa.range()]
+                    .iter()
+                    .copied()
+                    .zip(self.arguments[ba.range()].iter().copied())
+                    .collect()
+            }
+            (Ty::Tuple(a), Ty::Tuple(b)) => {
+                if a.len() != b.len() {
+                    return Some(TypePairs::Mismatch);
+                }
+                self.arguments[a.range()]
+                    .iter()
+                    .copied()
+                    .zip(self.arguments[b.range()].iter().copied())
+                    .collect()
+            }
+            (Ty::Pointer(a), Ty::Pointer(b)) | (Ty::Slice(a), Ty::Slice(b)) => vec![(*a, *b)],
+            (Ty::Error(_), Ty::Error(_)) => Vec::new(),
+            (Ty::Interface { methods: a, .. }, Ty::Interface { methods: b, .. }) => {
+                if !self.same_interface_methods(a.clone(), b.clone())? {
+                    return Some(TypePairs::Mismatch);
+                }
+                self.methods[a.clone()]
+                    .iter()
+                    .map(|m| m.signature)
+                    .zip(self.methods[b.clone()].iter().map(|m| m.signature))
+                    .collect()
+            }
+            (
+                Ty::Signature {
+                    parameters: a,
+                    results: ar,
+                    variadic: av,
+                },
+                Ty::Signature {
+                    parameters: b,
+                    results: br,
+                    variadic: bv,
+                },
+            ) => {
+                if av != bv || a.len() != b.len() || ar.len() != br.len() {
+                    return Some(TypePairs::Mismatch);
+                }
+                self.arguments[a.clone()]
+                    .iter()
+                    .chain(&self.arguments[ar.clone()])
+                    .copied()
+                    .zip(
+                        self.arguments[b.clone()]
+                            .iter()
+                            .chain(&self.arguments[br.clone()])
+                            .copied(),
+                    )
+                    .collect()
+            }
+            (
+                Ty::Struct {
+                    origin: a,
+                    fields: aa,
+                },
+                Ty::Struct {
+                    origin: b,
+                    fields: ba,
+                },
+            ) => {
+                if !self.struct_fields_with_tags(a, aa.clone(), b, ba.clone(), tags)? {
+                    return Some(TypePairs::Mismatch);
+                }
+                self.fields[aa.clone()]
+                    .iter()
+                    .map(|f| f.ty)
+                    .zip(self.fields[ba.clone()].iter().map(|f| f.ty))
+                    .collect()
+            }
+            (
+                Ty::Array {
+                    length: a,
+                    element: ae,
+                },
+                Ty::Array {
+                    length: b,
+                    element: be,
+                },
+            ) if a == b => vec![(*ae, *be)],
+            (Ty::Map { key: a, value: av }, Ty::Map { key: b, value: bv }) => {
+                vec![(*a, *b), (*av, *bv)]
+            }
+            (
+                Ty::Chan {
+                    direction: a,
+                    element: ae,
+                },
+                Ty::Chan {
+                    direction: b,
+                    element: be,
+                },
+            ) if a == b => vec![(*ae, *be)],
+            _ => return Some(TypePairs::Mismatch),
+        };
+        Some(TypePairs::Children(pairs))
     }
 }

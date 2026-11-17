@@ -34,11 +34,30 @@ pub(crate) struct DeclCache<'a> {
     slots: HashMap<DeclId<'a>, DeclSlot>,
     obj_path: Vec<DeclId<'a>>,
     file_scope: Option<(&'a Path, FileScopeMemo<'a>)>,
+    view: crate::workspace::BuildView<'a>,
 }
 
 impl<'a> DeclCache<'a> {
-    pub(crate) fn new() -> Self {
+    /// Only canonical declarations cross a region transition. Their operands
+    /// are recreated before local allocations so the permanent prefix cannot
+    /// retain another function's formals or local type facts.
+    pub(crate) fn temporary_declarations(&self, permanent_nodes: u16) -> Vec<DeclId<'a>> {
+        let mut declarations: Vec<_> = self
+            .slots
+            .iter()
+            .filter_map(|(decl, slot)| {
+                matches!(slot, DeclSlot::Ready {arena_len,..} if *arena_len > permanent_nodes)
+                    .then_some(*decl)
+            })
+            .collect();
+        declarations.sort_by_key(|decl| (decl.file, decl.symbol.start));
+        declarations.truncate(crate::analysis::budget::MAX_DECL_PROMOTIONS);
+        declarations
+    }
+
+    pub(crate) fn new(view: crate::workspace::BuildView<'a>) -> Self {
         Self {
+            view,
             slots: HashMap::new(),
             obj_path: Vec::new(),
             file_scope: None,
@@ -66,12 +85,13 @@ impl<'a> DeclCache<'a> {
         file: &'a Path,
         alias: &str,
     ) -> Option<&'a Path> {
+        let view = self.view;
         let file = ws.files.get_key_value(file)?.0.as_path();
         if let Some(memo) = self.ensure_file_scope(file) {
             if let Some(&cached) = memo.imports.get(alias) {
                 return cached;
             }
-            let target_dir = Self::compute_import_dir(ws, file, alias);
+            let target_dir = Self::compute_import_dir(ws, view, file, alias);
             if (target_dir.is_some() && memo.imports.len() < MAX_DECL_CACHE)
                 || memo.imports.len() < MAX_DECL_CACHE / 2
             {
@@ -79,36 +99,54 @@ impl<'a> DeclCache<'a> {
             }
             return target_dir;
         }
-        Self::compute_import_dir(ws, file, alias)
+        Self::compute_import_dir(ws, view, file, alias)
     }
 
-    fn compute_import_dir(ws: &'a Workspace, file: &'a Path, alias: &str) -> Option<&'a Path> {
-        let imp =
-            ws.files.get(file)?.imports.iter().find(|imp| {
-                !imp.is_dot() && !imp.is_blank() && ws.import_name(imp) == Some(alias)
-            })?;
-        if let Some((p, _)) = crate::analysis::resolve::imported_symbol_iter(ws, file, alias).next()
+    fn compute_import_dir(
+        ws: &'a Workspace,
+        view: crate::workspace::BuildView<'a>,
+        file: &'a Path,
+        alias: &str,
+    ) -> Option<&'a Path> {
+        let imp = ws.files.get(file)?.imports.iter().find(|imp| {
+            !imp.is_dot()
+                && !imp.is_blank()
+                && crate::analysis::resolve::View::new(ws, view).import_name(file, imp)
+                    == Some(alias)
+        })?;
+        if let Some((p, _)) = crate::analysis::resolve::View::new(ws, view)
+            .imported_symbol_iter(file, alias)
+            .next()
         {
             return p.parent();
         }
         let import_path = imp.path.as_str();
         for (mod_root, mod_path) in &ws.modules {
-            if let Some(rel) = import_path.strip_prefix(mod_path.as_str()) {
-                let rel = rel.trim_start_matches('/');
-                let candidate = if rel.is_empty() {
-                    mod_root.clone()
-                } else {
-                    mod_root.join(rel)
-                };
-                if let Some((file_path, _)) = ws
-                    .files
-                    .range::<Path, _>((Bound::Included(candidate.as_path()), Bound::Unbounded))
-                    .next()
-                    && let Some(parent) = file_path.parent()
-                    && parent == candidate.as_path()
-                {
-                    return Some(parent);
-                }
+            let suffix = if mod_path == "std" {
+                import_path
+            } else if import_path == mod_path {
+                ""
+            } else if let Some(suffix) = import_path
+                .strip_prefix(mod_path.as_str())
+                .and_then(|suffix| suffix.strip_prefix('/'))
+            {
+                suffix
+            } else {
+                continue;
+            };
+            let candidate = mod_root.join(suffix);
+            if ws.directory_import_path(&candidate).as_deref() != Some(import_path) {
+                continue;
+            }
+            if let Some((file_path, _)) = ws
+                .files
+                .range::<Path, _>((Bound::Included(candidate.as_path()), Bound::Unbounded))
+                .take_while(|(path, _)| path.starts_with(&candidate))
+                .find(|(path, _)| {
+                    path.parent() == Some(candidate.as_path()) && view.visible(ws, path)
+                })
+            {
+                return file_path.parent();
             }
         }
         None
@@ -120,6 +158,7 @@ impl<'a> DeclCache<'a> {
         file: &'a Path,
         name: &str,
     ) -> UnqualifiedLookup<'a> {
+        let view = self.view;
         let Some(file) = ws.files.get_key_value(file).map(|(p, _)| p.as_path()) else {
             return UnqualifiedLookup::NotFound;
         };
@@ -127,13 +166,14 @@ impl<'a> DeclCache<'a> {
             if let Some(&cached) = memo.unqualified.get(name) {
                 return cached;
             }
-            let result = crate::analysis::resolve::unqualified_lookup(ws, file, name);
+            let result =
+                crate::analysis::resolve::View::new(ws, view).unqualified_lookup(file, name);
             if memo.unqualified.len() < MAX_DECL_CACHE {
                 memo.unqualified.insert(name.into(), result);
             }
             return result;
         }
-        crate::analysis::resolve::unqualified_lookup(ws, file, name)
+        crate::analysis::resolve::View::new(ws, view).unqualified_lookup(file, name)
     }
 
     pub(crate) fn resolve_imported(
@@ -143,12 +183,13 @@ impl<'a> DeclCache<'a> {
         alias: &str,
         name: &str,
     ) -> Option<DeclId<'a>> {
+        let view = self.view;
         let file = ws.files.get_key_value(file)?.0.as_path();
         if let Some(memo) = self.ensure_file_scope(file) {
             if let Some(&cached) = memo.imported_decls.get(alias).and_then(|m| m.get(name)) {
                 return cached;
             }
-            let resolved = Self::resolve_imported_uncached(ws, file, alias, name);
+            let resolved = Self::resolve_imported_uncached(ws, view, file, alias, name);
             if memo.imported_decl_count < MAX_DECL_CACHE {
                 let members = memo.imported_decls.entry(alias.into()).or_default();
                 if !members.contains_key(name) {
@@ -158,43 +199,25 @@ impl<'a> DeclCache<'a> {
             }
             return resolved;
         }
-        Self::resolve_imported_uncached(ws, file, alias, name)
+        Self::resolve_imported_uncached(ws, view, file, alias, name)
     }
 
     fn resolve_imported_uncached(
         ws: &'a Workspace,
+        view: crate::workspace::BuildView<'a>,
         file: &'a Path,
         alias: &str,
         name: &str,
     ) -> Option<DeclId<'a>> {
         let probe = crate::bloom::Fingerprint::new(name.as_bytes());
-        let mut first: Option<DeclId<'a>> = None;
-        let mut rest: Vec<DeclId<'a>> = Vec::new();
-        for (p, sym) in
-            crate::analysis::resolve::imported_symbol_candidates(ws, file, alias, Some(probe))
-        {
-            if sym.name == name {
-                let decl = DeclId {
-                    file: p,
-                    symbol: sym,
-                };
-                if first.is_none() {
-                    first = Some(decl);
-                } else {
-                    rest.push(decl);
-                }
-            }
-        }
-        let first = first?;
-        if rest.is_empty() {
-            return Some(first);
-        }
-        let target = ws.orphan_view_target(file)?;
-        let mut filtered = std::iter::once(first)
-            .chain(rest)
-            .filter(|decl| ws.file_matches_target(decl.file, &target));
-        let winner = filtered.next()?;
-        filtered.next().is_none().then_some(winner)
+        let mut candidates = crate::analysis::resolve::View::new(ws, view)
+            .imported_symbol_candidates(file, alias, Some(probe))
+            .filter(|(_, symbol)| symbol.name == name);
+        let (file, symbol) = candidates.next()?;
+        candidates
+            .next()
+            .is_none()
+            .then_some(DeclId { file, symbol })
     }
 
     pub(crate) fn operand_of(
@@ -311,7 +334,14 @@ impl<'a> DeclCache<'a> {
         {
             return None;
         }
-        let ty = arena.signature(decl.file, &header, &signature, &[], 0)?;
+        let ty = arena.signature(
+            decl.file,
+            &header,
+            Some(declaration.start),
+            &signature,
+            &[],
+            0,
+        )?;
         Some(Operand {
             mode: Mode::Value,
             ty,
@@ -409,6 +439,7 @@ impl<'a> DeclCache<'a> {
                 constant.then(|| u32::try_from(ordinal).ok()).flatten(),
                 None,
             );
+            checker.set_source_base(span.start);
             let target = match annotation {
                 Some(ann) => {
                     let ty = checker.resolve_type_syntax_span(ann)?;
@@ -417,6 +448,15 @@ impl<'a> DeclCache<'a> {
                 }
                 None => None,
             };
+            // A package variable's explicit type is independent of the value
+            // expression. Region checking diagnoses that initializer separately.
+            if !constant && let Some(ty) = target {
+                return Some(Operand {
+                    mode: Mode::Variable,
+                    ty,
+                    value: None,
+                });
+            }
             let input = if values.is_empty() {
                 if constant {
                     return None;
@@ -439,7 +479,7 @@ impl<'a> DeclCache<'a> {
             if !input.mode.is_value() {
                 return None;
             }
-            let int_bits = checker.arena().workspace().integer_bits()?;
+            let int_bits = checker.arena().integer_bits()?;
             if constant {
                 if input.mode != Mode::Constant {
                     return None;
@@ -449,17 +489,8 @@ impl<'a> DeclCache<'a> {
                     None => Some(input),
                 };
             }
-            let ty = if let Some(target) = target {
-                checker
-                    .arena()
-                    .assign_value(input, target, int_bits)?
-                    .then_some(())?;
-                target
-            } else {
-                let ty = checker.arena().default_operand(input, int_bits)?;
-                checker.arena().constructor_map_keys(ty)?;
-                ty
-            };
+            let ty = checker.arena().default_operand(input, int_bits)?;
+            checker.arena().constructor_map_keys(ty)?;
             return Some(Operand {
                 mode: Mode::Variable,
                 ty,

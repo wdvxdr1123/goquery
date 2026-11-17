@@ -7,6 +7,12 @@ use crate::workspace::Workspace;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct MemberName<'a> {
+    name: String,
+    package: Option<(&'a Path, &'a str)>,
+}
+
 const MAX_PKG_METHOD_INDICES: usize = 64;
 const MAX_PKG_METHODS: usize = 4096;
 
@@ -23,10 +29,14 @@ pub(super) struct ConcreteMethodMemo {
 }
 
 impl<'a> PkgMethodIndex<'a> {
-    fn build(workspace: &'a Workspace, decl_file: &'a Path) -> Option<Self> {
+    fn build(
+        workspace: &'a Workspace,
+        decl_file: &'a Path,
+        view: crate::workspace::BuildView<'a>,
+    ) -> Option<Self> {
         let mut alias_names: HashSet<&'a str> = HashSet::new();
         let mut files: Vec<(&'a PathBuf, &'a crate::index::IndexedFile)> = Vec::new();
-        for (file, stub) in workspace.package_files(decl_file) {
+        for (file, stub) in workspace.package_files_in_view(decl_file, view) {
             for sym in &stub.symbols {
                 if sym.is_type() && sym.alias {
                     alias_names.insert(sym.name.as_str());
@@ -121,6 +131,42 @@ fn collect_indices(
 }
 
 impl<'a> TypeArena<'a> {
+    /// The declaring receiver reached by an already-proven method selection.
+    pub(crate) fn selected_method_receiver(&mut self, selection: &Selection<'a>) -> Option<TypeId> {
+        let path = self.embedded_field_path(selection.recv, selection.indices.as_slice())?;
+        let reached = path.last().map_or(selection.recv, |(_, ty)| *ty);
+        let root = self.receiver_base(reached)?;
+        match selection.obj {
+            ObjectRef::Method(MethodOrigin::Concrete(method)) => {
+                let (owner, arguments, _) = self.named_declaration(root)?;
+                let (_, pointer) =
+                    self.instantiate_named_method(method.file, method.symbol, owner, &arguments)?;
+                if pointer {
+                    self.pointer(root)
+                } else {
+                    Some(root)
+                }
+            }
+            ObjectRef::Method(MethodOrigin::Interface(member)) if member.builtin => {
+                self.builtin_type(member.file, "error")
+            }
+            ObjectRef::Method(MethodOrigin::Interface(member)) => {
+                let interface = self.underlying(root)?;
+                let Ty::Interface { methods, .. } = self.nodes[usize::from(interface.0)].clone()
+                else {
+                    return None;
+                };
+                self.methods[methods]
+                    .iter()
+                    .find(|method| {
+                        method.origin == member.file && method.selection == member.selection
+                    })?
+                    .declared_on
+            }
+            _ => None,
+        }
+    }
+
     /// Unified `go/types` field/method lookup returning a full `Selection<'a>`,
     /// including `ObjectRef<'a>`, promotion index path, and `indirect` flag.
     pub(crate) fn lookup_field_or_method(
@@ -133,10 +179,10 @@ impl<'a> TypeArena<'a> {
         if name == "_" {
             return Some(None);
         }
-        let mut candidate = self.lookup_member(recv, recv, origin, name)?;
+        let mut candidate = self.lookup_member(recv, recv, origin, name, false)?;
         if candidate.is_none() && addressable {
             let pointer = self.pointer(recv)?;
-            candidate = self.lookup_member(pointer, recv, origin, name)?;
+            candidate = self.lookup_member(pointer, recv, origin, name, false)?;
         }
         if let Some(candidate) = candidate {
             return Some(Some(candidate.selection));
@@ -147,12 +193,33 @@ impl<'a> TypeArena<'a> {
         if matches!(self.nodes[usize::from(root.0)], Ty::Named { .. })
             && let Some(pointer) = self.underlying(root)
             && matches!(self.nodes[usize::from(pointer.0)], Ty::Pointer(_))
-            && let Some(candidate) = self.lookup_member(pointer, recv, origin, name)?
+            && let Some(candidate) = self.lookup_member(pointer, recv, origin, name, false)?
             && candidate.selection.kind == SelectionKind::FieldVal
         {
             return Some(Some(candidate.selection));
         }
         Some(None)
+    }
+
+    /// A documentation receiver denotes its declaration's formal instance;
+    /// keep lookup in the same arena and return only the canonical object.
+    pub(crate) fn declaration_member(
+        &mut self,
+        declaration: crate::analysis::obj::DeclId<'a>,
+        consumer: &Path,
+        name: &str,
+    ) -> Option<crate::analysis::obj::ObjectRef<'a>> {
+        if name.len() > super::MAX_BYTES {
+            return None;
+        }
+        self.with_projection(true, |arena| {
+            let receiver = arena.declaration_type(declaration)?;
+            Some(
+                arena
+                    .lookup_field_or_method(receiver, true, consumer, name)??
+                    .obj,
+            )
+        })
     }
 
     /// Unified `go/types` method expression lookup (`T.M` / `(*T).M`).
@@ -166,7 +233,7 @@ impl<'a> TypeArena<'a> {
         if name == "_" {
             return Some(None);
         }
-        let Some(candidate) = self.lookup_member(recv, recv, origin, name)? else {
+        let Some(candidate) = self.lookup_member(recv, recv, origin, name, false)? else {
             return Some(None);
         };
         if candidate.selection.kind != SelectionKind::MethodVal {
@@ -184,6 +251,7 @@ impl<'a> TypeArena<'a> {
         arguments.extend_from_slice(&self.arguments[parameters]);
         let results = self.arguments[results].to_vec();
         let ty = self.store_signature(arguments, results, variadic)?;
+        self.copy_signature_names(candidate.selection.ty, ty, true);
         Some(Some(Selection {
             kind: SelectionKind::MethodExpr,
             recv,
@@ -206,51 +274,9 @@ impl<'a> TypeArena<'a> {
             && let Some(pointer) = self.underlying(root)
             && matches!(self.nodes.get(usize::from(pointer.0))?, Ty::Pointer(_))
         {
-            return self.collect_accessible_members(pointer, recv, origin, false, true);
+            return self.collect_accessible_members(pointer, recv, origin, false, true, false);
         }
-        self.collect_accessible_members(recv, recv, origin, addressable, false)
-    }
-
-    /// Resolves the type arguments of `owner` reached from `recv` along embedded field `indices`.
-    pub(crate) fn receiver_type_arguments(
-        &mut self,
-        mut ty: TypeId,
-        indices: &[u16],
-        owner_file: &Path,
-        owner_start: usize,
-    ) -> Option<Vec<TypeId>> {
-        let match_owner = |arena: &mut TypeArena<'a>, candidate: TypeId| -> Option<Vec<TypeId>> {
-            let mut cur = arena.unalias(candidate)?;
-            if let Ty::Pointer(inner) = arena.nodes.get(usize::from(cur.0))? {
-                cur = arena.unalias(*inner)?;
-            }
-            let (decl, args, false) = arena.named_declaration(cur)? else {
-                return None;
-            };
-            (decl.file == owner_file && decl.symbol.start == owner_start).then_some(args)
-        };
-        if let Some(args) = match_owner(self, ty) {
-            return Some(args);
-        }
-        for &idx in indices {
-            let mut cur = self.unalias(ty)?;
-            if let Ty::Pointer(inner) = self.nodes.get(usize::from(cur.0))? {
-                cur = self.unalias(*inner)?;
-            }
-            let under = self.underlying(cur)?;
-            let Ty::Struct { fields, .. } = self.nodes.get(usize::from(under.0))?.clone() else {
-                return None;
-            };
-            let field_idx = fields.start.checked_add(usize::from(idx))?;
-            if field_idx >= fields.end {
-                return None;
-            }
-            ty = self.fields[field_idx].ty;
-            if let Some(args) = match_owner(self, ty) {
-                return Some(args);
-            }
-        }
-        None
+        self.collect_accessible_members(recv, recv, origin, addressable, false, false)
     }
 
     pub(super) fn lookup_method(
@@ -258,9 +284,28 @@ impl<'a> TypeArena<'a> {
         source: TypeId,
         required: &Method<'_>,
     ) -> Option<Option<TypeId>> {
+        // Relations inspect declaration method sets, including external test
+        // packages. Client selector visibility is a separate lookup policy.
         let Some(candidate) =
-            self.lookup_member(source, source, required.origin, &required.name)?
+            self.lookup_member(source, source, required.origin, &required.name, true)?
         else {
+            return Some(None);
+        };
+        Some(
+            (candidate.selection.kind == SelectionKind::MethodVal)
+                .then_some(candidate.selection.ty),
+        )
+    }
+
+    /// Method-set queries share native promotion/collision and package rules;
+    /// unlike selectors, they do not filter declaration files by consumer view.
+    pub(super) fn implementation_method(
+        &mut self,
+        recv: TypeId,
+        origin: &Path,
+        name: &str,
+    ) -> Option<Option<TypeId>> {
+        let Some(candidate) = self.lookup_member(recv, recv, origin, name, true)? else {
             return Some(None);
         };
         Some(
@@ -327,7 +372,8 @@ impl<'a> TypeArena<'a> {
             if !self.pkg_methods.contains_key(&key)
                 && self.pkg_methods.len() < MAX_PKG_METHOD_INDICES
             {
-                let built = PkgMethodIndex::build(self.workspace, declaration.file);
+                let built =
+                    PkgMethodIndex::build(self.workspace, declaration.file, self.build_view);
                 self.pkg_methods.insert(key, built);
             }
             if let Some(Some(index)) = self.pkg_methods.get(&key) {
@@ -352,12 +398,55 @@ impl<'a> TypeArena<'a> {
         }
         let probe = crate::bloom::Fingerprint::new(name.as_bytes());
         self.workspace
-            .package_method_candidates(declaration.file, probe)
+            .package_files_in_view(declaration.file, self.build_view)
+            .filter(move |(_, stub)| stub.identifiers.may_contain_fingerprint(probe))
+            .flat_map(|(file, stub)| stub.symbols.iter().map(move |symbol| (file, symbol)))
             .map(|(file, symbol)| DeclId {
                 file: file.as_path(),
                 symbol,
             })
             .collect()
+    }
+
+    /// Receiver spellings only reject impossible candidates. Alias and dot-import
+    /// receivers still require exact native receiver identity during instantiation.
+    fn concrete_owner_candidates(&self, declaration: DeclId<'a>) -> Option<Vec<DeclId<'a>>> {
+        let mut aliases = HashSet::new();
+        for (_, stub) in self
+            .workspace
+            .package_files_in_view(declaration.file, self.build_view)
+        {
+            for symbol in &stub.symbols {
+                if symbol.is_type() && symbol.alias {
+                    aliases.insert(symbol.name.as_str());
+                    if aliases.len() > MAX_PKG_METHODS {
+                        return None;
+                    }
+                }
+            }
+        }
+        let mut candidates = Vec::new();
+        for (file, stub) in self
+            .workspace
+            .package_files_in_view(declaration.file, self.build_view)
+        {
+            let dot = stub.imports.iter().any(|import| import.is_dot());
+            for symbol in &stub.symbols {
+                if !symbol.is_method() || symbol.name == "_" {
+                    continue;
+                }
+                if symbol.receiver.as_deref().is_some_and(|receiver| {
+                    receiver != declaration.symbol.name && !dot && !aliases.contains(receiver)
+                }) {
+                    continue;
+                }
+                if candidates.len() == MAX_PKG_METHODS {
+                    return None;
+                }
+                candidates.push(DeclId { file, symbol });
+            }
+        }
+        Some(candidates)
     }
 
     fn lookup_member(
@@ -366,6 +455,7 @@ impl<'a> TypeArena<'a> {
         original_recv: TypeId,
         origin: &Path,
         name: &str,
+        relation: bool,
     ) -> Option<Option<MemberCandidate<'a>>> {
         let mut steps = vec![Step {
             ty: source,
@@ -475,7 +565,12 @@ impl<'a> TypeArena<'a> {
                         let method = method_decl.symbol;
                         if !method.is_method()
                             || method.name != name
-                            || !self.workspace.selector_file_visible(origin, file)
+                            || !relation
+                                && !self.workspace.selector_file_visible_in_view(
+                                    origin,
+                                    file,
+                                    self.build_view,
+                                )
                             || !crate::syntax::is_exported_name(&method.name)
                                 && !self.same_field_package(file, origin)?
                         {
@@ -485,11 +580,7 @@ impl<'a> TypeArena<'a> {
                         let receiver = method.receiver.as_deref()?;
                         if receiver != declaration.symbol.name {
                             if let Some((file, symbol)) =
-                                crate::analysis::resolve::resolve_type_declaration(
-                                    self.workspace,
-                                    file,
-                                    receiver,
-                                )
+                                self.resolver().resolve_type_declaration(file, receiver)
                                 && !symbol.alias
                                 && (file.as_path() != declaration.file
                                     || symbol.start != declaration.symbol.start)
@@ -548,7 +639,14 @@ impl<'a> TypeArena<'a> {
                                 matches!(self.nodes[usize::from(receiver.0)], Ty::Pointer(_));
                             let need_sig = !pointer_receiver || indirect;
                             let signature = if need_sig {
-                                Some(self.signature(file, &header, &parsed, &environment, 0)?)
+                                Some(self.signature(
+                                    file,
+                                    &header,
+                                    Some(span.start),
+                                    &parsed,
+                                    &environment,
+                                    0,
+                                )?)
                             } else {
                                 None
                             };
@@ -653,6 +751,96 @@ impl<'a> TypeArena<'a> {
         None
     }
 
+    fn member_name(
+        &self,
+        name: &str,
+        origin: &'a Path,
+        bytes: &mut usize,
+    ) -> Option<MemberName<'a>> {
+        *bytes = bytes.checked_add(name.len())?;
+        if *bytes > super::MAX_BYTES {
+            return None;
+        }
+        let package = if crate::syntax::is_exported_name(name) {
+            None
+        } else {
+            Some((
+                origin.parent()?,
+                self.workspace.files.get(origin)?.package.as_str(),
+            ))
+        };
+        Some(MemberName {
+            name: name.to_owned(),
+            package,
+        })
+    }
+
+    /// Implementation sets include private package identities and test methods;
+    /// source-selector visibility is a separate policy over the same traversal.
+    pub(crate) fn implementation_member_set(
+        &mut self,
+        declaration: DeclId<'a>,
+        required: Option<&[&str]>,
+    ) -> Option<(bool, Vec<(String, ObjectRef<'a>)>)> {
+        self.with_projection(true, |arena| {
+            let recv = arena.implementation_receiver(declaration)?;
+            let abstract_ = arena.interface_constructor(recv)?;
+            let base = arena.receiver_base(recv)?;
+            if arena.named_declaration(base).is_some()
+                && arena.form(base)? == super::TypeForm::Pointer
+            {
+                return Some((false, Vec::new()));
+            }
+            // Public requirements need only exact native selections for those
+            // names. Private names may denote multiple declaring packages, so
+            // their complete package-qualified inventory remains necessary.
+            if let Some(required) = required.filter(|names| {
+                names
+                    .iter()
+                    .all(|name| crate::syntax::is_exported_name(name))
+            }) {
+                if required.len() > super::MAX_NODES
+                    || required
+                        .iter()
+                        .try_fold(0usize, |bytes, name| bytes.checked_add(name.len()))?
+                        > super::MAX_BYTES
+                {
+                    return None;
+                }
+                let mut members = Vec::new();
+                for name in required {
+                    let Some(candidate) =
+                        arena.lookup_member(recv, recv, declaration.file, name, true)?
+                    else {
+                        continue;
+                    };
+                    if matches!(candidate.selection.obj, ObjectRef::Method(_)) {
+                        members.push(((*name).to_owned(), candidate.selection.obj));
+                    }
+                }
+                return Some((abstract_, members));
+            }
+            let members = arena.collect_accessible_members(
+                recv,
+                recv,
+                declaration.file,
+                false,
+                false,
+                true,
+            )?;
+            Some((
+                abstract_,
+                members
+                    .into_iter()
+                    .filter_map(|(name, selection)| {
+                        matches!(selection.obj, ObjectRef::Method(_))
+                            .then_some((name, selection.obj))
+                    })
+                    .collect(),
+            ))
+        })
+    }
+
     fn collect_accessible_members(
         &mut self,
         source: TypeId,
@@ -660,8 +848,10 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         addressable: bool,
         fields_only: bool,
+        relation: bool,
     ) -> Option<Vec<(String, Selection<'a>)>> {
-        let mut resolved: BTreeMap<String, Option<Selection<'a>>> = BTreeMap::new();
+        let mut name_bytes = 0usize;
+        let mut resolved: BTreeMap<MemberName<'a>, Option<Selection<'a>>> = BTreeMap::new();
         let mut steps = vec![Step {
             ty: source,
             indirect: false,
@@ -678,7 +868,7 @@ impl<'a> TypeArena<'a> {
         let can_auto_addr = addressable && !fields_only && !root_pointer;
         for _ in 0..MAX_DEPTH {
             let mut next = Vec::new();
-            let mut level_map: BTreeMap<String, Option<Selection<'a>>> = BTreeMap::new();
+            let mut level_map: BTreeMap<MemberName<'a>, Option<Selection<'a>>> = BTreeMap::new();
             for index in level {
                 self.step()?;
                 let mut input = self.unalias(steps[index].ty)?;
@@ -712,6 +902,8 @@ impl<'a> TypeArena<'a> {
                             &steps,
                             index,
                             origin,
+                            relation,
+                            &mut name_bytes,
                             &resolved,
                             &mut level_map,
                         )?;
@@ -734,6 +926,8 @@ impl<'a> TypeArena<'a> {
                         &steps,
                         index,
                         origin,
+                        relation,
+                        &mut name_bytes,
                         &resolved,
                         &mut level_map,
                     )?;
@@ -751,15 +945,19 @@ impl<'a> TypeArena<'a> {
                     }
                     steps[index].owner = Some(declaration);
                     let arguments = self.arguments[arguments.range()].to_vec();
-                    let methods: Vec<_> = self
-                        .workspace
-                        .package_symbols(declaration.file)
-                        .filter(|(_, s)| s.is_method() && s.name != "_")
-                        .collect();
-                    for (file, method) in methods {
-                        if !self.workspace.selector_file_visible(origin, file)
-                            || !crate::syntax::is_exported_name(&method.name)
-                                && !self.same_field_package(file, origin)?
+                    let methods = self.concrete_owner_candidates(declaration)?;
+                    for DeclId {
+                        file,
+                        symbol: method,
+                    } in methods
+                    {
+                        if !relation
+                            && (!self.workspace.selector_file_visible_in_view(
+                                origin,
+                                file,
+                                self.build_view,
+                            ) || !crate::syntax::is_exported_name(&method.name)
+                                && !self.same_field_package(file, origin)?)
                         {
                             continue;
                         }
@@ -790,7 +988,7 @@ impl<'a> TypeArena<'a> {
                         record_level_candidate(
                             &resolved,
                             &mut level_map,
-                            method.name.clone(),
+                            self.member_name(&method.name, file, &mut name_bytes)?,
                             candidate,
                         );
                     }
@@ -808,7 +1006,8 @@ impl<'a> TypeArena<'a> {
                     self.step()?;
                     let leaf_index = u16::try_from(ord).ok()?;
                     if field.name != "_"
-                        && (crate::syntax::is_exported_name(&field.name)
+                        && (relation
+                            || crate::syntax::is_exported_name(&field.name)
                             || self.same_field_package(field_origin, origin)?)
                     {
                         let indices = collect_indices(&steps, index, Some(leaf_index))?;
@@ -829,7 +1028,7 @@ impl<'a> TypeArena<'a> {
                         record_level_candidate(
                             &resolved,
                             &mut level_map,
-                            field.name,
+                            self.member_name(&field.name, field_origin, &mut name_bytes)?,
                             Some(selection),
                         );
                     }
@@ -853,7 +1052,7 @@ impl<'a> TypeArena<'a> {
                 return Some(
                     resolved
                         .into_iter()
-                        .filter_map(|(name, sel)| sel.map(|s| (name, s)))
+                        .filter_map(|(name, sel)| sel.map(|s| (name.name, s)))
                         .collect(),
                 );
             }
@@ -872,8 +1071,10 @@ impl<'a> TypeArena<'a> {
         steps: &[Step<'a>],
         index: usize,
         origin: &Path,
-        resolved: &BTreeMap<String, Option<Selection<'a>>>,
-        level_map: &mut BTreeMap<String, Option<Selection<'a>>>,
+        relation: bool,
+        name_bytes: &mut usize,
+        resolved: &BTreeMap<MemberName<'a>, Option<Selection<'a>>>,
+        level_map: &mut BTreeMap<MemberName<'a>, Option<Selection<'a>>>,
     ) -> Option<()> {
         let root = self.underlying(iface)?;
         let Ty::Interface { methods, .. } = self.nodes[usize::from(root.0)].clone() else {
@@ -882,7 +1083,8 @@ impl<'a> TypeArena<'a> {
         let methods = self.methods[methods].to_vec();
         for method in methods {
             if method.name != "_"
-                && (crate::syntax::is_exported_name(&method.name)
+                && (relation
+                    || crate::syntax::is_exported_name(&method.name)
                     || self.same_field_package(method.origin, origin)?)
             {
                 let indices = collect_indices(steps, index, None)?;
@@ -900,7 +1102,8 @@ impl<'a> TypeArena<'a> {
                     indices,
                     indirect,
                 };
-                record_level_candidate(resolved, level_map, method.name, Some(selection));
+                let name = self.member_name(&method.name, method.origin, name_bytes)?;
+                record_level_candidate(resolved, level_map, name, Some(selection));
             }
         }
         Some(())
@@ -915,11 +1118,8 @@ impl<'a> TypeArena<'a> {
     ) -> Option<(TypeId, bool)> {
         let receiver_str = method.receiver.as_deref()?;
         if receiver_str != declaration.symbol.name {
-            if let Some((f, s)) = crate::analysis::resolve::resolve_type_declaration(
-                self.workspace,
-                file,
-                receiver_str,
-            ) && !s.alias
+            if let Some((f, s)) = self.resolver().resolve_type_declaration(file, receiver_str)
+                && !s.alias
                 && (f.as_path() != declaration.file || s.start != declaration.symbol.start)
             {
                 return None;
@@ -965,7 +1165,8 @@ impl<'a> TypeArena<'a> {
         let receiver = self.parse_in(file, &header[receiver.annotation.clone()], &environment)?;
         let receiver = self.unalias(receiver)?;
         let pointer_receiver = matches!(self.nodes[usize::from(receiver.0)], Ty::Pointer(_));
-        let signature = self.signature(file, &header, &parsed, &environment, 0)?;
+        let signature =
+            self.signature(file, &header, Some(span.start), &parsed, &environment, 0)?;
         Some((signature, pointer_receiver))
     }
 }
@@ -987,9 +1188,9 @@ fn has_owner_cycle(
 }
 
 fn record_level_candidate<'a>(
-    resolved: &BTreeMap<String, Option<Selection<'a>>>,
-    level_map: &mut BTreeMap<String, Option<Selection<'a>>>,
-    name: String,
+    resolved: &BTreeMap<MemberName<'a>, Option<Selection<'a>>>,
+    level_map: &mut BTreeMap<MemberName<'a>, Option<Selection<'a>>>,
+    name: MemberName<'a>,
     candidate: Option<Selection<'a>>,
 ) {
     if resolved.contains_key(&name) {

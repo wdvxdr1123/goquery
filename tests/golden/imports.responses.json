@@ -272,7 +272,30 @@
     "jsonrpc": "2.0",
     "result": {
       "isIncomplete": true,
-      "items": []
+      "items": [
+        {
+          "detail": "func()",
+          "filterText": "Public",
+          "insertTextFormat": 1,
+          "kind": 5,
+          "label": "Public",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Public",
+            "range": {
+              "end": {
+                "character": 13,
+                "line": 8
+              },
+              "start": {
+                "character": 7,
+                "line": 8
+              }
+            }
+          }
+        }
+      ]
     }
   },
   {

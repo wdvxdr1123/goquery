@@ -14,11 +14,15 @@ pub(crate) fn trace_candidates(workspace: &Workspace, query: &str, count: usize)
     }
 }
 
-pub(crate) fn reference_candidates<'a>(
-    workspace: &'a Workspace,
+pub(super) fn reference_candidates<'a>(
+    view: resolve::View<'a>,
     file: &Path,
     symbol: &Symbol,
 ) -> Vec<(&'a PathBuf, &'a IndexedFile)> {
+    let workspace = view.workspace;
+    if !view.file_visible(file) {
+        return Vec::new();
+    }
     let Some((file, stub)) = workspace.files.get_key_value(file) else {
         return Vec::new();
     };
@@ -26,20 +30,7 @@ pub(crate) fn reference_candidates<'a>(
         file.parent().expect("source directory"),
         stub.package.as_str(),
     );
-    // Orphaned open buffers only contribute to / observe their own orphan
-    // package (self plus detached siblings); real packages never see them.
-    let detached = workspace.is_detached(file);
     let exported = resolve::exported(&symbol.name);
-    if detached {
-        return workspace
-            .files
-            .iter()
-            .filter(|(path, stub)| {
-                workspace.is_detached(path)
-                    && (path.parent(), stub.package.as_str()) == (Some(root.0), root.1)
-            })
-            .collect();
-    }
     if !exported || symbol.receiver.is_none() {
         let import = exported
             .then(|| workspace.import_path(file))
@@ -49,7 +40,7 @@ pub(crate) fn reference_candidates<'a>(
             .files
             .iter()
             .filter(|(path, stub)| {
-                !workspace.is_detached(path)
+                view.file_visible(path)
                     && ((path.parent(), stub.package.as_str()) == (Some(root.0), root.1)
                         || import.as_ref().is_some_and(|(fingerprint, import)| {
                             stub.import_paths.may_contain_fingerprint(*fingerprint)
@@ -62,13 +53,17 @@ pub(crate) fn reference_candidates<'a>(
             .collect();
     }
 
-    dependent_candidates(workspace, file)
+    dependent_candidates(view, file)
 }
 
-pub(crate) fn dependent_candidates<'a>(
-    workspace: &'a Workspace,
+pub(super) fn dependent_candidates<'a>(
+    view: resolve::View<'a>,
     file: &Path,
 ) -> Vec<(&'a PathBuf, &'a IndexedFile)> {
+    let workspace = view.workspace;
+    if !view.file_visible(file) {
+        return Vec::new();
+    }
     let Some((file, stub)) = workspace.files.get_key_value(file) else {
         return Vec::new();
     };
@@ -76,17 +71,6 @@ pub(crate) fn dependent_candidates<'a>(
         file.parent().expect("source directory"),
         stub.package.as_str(),
     );
-    let detached = workspace.is_detached(file);
-    if detached {
-        return workspace
-            .files
-            .iter()
-            .filter(|(path, stub)| {
-                workspace.is_detached(path)
-                    && (path.parent(), stub.package.as_str()) == (Some(root.0), root.1)
-            })
-            .collect();
-    }
     // A consumer may import a wrapper instead of the method's declaring
     // package. Include reverse import reachability at package granularity:
     // embedding and a use can live in separate files of the same package.
@@ -98,16 +82,16 @@ pub(crate) fn dependent_candidates<'a>(
     for (path, stub) in workspace
         .files
         .iter()
-        .filter(|(path, _)| !workspace.is_detached(path))
+        .filter(|(path, _)| view.file_visible(path))
     {
         let package = (
             path.parent().expect("source directory"),
             stub.package.as_str(),
         );
         paths.entry(package).or_insert_with(|| {
-            workspace
-                .import_path(path)
-                .filter(|import| workspace.importable_package(import, stub))
+            workspace.import_path(path).filter(|import| {
+                view.declared_package_name(path, import) == Some(stub.package.as_str())
+            })
         });
         for import in &stub.imports {
             importers
@@ -134,7 +118,7 @@ pub(crate) fn dependent_candidates<'a>(
         .files
         .iter()
         .filter(|(path, stub)| {
-            !workspace.is_detached(path)
+            view.file_visible(path)
                 && packages.contains(&(
                     path.parent().expect("source directory"),
                     stub.package.as_str(),

@@ -7,10 +7,9 @@ use std::path::{Path, PathBuf};
 
 pub(super) type OwnerKey<'a> = (Option<&'a Path>, &'a str, &'a str);
 type Restricted<'a> = (u64, Vec<(&'a PathBuf, &'a Symbol)>);
-type TypeIndex<'a> =
-    HashMap<(Option<&'a Path>, &'a str), HashMap<&'a str, (&'a PathBuf, &'a Symbol)>>;
 
 pub(super) struct Candidates<'a> {
+    view: crate::analysis::resolve::View<'a>,
     pub(super) receivers: HashSet<OwnerKey<'a>>,
     pub(super) matching: HashSet<OwnerKey<'a>>,
     /// One bit per queried required method name, set for receiver owners that
@@ -31,15 +30,8 @@ pub(super) struct Candidates<'a> {
     coverage_memo: HashMap<(&'a Path, usize), Option<u64>>,
     coverage_active: HashSet<(&'a Path, usize)>,
     absent: HashSet<(&'a Path, usize)>,
-    /// Query-local resolution memo shared by coverage walks: embedded and
-    /// underlying type spellings repeat across candidates in one package.
-    underlying: HashMap<(&'a Path, &'a str), Option<(&'a PathBuf, &'a Symbol)>>,
+    /// Exact file scope and the immutable request view bound this candidate memo.
     declarations: HashMap<(&'a Path, &'a str), Option<(&'a PathBuf, &'a Symbol)>>,
-    /// Qualified declarations repeat across candidate files that import the same
-    /// package; key them by canonical import path and declared name instead of
-    /// the consumer file. Alias-to-path lookups are memoized per file.
-    imported_declarations: HashMap<(&'a str, &'a str), Option<(&'a PathBuf, &'a Symbol)>>,
-    import_aliases: HashMap<(&'a Path, &'a str), Option<&'a str>>,
     pub(super) coverage_calls: usize,
     pub(super) coverage_unknowns: usize,
     pub(super) resolution_calls: usize,
@@ -51,15 +43,6 @@ pub(super) struct Candidates<'a> {
     pub(super) unqualified_fast: usize,
     pub(super) unqualified_slow: usize,
     pub(super) inventories: usize,
-    /// Query-local same-package type-name index. Built once on demand so the
-    /// coverage walk does not rescan package files for every embedded spelling.
-    type_index: TypeIndex<'a>,
-    type_index_entries: usize,
-    type_index_complete: bool,
-    type_index_built: bool,
-    /// Query-local default-import-name memo; the index fast path checks import
-    /// shadowing for every embedded spelling.
-    import_names: HashMap<&'a str, Option<&'a str>>,
 }
 
 struct PackageInventory<'a> {
@@ -68,8 +51,9 @@ struct PackageInventory<'a> {
 }
 
 impl<'a> Candidates<'a> {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(view: crate::analysis::resolve::View<'a>) -> Self {
         Self {
+            view,
             receivers: HashSet::new(),
             matching: HashSet::new(),
             owner_masks: HashMap::new(),
@@ -82,10 +66,7 @@ impl<'a> Candidates<'a> {
             coverage_memo: HashMap::new(),
             coverage_active: HashSet::new(),
             absent: HashSet::new(),
-            underlying: HashMap::new(),
             declarations: HashMap::new(),
-            imported_declarations: HashMap::new(),
-            import_aliases: HashMap::new(),
             coverage_calls: 0,
             coverage_unknowns: 0,
             resolution_calls: 0,
@@ -97,11 +78,6 @@ impl<'a> Candidates<'a> {
             unqualified_fast: 0,
             unqualified_slow: 0,
             inventories: 0,
-            type_index: HashMap::new(),
-            type_index_entries: 0,
-            type_index_complete: true,
-            type_index_built: false,
-            import_names: HashMap::new(),
         }
     }
 
@@ -181,7 +157,7 @@ impl<'a> Candidates<'a> {
                 methods: HashMap::new(),
             };
             self.inventories += 1;
-            for (path, symbol) in workspace.package_symbols(file) {
+            for (path, symbol) in self.view.package_symbols(file) {
                 let Some(receiver) = &symbol.receiver else {
                     continue;
                 };
@@ -236,188 +212,28 @@ impl<'a> Candidates<'a> {
         Some(inventory.methods.get(owner).cloned().unwrap_or_default())
     }
 
-    /// Bounded query-local resolution memo for coverage walks. Repeated embedded
-    /// or underlying spellings within one request reuse the same declaration.
-    fn resolve_underlying(
-        &mut self,
-        workspace: &'a Workspace,
-        file: &'a Path,
-        spelling: &'a str,
-    ) -> Option<(&'a PathBuf, &'a Symbol)> {
-        let key_file = resolution_scope(file, spelling);
-        if let Some(cached) = self.underlying.get(&(key_file, spelling)) {
-            self.resolution_hits += 1;
-            return *cached;
-        }
-        self.resolution_calls += 1;
-        self.underlying_calls += 1;
-        let resolved = crate::analysis::types::lookup::underlying_target(workspace, file, spelling);
-        if self.underlying.len() < 4096 {
-            self.underlying.insert((key_file, spelling), resolved);
-        }
-        resolved
-    }
-
     fn resolve_declaration(
         &mut self,
-        workspace: &'a Workspace,
+        _workspace: &'a Workspace,
         file: &'a Path,
         name: &'a str,
     ) -> Option<(&'a PathBuf, &'a Symbol)> {
-        let key_file = resolution_scope(file, name);
-        if let Some(cached) = self.declarations.get(&(key_file, name)) {
+        if let Some(cached) = self.declarations.get(&(file, name)) {
             self.resolution_hits += 1;
             return *cached;
-        }
-        // Imported declarations are keyed by the canonical import path, so the
-        // same package type reached from different consumer files resolves once.
-        if let Some((alias, declared)) = name.split_once('.')
-            && let Some(import_path) = self.import_path(workspace, file, alias)
-        {
-            let key = (import_path, declared);
-            if let Some(cached) = self.imported_declarations.get(&key) {
-                self.resolution_hits += 1;
-                return *cached;
-            }
-            self.resolution_calls += 1;
-            self.declaration_calls += 1;
-            let resolved =
-                crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
-            self.qualified_fast += 1;
-            if self.imported_declarations.len() < 4_096 {
-                self.imported_declarations.insert(key, resolved);
-            }
-            return resolved;
         }
         self.resolution_calls += 1;
         self.declaration_calls += 1;
-        let indexed = self.indexed_type(workspace, file, name);
-        if indexed.is_some() {
-            self.unqualified_fast += 1;
+        if name.contains('.') {
+            self.qualified_slow += 1;
         } else {
             self.unqualified_slow += 1;
         }
-        let resolved = indexed
-            .or_else(|| crate::analysis::resolve::resolve_type_declaration(workspace, file, name));
+        let resolved = self.view.resolve_type_declaration(file, name);
         if self.declarations.len() < 4096 {
-            self.declarations.insert((key_file, name), resolved);
+            self.declarations.insert((file, name), resolved);
         }
         resolved
-    }
-
-    /// Canonical import path bound to `alias` in `file`, when the file imports
-    /// it under that name. Ambiguous or unindexed aliases keep the slow path.
-    fn import_path(
-        &mut self,
-        workspace: &'a Workspace,
-        file: &'a Path,
-        alias: &'a str,
-    ) -> Option<&'a str> {
-        if let Some(cached) = self.import_aliases.get(&(file, alias)) {
-            return *cached;
-        }
-        let stub = workspace.files.get(file)?;
-        let mut found = None;
-        for import in &stub.imports {
-            if import.is_dot() || import.is_blank() {
-                continue;
-            }
-            let name = match import.explicit_name() {
-                Some(alias) => Some(alias),
-                None => {
-                    if let Some(cached) = self.import_names.get(import.path.as_str()) {
-                        *cached
-                    } else {
-                        let value = workspace.import_name(import);
-                        if self.import_names.len() < 4_096 {
-                            self.import_names.insert(import.path.as_str(), value);
-                        }
-                        value
-                    }
-                }
-            };
-            if name == Some(alias) {
-                if found.is_some() {
-                    found = None;
-                    break;
-                }
-                found = Some(import.path.as_str());
-            }
-        }
-        if self.import_aliases.len() < 4_096 {
-            self.import_aliases.insert((file, alias), found);
-        }
-        found
-    }
-
-    /// Same-package type declaration from the query-local name index. Only
-    /// unqualified names without an import alias/dot-import shadow use it; all
-    /// other spellings keep the workspace resolver.
-    fn indexed_type(
-        &mut self,
-        workspace: &'a Workspace,
-        file: &'a Path,
-        name: &'a str,
-    ) -> Option<(&'a PathBuf, &'a Symbol)> {
-        if name.contains('.') {
-            return None;
-        }
-        let stub = workspace.files.get(file)?;
-        for import in &stub.imports {
-            if import.is_dot() {
-                return None;
-            }
-            if import.explicit_name() == Some(name) {
-                return None;
-            }
-            let path = import.path.as_str();
-            let alias = match self.import_names.get(path) {
-                Some(value) => *value,
-                None => {
-                    let value = workspace.import_name(import);
-                    if self.import_names.len() < 4_096 {
-                        self.import_names.insert(path, value);
-                    }
-                    value
-                }
-            };
-            if alias == Some(name) {
-                return None;
-            }
-        }
-        self.ensure_type_index(workspace);
-        if !self.type_index_complete {
-            return None;
-        }
-        self.type_index
-            .get(&(file.parent(), stub.package.as_str()))?
-            .get(name)
-            .copied()
-    }
-
-    fn ensure_type_index(&mut self, workspace: &'a Workspace) {
-        if self.type_index_built {
-            return;
-        }
-        self.type_index_built = true;
-        const MAX_TYPES: usize = 65_536;
-        for (path, stub) in &workspace.files {
-            let entry = self
-                .type_index
-                .entry((path.parent(), stub.package.as_str()))
-                .or_default();
-            for symbol in &stub.symbols {
-                if !symbol.is_type() || entry.contains_key(symbol.name.as_str()) {
-                    continue;
-                }
-                if self.type_index_entries >= MAX_TYPES {
-                    self.type_index_complete = false;
-                    return;
-                }
-                entry.insert(symbol.name.as_str(), (path, symbol));
-                self.type_index_entries += 1;
-            }
-        }
     }
 
     /// Proves which required method names the candidate (own or promoted via
@@ -507,17 +323,17 @@ impl<'a> Candidates<'a> {
                 locals::named_root(spelling)
             }
         };
-        // A same-package named type contributes its own receiver methods; only
-        // aliases (and non-indexed spellings) need the underlying projection.
-        // Resolve aliases from their declaration file so the query-local memo is
-        // shared across consumer files instead of keyed by the spelling site.
-        let (next_file, next) = match self.resolve_declaration(workspace, file, resolved_name) {
-            Some((path, symbol)) if !symbol.alias => (path, symbol),
-            Some((path, symbol)) => {
-                self.resolve_underlying(workspace, path, symbol.name.as_str())?
-            }
-            None => self.resolve_underlying(workspace, file, resolved_name)?,
-        };
+        let (next_file, next) = self.resolve_declaration(workspace, file, resolved_name)?;
+        // Generic aliases may substitute a formal receiver. Metadata alone
+        // cannot prove their underlying method inventory; use native lookup.
+        if next.alias
+            && next
+                .type_info
+                .as_ref()
+                .is_none_or(|info| info.target.is_some())
+        {
+            return None;
+        }
         self.coverage(
             workspace,
             next_file,
@@ -601,7 +417,6 @@ impl<'a> Candidates<'a> {
         }
         if let Some(target) = &info.target {
             let name = locals::named_root(&target.name);
-            let name = name.rsplit('.').next().unwrap_or(name);
             // Unqualified predeclared names add a fixed method inventory unless
             // this package shadows the spelling; resolve only then.
             let universe = !target.name.contains('.')
@@ -675,7 +490,7 @@ impl<'a> Candidates<'a> {
             if self
                 .matching
                 .contains(&(file.parent(), package, owner.name.as_str()))
-                || declares_required(workspace, file, &owner.name, required)
+                || declares_required(self.view, file, &owner.name, required)
             {
                 return true;
             }
@@ -705,9 +520,7 @@ impl<'a> Candidates<'a> {
                 let Some(name) = locals::named_type(name) else {
                     return true;
                 };
-                if let Some((origin, target)) =
-                    crate::analysis::resolve::resolve_type_declaration(workspace, file, &name)
-                {
+                if let Some((origin, target)) = self.view.resolve_type_declaration(file, &name) {
                     pending.push((origin.as_path(), target));
                     if pending.len() > 4096 {
                         return true;
@@ -800,16 +613,6 @@ impl<'a> Candidates<'a> {
             self.absent.insert(identity);
         }
         false
-    }
-}
-
-/// Unqualified spellings resolve inside their package, so all files of one
-/// package share the memo key; qualified spellings keep their own file's imports.
-fn resolution_scope<'a>(file: &'a Path, spelling: &str) -> &'a Path {
-    if spelling.contains('.') {
-        file
-    } else {
-        file.parent().unwrap_or(file)
     }
 }
 
@@ -991,8 +794,13 @@ fn constructor_class(spelling: &str) -> ConstructorClass {
 }
 
 /// Whether the package declares a method with a required name on the receiver.
-fn declares_required(workspace: &Workspace, file: &Path, owner: &str, required: &[&str]) -> bool {
-    workspace.package_symbols(file).any(|(_, symbol)| {
+fn declares_required(
+    view: crate::analysis::resolve::View<'_>,
+    file: &Path,
+    owner: &str,
+    required: &[&str],
+) -> bool {
+    view.package_symbols(file).any(|(_, symbol)| {
         symbol.receiver.as_deref() == Some(owner) && required.contains(&symbol.name.as_str())
     })
 }

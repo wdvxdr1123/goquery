@@ -17,6 +17,30 @@ pub(super) fn parse_type_parameters_of(
 }
 
 impl TypeArena<'_> {
+    pub(super) fn type_parameter_source(
+        &self,
+        declaration: crate::analysis::obj::DeclId<'_>,
+    ) -> Option<String> {
+        if !declaration.symbol.generic {
+            return Some(String::new());
+        }
+        let start = declaration.symbol.end;
+        let length = declaration
+            .symbol
+            .type_info
+            .as_ref()
+            .map_or(super::MAX_BYTES, |info| usize::from(info.parameter_end));
+        if length == 0 || length > super::MAX_BYTES {
+            return None;
+        }
+        let end = declaration
+            .symbol
+            .declaration()?
+            .end
+            .min(start.checked_add(length)?);
+        self.workspace.source_slice(declaration.file, start..end)
+    }
+
     pub(crate) fn check_named_arguments(&mut self, input: TypeId) -> Option<()> {
         if self.named_check_depth >= MAX_DEPTH {
             return None;
@@ -74,20 +98,9 @@ impl TypeArena<'_> {
     fn check_named_arguments_step(
         &mut self,
         declaration: crate::analysis::obj::DeclId<'_>,
-        arguments: super::arena::SliceRef,
+        arguments: super::ty::SliceRef,
     ) -> Option<()> {
-        let decl_span = declaration.symbol.end..declaration.symbol.declaration()?.end;
-        let source = if let Some(slice) = self
-            .workspace
-            .source_slice(declaration.file, decl_span.clone())
-        {
-            slice
-        } else if self.symbolic {
-            let full = self.workspace.source(declaration.file)?;
-            full.get(decl_span)?.to_owned()
-        } else {
-            return None;
-        };
+        let source = self.type_parameter_source(declaration)?;
         let (header, parsed) = parse_type_parameters_of(&source, declaration.symbol.generic)?;
         if !parsed.diagnostics.is_empty() {
             return None;
@@ -122,6 +135,7 @@ impl TypeArena<'_> {
             return None;
         }
         match self.nodes.get(usize::from(input.0))?.clone() {
+            Ty::Invalid => None,
             Ty::Alias { .. } => {
                 let target = self.unalias(input)?;
                 self.validate_type_inner(target, depth + 1)

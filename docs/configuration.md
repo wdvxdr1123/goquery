@@ -93,6 +93,66 @@ initialization with `GOTOOLCHAIN=local` and `GOWORK=off`; it is time-bounded and
 never fails initialization: a missing or failing `go` binary simply leaves the
 environment fallbacks in place.
 
+## Source and orphan-view limits
+
+Opening a build-excluded Go file can admit up to 64 compatible production
+siblings, with 8 MiB of source reads. Its offline dependency view shares a limit
+of 16 additional files, 4 MiB of reads, 128 import edges and 16 KiB of import
+paths. Each admission directory is limited to 2,048 entries. These are fixed
+limits; they do not launch Go or download dependencies. Queries use admitted
+metadata rather than discovering packages on disk. Missing or exhausted facts
+remain unknown, and incomplete dependency admission is logged to stderr.
+
+Hover constant-text expansion is limited to 4,096 steps, 64 KiB of declaration
+reads, depth 16 and 16 KiB of expanded string bytes. Package documentation reads
+only a 64 KiB header. These limits can omit presentation details without
+inventing a type or a declaration target.
+
+Completion ranks at most 200 candidates before formatting selected member types;
+their native type strings together are limited to 16 KiB. Type declaration
+presentation uses the shared arena with at most 256 temporary nodes; each type
+view and each source header for parameter names is limited to 16 KiB. Large
+struct/interface declarations can display their known outer constructor without
+expanding all members. Exhaustion omits type details rather than guessing them.
+Native member enumeration also limits copied candidate names to 16 KiB and
+keeps private names distinct by declaring package; an exhausted method set stays
+unknown.
+Receiver metadata rejects unrelated method candidates before native signature
+checking. Alias and dot-import receivers still require exact native identity.
+The temporary alias inventory and surviving method candidates each have a
+4,096-entry ceiling; neither is retained beyond the query.
+Implementation candidates with public requirements resolve only the required
+native methods; each projection retains the existing 256-node and 16 KiB
+budgets. Private requirements retain the full package-qualified method inventory.
+Final implementation proofs still check every interface requirement.
+Each checked region bounds expected-expression and literal-construction context
+tables to 4,096 records apiece; overflow discards the entire affected table.
+Completion applies native assignment compatibility within its 200-item fuzzy
+preselection. Unknown compatibility keeps the existing score. Field-key snippets
+use checked literal fields and omit keys already present in the literal.
+Module language versions are stored with the offline module plan and refresh on
+manifest events. Leading build constraints select the per-file language using
+Go's 1.21 floor. Go 1.27 literal keys include unambiguous promoted fields without
+pointer indirection; already used ancestor or descendant paths exclude a key.
+This adds one compact release value per indexed file and per admitted module;
+queries do not reopen manifests.
+Native signatures retain parameter/result names as presentation metadata, with
+at most one record per arena node and a shared 16 KiB name pool. Generic
+substitution and method expressions preserve these names; arena rewinds discard
+them. Exhausting this pool omits names without changing semantic type facts.
+Type metadata records exact parameter-list and RHS offsets. Oversized trivia
+between these parts does not force a whole-file read: parameters and the actual
+RHS are read separately, each within the existing 16 KiB declaration limit.
+Substantive type syntax beyond that limit remains unknown.
+Function bodies are admitted within 128 KiB, with 16 KiB signature headers.
+The request facade shares its current parsed body with cursor candidates and
+releases it between streaming regions. Body-budget exhaustion yields no local
+semantic result or completion candidates, since lexical shadowing is unknown.
+Every region transition rewinds local formals/types. Up to 64 newly used global
+declarations are recreated before the next body and retained below its permanent
+watermark; declaration-cache and arena ceilings still apply. Cache pressure
+evicts this prefix rather than consuming the next function's local budgets.
+
 ## Environment switches
 
 Read once at startup:

@@ -1,5 +1,5 @@
-//! Generated from mvdan.cc/xurls/v2 v2.6.0 and the pinned Go toolchain's Unicode tables by
-//! scripts/generate_document_link_tables.py; do not edit.
+//! Generated from mvdan.cc/xurls/v2 v2.6.0 and the pinned Go toolchain's Unicode tables.
+//! Do not edit the generated table.
 
 pub(super) const ALLOWED_UCS: &[(u32, u32)] = &[
     (0xa1, 0x167f),

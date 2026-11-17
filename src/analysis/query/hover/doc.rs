@@ -1,6 +1,7 @@
 //! Bounded Go documentation extraction: comment attachment, `CommentGroup.Text`
 //! semantics and resolution of Go doc links to editor locations.
 use super::Context;
+use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
 use crate::analysis::query::documentation;
 use crate::syntax::{Lexer, TokenKind};
 use crate::workspace::{self, Workspace};
@@ -22,20 +23,9 @@ pub(super) fn attached(
     source: &str,
     target: Target,
 ) -> Option<Documents> {
-    attached_in_view(context, file, source, target, None)
-}
-
-/// Same as [`attached`], resolving links in a detached document's build view.
-pub(super) fn attached_in_view(
-    context: &Context<'_>,
-    file: &Path,
-    source: &str,
-    target: Target,
-    view: Option<&crate::buildconstraint::Target>,
-) -> Option<Documents> {
     let spans = documentation::spans(source, target)?;
     let text = documentation::text(source, &spans)?;
-    let links = doc_links(context, file, source, &spans, view);
+    let links = doc_links(context, file, source, &spans);
     Some(Documents { text, links })
 }
 
@@ -46,7 +36,6 @@ fn doc_links(
     file: &Path,
     source: &str,
     spans: &[Range<usize>],
-    view: Option<&crate::buildconstraint::Target>,
 ) -> Vec<(String, String)> {
     let mut links: Vec<(String, String)> = Vec::new();
     for span in spans {
@@ -66,7 +55,7 @@ fn doc_links(
                     progressive.push('.');
                 }
                 progressive.push_str(part);
-                if let Some((path, position)) = doc_link_symbol(context, file, &progressive, view) {
+                if let Some((path, position)) = doc_link_symbol(context, file, &progressive) {
                     resolved = Some((path, position));
                 }
             }
@@ -136,156 +125,150 @@ fn doc_link_symbol(
     context: &Context<'_>,
     file: &Path,
     name: &str,
-    view: Option<&crate::buildconstraint::Target>,
 ) -> Option<(PathBuf, (u32, u32))> {
     let workspace = context.workspace();
+    let resolver = context.resolver();
     if let Some((prefix, rest)) = name.split_once('.') {
-        if let Some(import) = import_named(workspace, file, prefix) {
-            if let Some((recv, member)) = rest.split_once('.') {
-                return member_location(workspace, file, &format!("{prefix}.{recv}"), member);
+        if let Some(import) = import_named(context, file, prefix) {
+            let (receiver, member) = rest
+                .split_once('.')
+                .map_or((rest, None), |(receiver, member)| (receiver, Some(member)));
+            if receiver.is_empty() {
+                return import_position(workspace, file, import);
             }
-            if rest.is_empty() {
-                return import_position(workspace, file, &import)
-                    .map(|position| (position.0, position.1));
+            let mut candidates = resolver
+                .import_path_symbols(file, import)
+                .filter(|(_, symbol)| symbol.name == receiver);
+            let (origin, symbol) = candidates.next()?;
+            if candidates.next().is_some() {
+                return None;
             }
-            let resolved = crate::analysis::resolve::imported_symbol_iter(workspace, file, prefix)
-                .find(|(_, symbol)| symbol.name == rest && !symbol.name.is_empty())
-                .map(|(path, symbol)| {
-                    (
-                        path.clone(),
-                        (
-                            symbol.selection.start.line,
-                            symbol.selection.start.character,
-                        ),
-                    )
-                });
-            if let (Some(view), Some((path, _))) = (view, resolved.as_ref())
-                && !workspace.file_matches_target(path, view)
-            {
-                let package = workspace
-                    .files
-                    .get(path)
-                    .map(|stub| stub.package.clone())
-                    .or_else(|| workspace.declared_package_name(&import).map(str::to_owned));
-                if let (Some(package), Some(directory)) = (package, path.parent())
-                    && let Some(location) =
-                        view_location(workspace, view, directory, &package, rest)
-                {
-                    return Some(location);
-                }
+            if let Some(member) = member {
+                return symbol
+                    .is_type()
+                    .then(|| {
+                        member_location(
+                            context,
+                            file,
+                            DeclId {
+                                file: origin,
+                                symbol,
+                            },
+                            member,
+                        )
+                    })
+                    .flatten();
             }
-            return resolved;
+            let start = symbol.selection.start;
+            return Some((origin.clone(), (start.line, start.character)));
         }
-        if let Some((_, symbol)) =
-            crate::analysis::resolve::unqualified_symbol(workspace, file, prefix)
-                .filter(|(_, symbol)| symbol.is_type())
-        {
-            return member_location(workspace, file, &symbol.name, rest);
-        }
-        return None;
+        let (origin, symbol) = resolver
+            .package_symbol(file, prefix)
+            .filter(|(_, symbol)| symbol.is_type())?;
+        return member_location(
+            context,
+            file,
+            DeclId {
+                file: origin,
+                symbol,
+            },
+            rest,
+        );
     }
-    let package = workspace
-        .files
-        .get(file)
-        .map(|stub| stub.package.clone())
-        .unwrap_or_default();
-    let resolved = crate::analysis::resolve::unqualified_symbol(workspace, file, name).map(
-        |(path, symbol)| {
+    resolver
+        .package_symbol(file, name)
+        .map(|(path, symbol)| {
             let start = symbol.selection.start;
             (path.clone(), (start.line, start.character))
-        },
-    );
-    if let Some(view) = view {
-        if let Some((path, _)) = resolved.as_ref()
-            && workspace.file_matches_target(path, view)
-        {
-            return resolved;
-        }
-        if let Some(directory) = file.parent()
-            && let Some(location) = view_location(workspace, view, directory, &package, name)
-        {
-            return Some(location);
-        }
-    }
-    resolved.or_else(|| {
-        if workspace.builtin_file().as_deref() == Some(file) {
-            None
-        } else {
-            super::builtin::location(context, name)
-        }
-    })
-}
-
-fn view_location(
-    workspace: &Workspace,
-    target: &crate::buildconstraint::Target,
-    directory: &Path,
-    package: &str,
-    name: &str,
-) -> Option<(PathBuf, (u32, u32))> {
-    let location =
-        super::view::package_symbol(workspace, Some(target), directory, package, name, false)?;
-    Some((location.path, (location.line, location.character)))
+        })
+        .or_else(|| {
+            (workspace.builtin_file().as_deref() != Some(file))
+                .then(|| super::builtin::location(context, name))
+                .flatten()
+        })
 }
 
 fn member_location(
-    workspace: &Workspace,
+    context: &Context<'_>,
     file: &Path,
-    receiver: &str,
-    member: &str,
+    receiver: DeclId<'_>,
+    name: &str,
 ) -> Option<(PathBuf, (u32, u32))> {
-    let member = crate::analysis::types::lookup::scoped_receiver_member(
-        workspace, file, file, receiver, member,
-    )?;
+    let (origin, stub) = context.workspace().files.get_key_value(receiver.file)?;
+    let symbol = stub
+        .symbols
+        .iter()
+        .find(|symbol| symbol.start == receiver.symbol.start)?;
+    let member = context.with_sema(|sema| {
+        sema.arena_mut().declaration_member(
+            DeclId {
+                file: origin,
+                symbol,
+            },
+            file,
+            name,
+        )
+    })?;
     match member {
-        crate::analysis::obj::ReceiverMember::Method(path, symbol) => {
-            let start = symbol.selection.start;
-            Some((path.clone(), (start.line, start.character)))
-        }
-        crate::analysis::obj::ReceiverMember::Declaration(declaration) => {
-            let data = declaration.data(workspace)?;
+        ObjectRef::Method(MethodOrigin::Concrete(declaration)) => {
+            let start = declaration.symbol.selection.start;
             Some((
-                declaration.file.clone(),
-                (data.selection.start.line, data.selection.start.character),
+                declaration.file.to_path_buf(),
+                (start.line, start.character),
             ))
         }
+        ObjectRef::Field(identity) | ObjectRef::Method(MethodOrigin::Interface(identity))
+            if !identity.builtin =>
+        {
+            let owner = identity.indexed(context.workspace())?.owner?;
+            let source = context
+                .workspace()
+                .source_slice(identity.file, owner.end..owner.declaration()?.end)?;
+            let start = (identity.selection[0] as usize).checked_sub(owner.end)?;
+            let end = (identity.selection[1] as usize).checked_sub(owner.end)?;
+            source.get(start..end)?;
+            let relative = crate::text::SourceMap::new(&source).position(start);
+            let line = owner.selection.end.line.checked_add(relative.line)?;
+            let character = if relative.line == 0 {
+                owner
+                    .selection
+                    .end
+                    .character
+                    .checked_add(relative.character)?
+            } else {
+                relative.character
+            };
+            Some((identity.file.to_path_buf(), (line, character)))
+        }
+        _ => None,
     }
 }
 
-fn import_named(workspace: &Workspace, file: &Path, name: &str) -> Option<String> {
-    let stub = workspace.files.get(file)?;
+fn import_named<'a>(context: &Context<'a>, file: &Path, name: &str) -> Option<&'a str> {
+    let resolver = context.resolver();
+    let stub = context.workspace().files.get(file)?;
     stub.imports
         .iter()
         .find(|import| {
-            !import.is_dot() && !import.is_blank() && workspace.import_name(import) == Some(name)
+            !import.is_dot()
+                && !import.is_blank()
+                && resolver.import_name(file, import) == Some(name)
         })
-        .map(|import| import.path.clone())
         .or_else(|| {
-            stub.imports
-                .iter()
-                .find(|import| {
-                    !import.is_blank()
-                        && workspace.declared_package_name(&import.path) == Some(name)
-                })
-                .map(|import| import.path.clone())
+            stub.imports.iter().find(|import| {
+                !import.is_blank()
+                    && resolver.declared_package_name(file, &import.path) == Some(name)
+            })
         })
+        .map(|import| import.path.as_str())
 }
 
-/// Location of a package import's `PkgName` object: the alias if written,
-/// otherwise the import path literal.
 fn import_position(
     workspace: &Workspace,
     file: &Path,
     import: &str,
 ) -> Option<(PathBuf, (u32, u32))> {
     let source = workspace.source(file)?;
-    let expected_alias = workspace
-        .files
-        .get(file)?
-        .imports
-        .iter()
-        .find(|candidate| candidate.path == import)
-        .and_then(|candidate| candidate.explicit_name().map(str::to_owned));
     let mut tokens = Lexer::new(&source).peekable();
     while let Some(token) = tokens.next() {
         if token.kind != TokenKind::Import {
@@ -328,6 +311,5 @@ fn import_position(
             }
         }
     }
-    let _ = expected_alias;
     None
 }

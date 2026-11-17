@@ -1,4 +1,4 @@
-//! Generated from mvdan.cc/xurls/v2 v2.6.0 by scripts/generate_document_link_tables.py; do not edit.
+//! Generated from mvdan.cc/xurls/v2 v2.6.0; do not edit the generated table.
 
 pub(super) const MAX_SCHEME: usize = 36;
 pub(super) const SCHEMES: &[&str] = &[

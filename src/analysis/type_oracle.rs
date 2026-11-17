@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 #[test]
-#[ignore = "run scripts/compare_types.py with pinned Go 1.27.3"]
+#[ignore = "requires the pinned Go 1.27.3 type oracle"]
 fn type_oracle() {
     let input = std::env::var_os("GOQUERY_TYPE_ORACLE_INPUT").expect("oracle input path");
     let output = std::env::var_os("GOQUERY_TYPE_ORACLE_OUTPUT").expect("native output path");
@@ -20,7 +20,7 @@ fn type_oracle() {
         )
         .unwrap();
 
-    let mut sema = Semantics::new(&workspace);
+    let mut sema = Semantics::new(&workspace, workspace.build_view(None));
     let mut current_file: Option<PathBuf> = None;
     let mut current_source = String::new();
     let mut rows = Vec::new();

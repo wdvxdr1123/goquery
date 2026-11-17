@@ -10,12 +10,14 @@ pub(super) fn type_info(
     constructor: TypeConstructor,
     offset: usize,
 ) -> Option<Box<TypeInfo>> {
+    let parameter_end = u16::try_from(type_parameter_end(source).unwrap_or(0)).unwrap_or(u16::MAX);
     if matches!(
         constructor,
         TypeConstructor::Named | TypeConstructor::Pointer | TypeConstructor::Unknown
     ) && let Some(target) = named::target(source)
     {
         return Some(Box::new(TypeInfo {
+            parameter_end,
             constructor,
             embeddings_complete: true,
             target: Some(target),
@@ -45,6 +47,7 @@ pub(super) fn type_info(
     let semantic = scanned.is_some();
     let mut info = scanned.unwrap_or_else(|| {
         Box::new(TypeInfo {
+            parameter_end,
             constructor,
             embeddings_complete: false,
             target: None,
@@ -53,6 +56,7 @@ pub(super) fn type_info(
             search_members: Vec::new(),
         })
     });
+    info.parameter_end = parameter_end;
     search::walk(source, offset, "", 0, &mut |member, direct| {
         if semantic
             && member.container == offset
@@ -238,6 +242,7 @@ fn scan(source: &str) -> Option<Box<TypeInfo>> {
         }
     }
     Some(Box::new(TypeInfo {
+        parameter_end: 0,
         constructor: if kind == TokenKind::Interface {
             TypeConstructor::Interface
         } else {

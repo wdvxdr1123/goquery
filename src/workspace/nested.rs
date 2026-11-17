@@ -62,6 +62,7 @@ impl Workspace {
         self.nested_modules
             .entry(root.clone())
             .or_insert_with(|| module.clone());
+        self.refresh_module_go_version(&root);
         self.modules
             .entry(root.clone())
             .or_insert_with(|| module.clone());
@@ -119,6 +120,7 @@ impl Workspace {
             .map(|(root, module)| (root.clone(), module.clone()))
             .collect();
         for (root, module) in modules {
+            self.refresh_module_go_version(&root);
             self.modules.insert(root, module);
         }
         let directories: Vec<PathBuf> = self.nested_directories.drain().collect();
@@ -146,6 +148,7 @@ impl Workspace {
         for root in stale {
             self.nested_modules.remove(&root);
             self.modules.remove(&root);
+            self.module_go_versions.remove(&root);
             let stale_files: Vec<PathBuf> = self
                 .nested_files
                 .iter()
@@ -224,6 +227,7 @@ impl Workspace {
             return None;
         }
         let mut stub = crate::index::index_source(source);
+        stub.build_targets = self.build_membership(file, source);
         stub.stamp = crate::index::DiskStamp::of(file);
         if self.cgo_disabled && stub.imports.iter().any(|import| import.path == "C") {
             return None;

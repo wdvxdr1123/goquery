@@ -10,6 +10,9 @@ pub(super) struct Method<'a> {
     pub(super) name: String,
     pub(super) origin: &'a Path,
     pub(super) signature: TypeId,
+    /// Declaring interface instance for display after method-set flattening.
+    /// This provenance does not participate in type identity.
+    pub(super) declared_on: Option<TypeId>,
     pub(super) selection: [u32; 2],
     pub(super) builtin: bool,
 }
@@ -47,8 +50,14 @@ impl<'a> TypeArena<'a> {
                 }
                 let header = source.get(member.annotation.clone())?;
                 let signature = crate::syntax::parse_method_signature(header);
-                let signature =
-                    self.signature(origin, header, &signature, environment, depth + 1)?;
+                let signature = self.signature(
+                    origin,
+                    header,
+                    file_offset.map(|base| base + member.annotation.start),
+                    &signature,
+                    environment,
+                    depth + 1,
+                )?;
                 let selection = file_offset
                     .and_then(|base| {
                         Some([
@@ -61,6 +70,7 @@ impl<'a> TypeArena<'a> {
                     name: name.to_owned(),
                     origin,
                     signature,
+                    declared_on: None,
                     selection,
                     builtin: false,
                 });
@@ -103,6 +113,7 @@ impl<'a> TypeArena<'a> {
                 name: "Error".to_owned(),
                 origin,
                 signature,
+                declared_on: None,
                 selection: [0, 0],
                 builtin: true,
             }]
@@ -190,24 +201,6 @@ impl<'a> TypeArena<'a> {
         ))
     }
 
-    /// Check a metadata inventory against the complete typed method set,
-    /// including universe methods without indexed source declarations.
-    pub(crate) fn interface_methods_covered(
-        &mut self,
-        input: TypeId,
-        mut contains: impl FnMut(&Path, &str) -> bool,
-    ) -> Option<bool> {
-        let input = self.underlying(input)?;
-        let Ty::Interface { methods, .. } = &self.nodes[usize::from(input.0)] else {
-            return None;
-        };
-        Some(
-            self.methods[methods.clone()]
-                .iter()
-                .all(|method| contains(method.origin, &method.name)),
-        )
-    }
-
     /// Inference must not instantiate constrained named formals before their
     /// arguments have been inferred. Constructor metadata is sufficient here;
     /// assignment checks the concrete instantiated type afterward.
@@ -230,11 +223,7 @@ impl<'a> TypeArena<'a> {
                     return Some(false);
                 }
                 let Some((next_file, next_symbol)) =
-                    crate::analysis::resolve::resolve_type_declaration(
-                        self.workspace,
-                        file,
-                        &target.name,
-                    )
+                    self.resolver().resolve_type_declaration(file, &target.name)
                 else {
                     return Some(matches!(target.name.as_str(), "any" | "error"));
                 };
@@ -307,7 +296,11 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         Some(Operand {
-            mode: super::Mode::Value,
+            mode: if count == 1 {
+                super::Mode::CommaOk
+            } else {
+                super::Mode::Value
+            },
             ty: if result == 0 {
                 target
             } else {

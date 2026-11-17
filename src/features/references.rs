@@ -13,7 +13,7 @@ pub(super) fn execute(
     let file = context.file();
     let started = Instant::now();
     let include_declaration = params["context"]["includeDeclaration"].as_bool() == Some(true);
-    let Some(index) = context.reference_index(offset) else {
+    let Some(index) = context.reference_probe(offset) else {
         return Ok(Value::Null);
     };
     let target = context.reference_target(&index, offset, include_declaration)?;

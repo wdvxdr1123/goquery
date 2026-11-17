@@ -24,11 +24,10 @@ pub(crate) use navigation::{ReferenceTarget, Target as NavigationSymbolTarget};
 pub(crate) use signatures::SignatureTrigger;
 pub(crate) use signatures::label::CallableSignature;
 mod source;
-use crate::analysis::scope::{CursorScope, Locals};
 use crate::workspace::Workspace;
 use source::SourceView;
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::path::Path;
 
@@ -40,9 +39,72 @@ pub(crate) struct Document<'a> {
 pub(crate) struct Context<'a, View = Document<'a>> {
     workspace: &'a Workspace,
     view: View,
+    build_view: Cell<Option<crate::workspace::BuildView<'a>>>,
     sema: RefCell<Option<crate::analysis::sema::Semantics<'a>>>,
 }
 impl<'a, View> Context<'a, View> {
+    pub(crate) fn with_sema<R>(
+        &self,
+        f: impl FnOnce(&mut crate::analysis::sema::Semantics<'a>) -> R,
+    ) -> R {
+        let mut guard = self.sema.borrow_mut();
+        let sema = guard.get_or_insert_with(|| {
+            crate::analysis::sema::Semantics::new(
+                self.workspace,
+                self.build_view
+                    .get()
+                    .unwrap_or_else(|| self.workspace.build_view(None)),
+            )
+        });
+        f(sema)
+    }
+
+    pub(in crate::analysis::query) fn select_query_file(
+        &self,
+        file: &Path,
+    ) -> Result<(), (i32, String)> {
+        if self.build_view.get().is_some() {
+            return Ok(());
+        }
+        if self.sema.borrow().is_some() {
+            return Err((
+                crate::error::REQUEST_FAILED,
+                "semantic context has no selected build view".into(),
+            ));
+        }
+        self.build_view
+            .set(Some(self.workspace.build_view(Some(file))));
+        Ok(())
+    }
+
+    pub(in crate::analysis::query) fn resolver(&self) -> crate::analysis::resolve::View<'a> {
+        crate::analysis::resolve::View::new(
+            self.workspace,
+            self.build_view
+                .get()
+                .unwrap_or_else(|| self.workspace.build_view(None)),
+        )
+    }
+
+    pub(crate) fn hierarchy_view_origin(&self, file: &Path) -> Option<&'a Path> {
+        self.build_view
+            .get()
+            .and_then(|view| view.origin_for(self.workspace, file))
+    }
+
+    pub(in crate::analysis::query) fn resolve_identity<'identity>(
+        &self,
+        resolver: &mut crate::analysis::sema::IdentityResolver<'identity>,
+        analysis: &crate::analysis::scope::occurrences::Occurrences,
+        source: &str,
+        name: &crate::analysis::scope::occurrences::Name,
+    ) -> Option<crate::analysis::sema::Identity<'identity>>
+    where
+        'a: 'identity,
+    {
+        self.with_sema(|sema| resolver.resolve(sema, analysis, source, name))
+    }
+
     pub(in crate::analysis) fn workspace(&self) -> &'a Workspace {
         self.workspace
     }
@@ -79,6 +141,7 @@ impl<'a> Context<'a, ()> {
         Self {
             workspace,
             view: (),
+            build_view: Cell::new(None),
             sema: RefCell::new(None),
         }
     }
@@ -106,18 +169,9 @@ impl<'a> Context<'a> {
                 file,
                 source: SourceView::admitted(workspace, file, closed),
             },
+            build_view: Cell::new(Some(workspace.build_view(Some(file)))),
             sema: RefCell::new(None),
         })
-    }
-    pub(crate) fn borrowed(workspace: &'a Workspace, file: &'a Path, source: &'a str) -> Self {
-        Self {
-            workspace,
-            view: Document {
-                file,
-                source: SourceView::borrowed(source),
-            },
-            sema: RefCell::new(None),
-        }
     }
 
     /// Source-only view for syntactic features on open documents that the build
@@ -146,6 +200,7 @@ impl<'a> Context<'a> {
         Ok(Self {
             workspace,
             view,
+            build_view: Cell::new(Some(workspace.build_view(Some(file)))),
             sema: RefCell::new(None),
         })
     }
@@ -154,15 +209,6 @@ impl<'a> Context<'a> {
     }
     pub(crate) fn source(&self) -> &str {
         self.view.source.text()
-    }
-    pub(crate) fn with_sema<R>(
-        &self,
-        f: impl FnOnce(&mut crate::analysis::sema::Semantics<'a>) -> R,
-    ) -> R {
-        let mut guard = self.sema.borrow_mut();
-        let sema =
-            guard.get_or_insert_with(|| crate::analysis::sema::Semantics::new(self.workspace));
-        f(sema)
     }
     pub(crate) fn is_detached(&self) -> bool {
         self.workspace.is_detached(self.view.file)
@@ -173,8 +219,15 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn into_source_and_metadata(self) -> (Cow<'a, str>, Context<'a, ()>) {
-        let workspace = self.workspace;
-        (self.view.source.into_text(), Context::metadata(workspace))
+        (
+            self.view.source.into_text(),
+            Context {
+                workspace: self.workspace,
+                view: (),
+                build_view: self.build_view,
+                sema: self.sema,
+            },
+        )
     }
 }
 
@@ -195,16 +248,4 @@ pub(crate) fn cursor_function(
                 .then(|| symbol.declaration().map(|span| (span.start, body.clone())))
                 .flatten()
         })
-}
-pub(crate) fn cursor_scope(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    offset: usize,
-) -> Result<CursorScope, (i32, String)> {
-    Locals::scope_at_cursor(
-        source,
-        offset,
-        cursor_function(workspace, file, source, offset),
-    )
 }

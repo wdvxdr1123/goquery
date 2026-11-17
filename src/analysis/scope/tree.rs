@@ -88,6 +88,8 @@ pub(crate) struct ScopeTree {
     pub(crate) nodes: Vec<ScopeNode>,
     pub(crate) bindings: Vec<LocalBinding>,
     pub(crate) labels: Vec<[u32; 2]>,
+    /// False when lexical scope construction was truncated by a budget.
+    pub(crate) complete: bool,
 }
 
 impl ScopeTree {
@@ -101,6 +103,7 @@ impl ScopeTree {
             }],
             bindings: Vec::new(),
             labels: Vec::new(),
+            complete: true,
         }
     }
 
@@ -121,6 +124,9 @@ impl ScopeTree {
             u32::try_from(start).unwrap_or(0),
             u32::try_from(body_end).unwrap_or(0),
         ]);
+        tree.complete = body.diagnostics().is_empty()
+            && sig.is_none_or(|signature| signature.diagnostics().is_empty())
+            && cursor_offset.is_none();
         let root_scope = ScopeId(0);
         if let Some(signature) = sig {
             tree.populate_signature(source, root_scope, sig_base, body_base, signature);
@@ -148,6 +154,7 @@ impl ScopeTree {
             u32::try_from(body_base).unwrap_or(0),
             u32::try_from(body_end).unwrap_or(0),
         ]);
+        tree.complete = body.diagnostics().is_empty() && cursor_offset.is_none();
         let root_scope = ScopeId(0);
         let mut builder = TreeBuilder {
             tree: &mut tree,
@@ -165,6 +172,7 @@ impl ScopeTree {
         extent: [u32; 2],
     ) -> Option<ScopeId> {
         if self.nodes.len() >= MAX_SCOPE_NODES {
+            self.complete = false;
             return None;
         }
         let id = ScopeId(u32::try_from(self.nodes.len()).ok()?);
@@ -186,6 +194,7 @@ impl ScopeTree {
         init: BindingInit,
     ) -> Option<LocalId> {
         if self.bindings.len() >= MAX_SCOPE_NODES {
+            self.complete = false;
             return None;
         }
         let id = LocalId(u32::try_from(self.bindings.len()).ok()?);
@@ -362,6 +371,56 @@ impl ScopeTree {
             .map(|index| LocalId(index as u32))
     }
 
+    /// Names inside a function type have declaration identities, but no body
+    /// where they can be used. Keep them out of the enclosing scope's chain.
+    pub(crate) fn signature_name(
+        &mut self,
+        name_span: [u32; 2],
+        kind: LocalBindingKind,
+    ) -> Option<LocalId> {
+        if let Some(index) = self
+            .bindings
+            .iter()
+            .position(|binding| binding.name_span == name_span)
+        {
+            return Some(LocalId(index as u32));
+        }
+        if self.bindings.len() >= MAX_SCOPE_NODES {
+            self.complete = false;
+            return None;
+        }
+        let id = LocalId(u32::try_from(self.bindings.len()).ok()?);
+        self.bindings.push(LocalBinding {
+            prev_in_scope: None,
+            name_span,
+            visible_from: u32::MAX,
+            kind,
+            init: BindingInit::None,
+        });
+        Some(id)
+    }
+
+    /// Type annotations may contain array-length expressions with closures.
+    /// Admit their lexical scopes before the checker walks those expressions.
+    pub(crate) fn include_type_expressions(
+        &mut self,
+        source: &str,
+        base: usize,
+        expressions: &BlockTree,
+        roots: &[ExprId],
+        cursor_offset: Option<usize>,
+    ) {
+        let scope = self.innermost_scope(u32::try_from(base).unwrap_or(u32::MAX));
+        let mut builder = TreeBuilder {
+            tree: self,
+            source,
+            cursor_offset,
+        };
+        for root in roots {
+            builder.walk_expr(scope, base, expressions, *root, 0);
+        }
+    }
+
     pub(crate) fn visible_bindings<'t>(
         &'t self,
         source: &'t str,
@@ -424,6 +483,7 @@ impl TreeBuilder<'_> {
         depth: usize,
     ) {
         if depth >= MAX_DEPTH {
+            self.tree.complete = false;
             return;
         }
         let Some(stmt) = body.statement(stmt_id) else {
@@ -459,6 +519,7 @@ impl TreeBuilder<'_> {
         depth: usize,
     ) {
         if depth >= MAX_DEPTH {
+            self.tree.complete = false;
             return;
         }
         let Some(stmt) = body.statement(stmt_id) else {
@@ -946,6 +1007,7 @@ impl TreeBuilder<'_> {
         depth: usize,
     ) {
         if depth >= MAX_DEPTH {
+            self.tree.complete = false;
             return;
         }
         let Some(expr) = body.expression(expr_id) else {
@@ -971,8 +1033,16 @@ impl TreeBuilder<'_> {
                 let sig_end = base + signature.end;
                 let body_start = base + lit_body.start;
                 let body_end = base + lit_body.end;
+                if self.tree.nodes.iter().any(|node| {
+                    node.kind == ScopeKind::FuncSignature
+                        && node.extent == [sig_start as u32, body_end as u32]
+                }) {
+                    return;
+                }
                 if body_end <= self.source.len()
-                    && body_end.saturating_sub(sig_start) <= MAX_BYTES
+                    && sig_end.saturating_sub(sig_start) <= MAX_BYTES
+                    && body_end.saturating_sub(body_start)
+                        <= crate::analysis::budget::MAX_BODY_BYTES
                     && self
                         .cursor_offset
                         .is_none_or(|cursor| sig_start <= cursor && cursor <= body_end)
@@ -981,6 +1051,8 @@ impl TreeBuilder<'_> {
                 {
                     let parsed_sig = crate::syntax::parse_literal_signature(sig_text);
                     let parsed_body = crate::syntax::parse_block(body_text);
+                    self.tree.complete &=
+                        parsed_sig.diagnostics().is_empty() && parsed_body.diagnostics().is_empty();
                     if let Some(lit_scope) = self.tree.push_scope(
                         Some(scope),
                         ScopeKind::FuncSignature,

@@ -1,13 +1,13 @@
 //! Classifies semantic occurrences without keeping the temporary body arenas.
 use crate::analysis::scope::ObjectKind;
-use crate::analysis::source::{Role, SourceAnalysis};
+use crate::analysis::scope::occurrences::{Occurrences, Role};
 use crate::syntax::{
     BlockTree, Expr, ExprKind, Lexer, Signature, SignatureName, SignatureNameKind, StmtKind,
     TokenKind, TypeReference,
 };
 use std::ops::Range;
 
-impl SourceAnalysis {
+impl Occurrences {
     pub(super) fn mark(&mut self, span: Range<usize>, role: Role) {
         if let Ok(index) = self
             .names

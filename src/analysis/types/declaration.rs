@@ -1,5 +1,6 @@
 //! gopls-style type-name projection, retaining aliases and signature result order.
 use super::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId};
+use crate::analysis::obj::DeclId;
 use crate::index::IndexedSymbol as Symbol;
 use std::ops::Range;
 use std::path::Path;
@@ -11,11 +12,12 @@ pub(crate) enum TypeDeclaration<'a> {
 }
 
 /// One written local `type` declaration, borrowed for the duration of the query.
-/// Only the four facts go/types needs for a local defined type or alias are kept.
+/// The RHS byte origin keeps nested anonymous member identities exact.
 pub(crate) struct LocalTypeDefinition<'s> {
     pub(crate) name: &'s str,
     pub(crate) selection: Range<usize>,
     pub(crate) annotation: &'s str,
+    pub(crate) annotation_start: usize,
     pub(crate) alias: bool,
 }
 
@@ -42,12 +44,26 @@ pub(super) struct LocalTypeFact<'a> {
 const MAX_LOCAL_TYPES: usize = 64;
 
 impl<'a> TypeArena<'a> {
+    /// Immediate alias RHS: preserve alias chains instead of unaliasing them.
+    pub(crate) fn alias_named_rhs(&mut self, declaration: DeclId<'a>) -> Option<DeclId<'a>> {
+        if !declaration.symbol.alias {
+            return None;
+        }
+        let alias = self.declaration_type(declaration)?;
+        let rhs = self.expand(alias)?;
+        match self.nodes.get(usize::from(rhs.0))? {
+            Ty::Named { declaration, .. } => Some(*declaration),
+            _ => None,
+        }
+    }
+
     /// Register query-local local-type facts and parse one written annotation in
     /// that environment. Identity is `(file, selection)`; the spelling is display only.
     pub(crate) fn declared_scope_type_in(
         &mut self,
         origin: &Path,
         text: &str,
+        file_offset: Option<usize>,
         definitions: &[LocalTypeDefinition<'_>],
         extra_env: &[(&str, TypeId)],
     ) -> Option<TypeId> {
@@ -75,13 +91,18 @@ impl<'a> TypeArena<'a> {
             if !matches!(self.local_types[index].state, LocalTypeState::Pending) {
                 continue;
             }
-            let parsed = self.parse_in(origin, definition.annotation, &environment);
+            let parsed = self.parse_in_at(
+                origin,
+                definition.annotation,
+                definition.annotation_start,
+                &environment,
+            );
             self.local_types[index].state = match parsed {
                 Some(ty) => LocalTypeState::Ready(ty),
                 None => LocalTypeState::Failed,
             };
         }
-        self.parse_in(origin, text, &environment)
+        self.parse_in_internal(origin, text, file_offset, &environment)
     }
 
     fn local_type_node(
@@ -255,6 +276,7 @@ impl<'a> TypeArena<'a> {
             }
             visited.push(ty);
             match self.nodes.get(usize::from(ty.0))? {
+                Ty::Invalid => return None,
                 Ty::LocalDeclaration { .. } => return Some(true),
                 Ty::Named { arguments, .. } | Ty::Alias { arguments, .. } => {
                     pending.extend_from_slice(&self.arguments[arguments.range()])
@@ -286,6 +308,115 @@ impl<'a> TypeArena<'a> {
             }
         }
         Some(false)
+    }
+
+    /// A declaration view imports its actual formal identities and bounds.
+    /// The caller keeps this within a bounded presentation projection.
+    pub(crate) fn declaration_type(&mut self, declaration: DeclId<'a>) -> Option<TypeId> {
+        let mut arguments = Vec::new();
+        if declaration.symbol.generic {
+            let start = declaration.symbol.end;
+            let source = self.type_parameter_source(declaration)?;
+            let (header, signature) = super::named::parse_type_parameters_of(&source, true)?;
+            if !signature.diagnostics.is_empty() || signature.type_parameters.len() > 32 {
+                return None;
+            }
+            let formals = signature
+                .type_parameters
+                .iter()
+                .map(|parameter| {
+                    let name = parameter.name.as_ref()?;
+                    Some(super::LocalFormal {
+                        name: header.get(name.clone())?,
+                        selection: start.checked_add(name.start)?,
+                        bound: Some(header.get(parameter.annotation.clone())?),
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            for formal in &formals {
+                arguments.push(self.parse_parameterized(
+                    declaration.file,
+                    formal.name,
+                    None,
+                    &formals,
+                    None,
+                )?);
+            }
+        }
+        self.push_named(declaration, &arguments, declaration.symbol.alias)
+    }
+
+    /// Explicit named embeddings, proved in this declaration's native formal
+    /// environment. Metadata selects candidates; it does not resolve an edge.
+    pub(crate) fn direct_embedding_declarations(
+        &mut self,
+        declaration: DeclId<'a>,
+    ) -> Option<Vec<DeclId<'a>>> {
+        if declaration.symbol.type_info.as_ref()?.embedded.is_empty() {
+            return Some(Vec::new());
+        }
+        let receiver = self.declaration_type(declaration)?;
+        self.validate_type(receiver)?;
+        let root = self.underlying(receiver)?;
+        let mut embedded = Vec::new();
+        match self.nodes[usize::from(root.0)].clone() {
+            Ty::Struct { fields, .. } => {
+                embedded.extend(
+                    self.fields[fields]
+                        .iter()
+                        .filter(|field| field.embedded)
+                        .map(|field| field.ty),
+                );
+            }
+            Ty::Interface { .. } => {
+                let span = declaration.symbol.end..declaration.symbol.declaration()?.end;
+                let source = self
+                    .workspace
+                    .source_slice(declaration.file, span.clone())?;
+                let (header, signature) =
+                    super::named::parse_type_parameters_of(&source, declaration.symbol.generic)?;
+                let names = super::constraints::parameter_names(header, &signature)?;
+                let (_, arguments, _) = self.named_declaration(receiver)?;
+                if names.len() != arguments.len() {
+                    return None;
+                }
+                let environment = names.into_iter().zip(arguments).collect::<Vec<_>>();
+                let body = super::declaration_body(&source)?;
+                let offset = span.start + source.len() - body.len();
+                let parsed = crate::syntax::parse_type(body);
+                if !parsed.diagnostics.is_empty() {
+                    return None;
+                }
+                let aggregate = crate::syntax::aggregate_offset(body)?;
+                let opening = crate::syntax::Lexer::new(body.get(aggregate..)?).nth(1)?;
+                if opening.kind != crate::syntax::TokenKind::LBrace {
+                    return None;
+                }
+                let container = aggregate + opening.span.start;
+                for member in parsed
+                    .interface_members
+                    .iter()
+                    .filter(|member| member.container == container && member.name.is_none())
+                {
+                    embedded.push(self.parse_in_at(
+                        declaration.file,
+                        body.get(member.annotation.clone())?,
+                        offset + member.annotation.start,
+                        &environment,
+                    )?);
+                }
+            }
+            _ => return Some(Vec::new()),
+        }
+        let mut declarations = Vec::new();
+        for embedded in embedded {
+            if let Some(declaration) = self.receiver_declaration(embedded)
+                && !declarations.contains(&declaration)
+            {
+                declarations.push(declaration);
+            }
+        }
+        Some(declarations)
     }
 
     /// Projection-only schema: opaque formals preserve declaration references.
@@ -341,6 +472,7 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
             match self.nodes.get(usize::from(input.0))? {
+                Ty::Invalid => return None,
                 Ty::Named { declaration, .. } | Ty::Alias { declaration, .. } => {
                     result.push(TypeDeclaration::Named(declaration.file, declaration.symbol))
                 }

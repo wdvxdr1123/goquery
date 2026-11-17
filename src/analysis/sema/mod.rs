@@ -1,6 +1,17 @@
 //! Request-scoped semantic facade coordinating [`TypeArena`], [`DeclCache`], and [`RegionChecker`].
+mod bodies;
+mod completion;
+mod diagnostics;
+mod expected;
+mod expressions;
 mod identity;
+pub(crate) mod layout;
+mod literals;
+mod members;
+mod navigation;
 mod region_cache;
+mod relations;
+mod signatures;
 
 use std::path::Path;
 
@@ -11,8 +22,14 @@ use crate::analysis::types::{ArenaWatermark, Operand, TypeArena, TypeId};
 use crate::index::IndexedSymbol;
 use crate::workspace::Workspace;
 
+pub(crate) use completion::{CompletionSite, CompletionTypeView, MemberRequest};
+pub(crate) use expected::CompletionProbe;
 pub(crate) use identity::{Identity, IdentityResolver};
+pub(crate) use literals::LiteralKey;
+pub(crate) use members::MethodView;
+pub(crate) use members::{CallableView, MemberTypeView};
 use region_cache::CachedRegion;
+pub(crate) use signatures::CheckedCallable;
 
 /// Request-scoped semantic query facade backed by a bounded shared [`TypeArena`].
 pub(crate) struct Semantics<'a> {
@@ -20,21 +37,25 @@ pub(crate) struct Semantics<'a> {
     arena: TypeArena<'a>,
     decls: DeclCache<'a>,
     base_mark: ArenaWatermark,
+    root_mark: ArenaWatermark,
     cached: Option<CachedRegion<'a>>,
     failed: Option<(&'a Path, [u32; 2], Option<usize>)>,
+    parsed_body: Option<bodies::ParsedBody<'a>>,
 }
 
 impl<'a> Semantics<'a> {
-    pub(crate) fn new(workspace: &'a Workspace) -> Self {
-        let arena = TypeArena::with_shared_budget(workspace);
+    pub(crate) fn new(workspace: &'a Workspace, view: crate::workspace::BuildView<'a>) -> Self {
+        let arena = TypeArena::with_shared_budget(workspace, view);
         let base_mark = arena.mark();
         Self {
             workspace,
             arena,
-            decls: DeclCache::new(),
+            decls: DeclCache::new(view),
             base_mark,
+            root_mark: base_mark,
             cached: None,
             failed: None,
+            parsed_body: None,
         }
     }
 

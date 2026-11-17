@@ -298,7 +298,7 @@ impl TypeArena<'_> {
                     value: None,
                 },
                 methods,
-                self.workspace.integer_bits()?,
+                self.integer_bits()?,
             )?
             .then_some(())?;
         }

@@ -1197,7 +1197,7 @@ fn check_semantic_streams(messages: &Value, replies: &[Value]) {
                 assert_eq!(data.len() % 5, 0);
                 let (mut line, mut column) = (0u64, 0u64);
                 let mut previous_end = (0, 0);
-                for token in data.chunks_exact(5) {
+                for token in data.as_chunks::<5>().0 {
                     let token: Vec<_> = token.iter().map(|v| v.as_u64().unwrap()).collect();
                     line += token[0];
                     column = if token[0] == 0 {
@@ -3862,7 +3862,7 @@ fn watched_file_changes_refresh_cross_package_state() {
     let mut character = 0;
     let mut starts = Vec::new();
     let mut styles = Vec::new();
-    for token in data.chunks_exact(5) {
+    for token in data.as_chunks::<5>().0 {
         let delta = token[0].as_u64().unwrap();
         line += delta;
         character = if delta == 0 {
@@ -4640,7 +4640,7 @@ fn watched_file_changes_refresh_cross_package_state() {
         let mut line = 0;
         let mut character = 0;
         let mut found = None;
-        for token in data.chunks_exact(5) {
+        for token in data.as_chunks::<5>().0 {
             let delta_line = token[0].as_u64().unwrap();
             line += delta_line;
             character = if delta_line == 0 {
@@ -4954,6 +4954,23 @@ mod sema_e2e {
 
     impl SemaTestServer {
         fn start(name: &str, files: &[(&str, &str)]) -> Self {
+            Self::start_in_target(name, files, None)
+        }
+
+        fn start_in_target(
+            name: &str,
+            files: &[(&str, &str)],
+            target: Option<(&str, &str)>,
+        ) -> Self {
+            Self::start_configured(name, files, target, false)
+        }
+
+        fn start_configured(
+            name: &str,
+            files: &[(&str, &str)],
+            target: Option<(&str, &str)>,
+            snippets: bool,
+        ) -> Self {
             let root =
                 std::env::temp_dir().join(format!("goquery-sema-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
@@ -4992,10 +5009,13 @@ mod sema_e2e {
                 json!({
                     "processId": std::process::id(),
                     "rootUri": root_uri,
-                    "capabilities": {},
+                    "capabilities": if snippets { json!({"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}) } else { json!({}) },
                     "initializationOptions": {
                         "goroot": "",
                         "fileWatch": false,
+                        "usePlaceholders": snippets,
+                        "goos": target.map(|(goos, _)| goos),
+                        "goarch": target.map(|(_, goarch)| goarch),
                     },
                 }),
             );
@@ -5125,6 +5145,198 @@ mod sema_e2e {
     }
 
     #[test]
+    fn sema_member_completion_ignores_unrelated_receiver_budgets() {
+        let mut source = String::from(concat!(
+            "package p\ntype Target struct{ Value int }\ntype Alias = Target\n",
+            "func (Alias) Extra() {}\nfunc (*Target) Read() int { return 0 }\n",
+            "type Other struct{}\n",
+        ));
+        for index in 0..4500 {
+            source.push_str(&format!("func (Other) Unrelated{index}() {{}}\n"));
+        }
+        source.push_str(
+            "func probe(value *Target) { _ = value.Read; _ = value.Value; _ = value.Extra }\n",
+        );
+        let mut server = SemaTestServer::start_configured(
+            "member-inventory",
+            &[
+                ("go.mod", "module example.com/members\n\ngo 1.27\n"),
+                ("p.go", &source),
+            ],
+            None,
+            true,
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, &source);
+        for (name, kind, detail, edit) in [
+            ("Read", 2, "func() int", "Read()"),
+            ("Value", 5, "int", "Value"),
+            ("Extra", 2, "func()", "Extra()"),
+        ] {
+            let start = source.rfind(&format!("value.{name}")).unwrap() + "value.".len();
+            let reply = server.request(
+                "textDocument/completion",
+                json!({
+                    "textDocument":{"uri":uri}, "position":pos(&source,start+3)
+                }),
+            );
+            assert_eq!(
+                reply["result"],
+                json!({"isIncomplete":true,"items":[{
+                    "label":name,"kind":kind,"detail":detail,"filterText":name,
+                    "insertTextFormat":2,"preselect":true,"sortText":"00000",
+                    "textEdit":{"newText":edit,"range":{"start":pos(&source,start),"end":pos(&source,start+name.len())}}
+                }]}),
+                "{name}: {reply}"
+            );
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_signature_docs_follow_the_universe_error_method_identity() {
+        let source = concat!(
+            "package p\ntype Alias = error\ntype Wrapped interface{ error }\n",
+            "type Local struct{}\nfunc (Local) Error() string { return \"\" }\n",
+            "func probe(err error, alias Alias, wrapped Wrapped, local Local) {\n",
+            " _ = err.Error()\n _ = alias.Error()\n _ = wrapped.Error()\n _ = local.Error()\n}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "universe-method-docs",
+            &[
+                ("go.mod", "module example.com/errorhelp\n\ngo 1.27\n"),
+                ("p.go", source),
+            ],
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, source);
+        for receiver in ["err", "alias", "wrapped", "local"] {
+            let call = format!("{receiver}.Error(");
+            let offset = source.find(&call).unwrap() + call.len();
+            let response = server.request(
+                "textDocument/signatureHelp",
+                json!({
+                    "textDocument":{"uri":uri}, "position":pos(source,offset),
+                    "context":{"triggerKind":1,"isRetrigger":false},
+                }),
+            );
+            assert_eq!(
+                response["result"],
+                json!({
+                    "signatures":[{"label":"Error() string","documentation":{
+                        "kind":"markdown", "value":if receiver == "local" { "" } else { "Error returns the error message." }
+                    }}], "activeSignature":0,
+                }),
+                "{receiver}: {response}"
+            );
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_implementation_checks_only_required_native_signatures() {
+        let mut source = String::from(concat!(
+            "package p\ntype Reader interface { Read() int }\ntype Target struct{}\n",
+            "func (*Target) Read() int { return 0 }\n",
+            "type Wrong struct{}\nfunc (Wrong) Read() string { return \"\" }\n",
+            "type Shadow struct{ Read func() int }\n",
+        ));
+        for index in 0..400 {
+            source.push_str(&format!(
+                "func (*Target) Spare{index}(value map[int][]*Target) (func() int, chan *Target) {{ return nil, nil }}\n"
+            ));
+        }
+        let mut server = SemaTestServer::start(
+            "required-methods",
+            &[
+                ("go.mod", "module example.com/required\n\ngo 1.27\n"),
+                ("p.go", &source),
+            ],
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, &source);
+        let type_start = source.find("Target struct").unwrap();
+        let method_start = source.find("func (*Target) Read").unwrap() + "func (*Target) ".len();
+        for (query, target, length) in [
+            (
+                source.find("Reader interface").unwrap(),
+                type_start,
+                "Target".len(),
+            ),
+            (
+                source.find("Read() int").unwrap(),
+                method_start,
+                "Read".len(),
+            ),
+        ] {
+            let response = server.request(
+                "textDocument/implementation",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(&source,query),
+                }),
+            );
+            assert_eq!(
+                response["result"],
+                json!([{
+                    "uri":uri,"range":{"start":pos(&source,target),"end":pos(&source,target+length)}
+                }]),
+                "{response}"
+            );
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_assignment_diagnostics_follow_unsaved_regions() {
+        fn published(server: &mut SemaTestServer, uri: &str, version: i64) -> Vec<Value> {
+            for _ in 0..64 {
+                let message = jsonrpc2::read_message(&mut server.stdout)
+                    .expect("read diagnostics")
+                    .expect("server closed before diagnostics");
+                if message["method"] == "textDocument/publishDiagnostics"
+                    && message["params"]["uri"] == uri
+                    && message["params"]["version"] == version
+                {
+                    return message["params"]["diagnostics"]
+                        .as_array()
+                        .expect("diagnostics array")
+                        .clone();
+                }
+                if let Some(id) = message.get("id") {
+                    server.send(&json!({"jsonrpc": "2.0", "id": id, "result": null}));
+                }
+            }
+            panic!("diagnostic notification budget exceeded");
+        }
+        let source = "package main\nfunc f() int {\n\tvar 数 int\n\tvar text string\n\t数 = text\n\treturn 数\n}\n";
+        let mut server = SemaTestServer::start(
+            "assignment-diagnostics",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.24\n"),
+                ("main.go", source),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, source);
+        let diagnostics = published(&mut server, &uri, 1);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["code"], "IncompatibleAssign");
+        assert_eq!(diagnostics[0]["source"], "compiler");
+        assert_eq!(
+            diagnostics[0]["message"],
+            "cannot use text (variable of type string) as int value in assignment"
+        );
+        let start = source.find("数 = text").unwrap() + "数 = ".len();
+        assert_eq!(
+            diagnostics[0]["range"],
+            json!({"start": pos(source, start), "end": pos(source, start + 4)})
+        );
+        server.did_change(&uri, 2, &source.replace("var text string", "var text int"));
+        assert!(published(&mut server, &uri, 2).is_empty());
+        server.shutdown();
+    }
+
+    #[test]
     fn sema_generic_nested_call_hover_and_signature_help() {
         let main_src = concat!(
             "package main\n\n",
@@ -5215,6 +5427,703 @@ mod sema_e2e {
         );
         assert_eq!(sig_pairof["result"]["activeParameter"], 1, "{sig_pairof}");
 
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_navigation_uses_checked_header_and_selector_identities() {
+        let source = concat!(
+            "package p\nimport alias \"example.com/navigation/dep\"\n",
+            "type I interface{ Call(input Missing) (output Missing) }\n",
+            "type S struct{ Field Missing }\nvar F func(arg Missing) (result Missing)\nvar arg int\n",
+            "func Decl(value alias.T) (answer alias.T)\n",
+            "func Probe[alias any](p alias) { _ = alias.T }\n",
+            "func Use() { alias := struct{ T int }{}; _ = alias.T; _ = arg }\n",
+        );
+        let dependency = "package dep\ntype T int\n";
+        let documented = "// Package p documents admitted files.\npackage p\n";
+        let detached_doc = "// Package q belongs only to Windows.\npackage q\n";
+        let other = "package q\n";
+        let mut server = SemaTestServer::start_in_target(
+            "native-navigation",
+            &[
+                ("go.mod", "module example.com/navigation\n\ngo 1.27.3\n"),
+                ("p/main.go", source),
+                ("p/a_doc.go", documented),
+                ("dep/dep.go", dependency),
+                ("q/main.go", other),
+                ("q/doc_windows_amd64.go", detached_doc),
+            ],
+            Some(("linux", "amd64")),
+        );
+        let uri = server.uri("p/main.go");
+        server.did_open(&uri, source);
+        let location = |uri: &str, text: &str, start: usize, length: usize| json!([{"uri":uri,"range":{"start":pos(text,start),"end":pos(text,start+length)}}]);
+        for (written, relative, declaration, length) in [
+            ("Call(input", 0, "Call(input", 4),
+            ("input Missing", 0, "input Missing", 5),
+            ("output Missing", 0, "output Missing", 6),
+            ("Field Missing", 0, "Field Missing", 5),
+            ("arg Missing", 0, "arg Missing", 3),
+            ("result Missing", 0, "result Missing", 6),
+            ("value alias.T", 0, "value alias.T", 5),
+            ("answer alias.T", 0, "answer alias.T", 6),
+            ("alias.T", 0, "alias \"example", 5),
+            ("alias any", 0, "alias any", 5),
+            ("p alias", 2, "alias any", 5),
+            ("_ = arg", 4, "arg int", 3),
+        ] {
+            let reply = server.request("textDocument/definition", json!({
+                "textDocument":{"uri":uri},"position":pos(source,source.find(written).unwrap()+relative),
+            }));
+            assert_eq!(
+                reply["result"],
+                location(&uri, source, source.find(declaration).unwrap(), length),
+                "{written}: {reply}"
+            );
+        }
+        let reply = server.request("textDocument/definition", json!({
+            "textDocument":{"uri":uri},"position":pos(source,source.find("alias.T").unwrap()+"alias.".len()),
+        }));
+        assert_eq!(
+            reply["result"],
+            location(
+                &server.uri("dep/dep.go"),
+                dependency,
+                dependency.find("T int").unwrap(),
+                1
+            ),
+            "{reply}"
+        );
+        let shadow = source.find("_ = alias.T").unwrap() + "_ = alias.".len();
+        let reply = server.request(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source,shadow),
+            }),
+        );
+        assert!(reply.get("error").is_none(), "{reply}");
+        assert!(
+            reply["result"].is_null(),
+            "shadowed import produced a guessed declaration: {reply}"
+        );
+        let selected = source.rfind("alias.T").unwrap() + "alias.".len();
+        let dependency_uri = server.uri("dep/dep.go");
+        let uses: Vec<_> = source
+            .match_indices("alias.T")
+            .take(2)
+            .map(|(start, _)| start + "alias.".len())
+            .collect();
+        let mut expected_references = vec![
+            location(
+                &dependency_uri,
+                dependency,
+                dependency.find("T int").unwrap(),
+                1,
+            )[0]
+            .clone(),
+        ];
+        expected_references.extend(
+            uses.iter()
+                .map(|start| location(&uri, source, *start, 1)[0].clone()),
+        );
+        let reply = server.request("textDocument/references", json!({
+            "textDocument":{"uri":uri},"position":pos(source,uses[0]),"context":{"includeDeclaration":true},
+        }));
+        assert_eq!(
+            reply["result"],
+            json!(expected_references),
+            "reference identity escaped its native object: {reply}"
+        );
+        let reply = server.request(
+            "textDocument/documentHighlight",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source,uses[0]),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            json!(
+                uses.iter()
+                    .map(|start| json!({
+                        "range":location(&uri,source,*start,1)[0]["range"],"kind":1,
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+            "highlight identity escaped its native object: {reply}"
+        );
+        let reply = server.request(
+            "textDocument/rename",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source,uses[0]),"newName":"Renamed",
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            json!({"documentChanges":[
+                {"textDocument":{"uri":dependency_uri,"version":0},"edits":[{"range":expected_references[0]["range"],"newText":"Renamed"}]},
+                {"textDocument":{"uri":uri,"version":1},"edits":expected_references[1..].iter().map(|location| json!({"range":location["range"],"newText":"Renamed"})).collect::<Vec<_>>()},
+            ]}),
+            "rename used a spelling supplement instead of native references: {reply}"
+        );
+        let reply = server.request(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source,selected),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            location(&uri, source, source.find("T int").unwrap(), 1),
+            "{reply}"
+        );
+        let reply = server.request(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source,"package ".len()),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            location(
+                &server.uri("p/a_doc.go"),
+                documented,
+                documented.rfind("p\n").unwrap(),
+                1
+            ),
+            "{reply}"
+        );
+        let other_uri = server.uri("q/main.go");
+        server.did_open(&other_uri, other);
+        let reply = server.request(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":other_uri},"position":pos(other,"package ".len()),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            location(&other_uri, other, "package ".len(), 1),
+            "excluded disk file escaped admission: {reply}"
+        );
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_orphan_view_admits_offline_dependency_variants() {
+        let source = "package p\nimport \"example.com/view/dep\"\nvar Read = dep.Value\nvar Missing = dep.WindowsOnly\nvar Local = Shared{}\n";
+        let mut server = SemaTestServer::start_in_target(
+            "orphan-variants",
+            &[
+                ("go.mod", "module example.com/view\n\ngo 1.27.3\n"),
+                ("p/base.go", "package p\ntype Shared struct{}\n"),
+                ("p/use_linux_amd64.go", source),
+                (
+                    "dep/value_windows_amd64.go",
+                    "package dep\nconst Value string = \"host\"\nconst WindowsOnly = 1\n",
+                ),
+                (
+                    "dep/value_linux_amd64.go",
+                    "package dep\nimport \"example.com/view/leaf\"\nconst Value leaf.Number = 7\n",
+                ),
+                (
+                    "leaf/number_linux_amd64.go",
+                    "package leaf\ntype Number uint64\n",
+                ),
+            ],
+            Some(("windows", "amd64")),
+        );
+        let uri = server.uri("p/use_linux_amd64.go");
+        server.did_open(&uri, source);
+        for (name, expected) in [
+            ("Read", Some("var Read leaf.Number")),
+            ("Missing", None),
+            ("Local", Some("var Local Shared")),
+        ] {
+            let reply = server.request("textDocument/hover", json!({
+                "textDocument": {"uri": uri}, "position": pos(source, source.find(name).unwrap()),
+            }));
+            if let Some(expected) = expected {
+                assert!(
+                    reply["result"]["contents"]["value"]
+                        .as_str()
+                        .is_some_and(|value| value.contains(expected)),
+                    "orphan dependency view lost {name}: {reply}"
+                );
+            } else {
+                assert!(
+                    reply["result"].is_null(),
+                    "host-only declaration escaped into orphan view: {reply}"
+                );
+            }
+        }
+        let reply = server.request("textDocument/definition", json!({
+            "textDocument": {"uri": uri}, "position": pos(source, source.find("dep.Value").unwrap() + "dep.".len()),
+        }));
+        assert_eq!(
+            reply["result"][0]["uri"],
+            server.uri("dep/value_linux_amd64.go"),
+            "{reply}"
+        );
+        server.notify(
+            "textDocument/didClose",
+            json!({"textDocument": {"uri": uri}}),
+        );
+        let host_source = "package p\nimport \"example.com/view/dep\"\nvar Host = dep.Value\n";
+        let host_uri = server.uri("p/host.go");
+        server.did_open(&host_uri, host_source);
+        let reply = server.request("textDocument/hover", json!({
+            "textDocument": {"uri": host_uri}, "position": pos(host_source, host_source.find("Host").unwrap()),
+        }));
+        assert!(
+            reply["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|value| value.contains("var Host string")),
+            "orphan close damaged the host package view: {reply}"
+        );
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_request_view_survives_shared_declarations_and_hierarchy_items() {
+        let source = concat!(
+            "package p\nimport (\n\"example.com/request/bridge\"\n\"example.com/request/leaf\"\n)\n",
+            "var Read = bridge.Value\nvar Direct port.Number\n",
+            "var Selected = bridge.Make().Chosen()\nvar Wide uint64 = 1 << 40\n",
+            "var TooWide = int(1 << 40)\nvar Bad [1 << 32]int\n",
+            "var Object bridge.Common\ntype Sized struct{ Word uintptr; Tail byte }\n",
+            "type Embedded struct{ bridge.Common }\n",
+        );
+        let bridge = concat!(
+            "package bridge\nimport leaf \"example.com/request/leaf\"\n",
+            "var Value leaf.Number\ntype Common struct{}\n",
+            "type Want interface{ Chosen() int32 }\n",
+            "func Make() Common { _ = leaf.Target(); return Common{} }\n",
+        );
+        let leaf = "package port\ntype Number uint64\nfunc Target() Number { return 0 }\n";
+        let mut server = SemaTestServer::start_in_target(
+            "request-view",
+            &[
+                ("go.mod", "module example.com/request\n\ngo 1.27.3\n"),
+                ("p/base.go", "package p\n"),
+                ("p/use_linux_386.go", source),
+                ("bridge/shared.go", bridge),
+                (
+                    "bridge/m_linux_386.go",
+                    "package bridge\nfunc (Common) Chosen() int32 { return 0 }\n",
+                ),
+                (
+                    "bridge/m_windows_amd64.go",
+                    "package bridge\nfunc (Common) Chosen() string { return \"\" }\n",
+                ),
+                ("leaf/number_linux_386.go", leaf),
+                (
+                    "leaf/number_windows_amd64.go",
+                    "package host\ntype Number string\nfunc Target() Number { return \"host\" }\n",
+                ),
+            ],
+            Some(("windows", "amd64")),
+        );
+        let uri = server.uri("p/use_linux_386.go");
+        server.did_open(&uri, source);
+        let range = |text: &str, name: &str| {
+            let start = text.find(name).unwrap();
+            json!({"start":pos(text, start),"end":pos(text, start + name.len())})
+        };
+        let number_use = source.find("port.Number").unwrap() + "port.".len();
+        let reply = server.request("textDocument/references", json!({
+            "textDocument":{"uri":uri},"position":pos(source,number_use),"context":{"includeDeclaration":true},
+        }));
+        let leaf_uri = server.uri("leaf/number_linux_386.go");
+        let return_type = leaf.find("Target() Number").unwrap() + "Target() ".len();
+        assert_eq!(
+            reply["result"],
+            json!([
+                {"uri":server.uri("bridge/shared.go"),"range":range(bridge,"Number")},
+                {"uri":leaf_uri,"range":range(leaf,"Number")},
+                {"uri":leaf_uri,"range":{"start":pos(leaf,return_type),"end":pos(leaf,return_type+"Number".len())}},
+                {"uri":uri,"range":{"start":pos(source,number_use),"end":pos(source,number_use+"Number".len())}},
+            ]),
+            "cross-file references lost the request view or its default import name: {reply}"
+        );
+        for (name, ty) in [
+            ("Read", "port.Number"),
+            ("Direct", "port.Number"),
+            ("Selected", "int32"),
+            ("Wide", "uint64"),
+        ] {
+            let reply = server.request(
+                "textDocument/hover",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(source, source.find(name).unwrap()),
+                }),
+            );
+            assert!(reply.get("error").is_none(), "{reply}");
+            assert_eq!(
+                reply["result"],
+                json!({
+                    "contents":{"kind":"markdown","value":format!("```go\nvar {name} {ty}\n```\n\n---\n\n[`p.{name}` on pkg.go.dev](https://pkg.go.dev/example.com/request/p#{name})")},
+                    "range":range(source, name),
+                }),
+                "request view lost for {name}: {reply}"
+            );
+        }
+        for name in ["TooWide", "Bad"] {
+            let reply = server.request(
+                "textDocument/hover",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(source, source.find(name).unwrap()),
+                }),
+            );
+            assert!(reply.get("error").is_none(), "{reply}");
+            assert!(
+                reply["result"].is_null(),
+                "32-bit overflow accepted for {name}: {reply}"
+            );
+        }
+        let reply = server.request(
+            "textDocument/hover",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source, source.find("Word").unwrap()),
+            }),
+        );
+        assert_eq!(
+            reply["result"],
+            json!({
+                "contents":{"kind":"markdown","value":"```go\nfield Word uintptr // size=4, class=8, offset=0\n```\n\n---\n\n[`(p.Sized).Word` on pkg.go.dev](https://pkg.go.dev/example.com/request/p#Sized.Word)"},
+                "range":range(source, "Word"),
+            }),
+            "layout used the host ABI: {reply}"
+        );
+
+        let prepared = server.request(
+            "textDocument/prepareCallHierarchy",
+            json!({
+                "textDocument":{"uri":uri},"position":pos(source, source.find("Make").unwrap()),
+            }),
+        );
+        assert_eq!(prepared["result"][0]["data"]["viewUri"], uri, "{prepared}");
+        let outgoing = server.request(
+            "callHierarchy/outgoingCalls",
+            json!({"item":prepared["result"][0]}),
+        );
+        let leaf_uri = server.uri("leaf/number_linux_386.go");
+        let call = bridge.find("leaf.Target").unwrap() + "leaf.".len();
+        assert_eq!(
+            outgoing["result"],
+            json!([{
+                "to":{
+                    "name":"Target","kind":12,
+                    "detail":"example.com/request/leaf \u{2022} number_linux_386.go",
+                    "uri":leaf_uri,"range":range(leaf,"Target"),"selectionRange":range(leaf,"Target"),
+                    "data":{"uri":leaf_uri,"start":leaf.find("Target").unwrap(),"name":"Target"},
+                },
+                "fromRanges":[{"start":pos(bridge,call),"end":pos(bridge,call + "Target".len())}],
+            }]),
+            "call continuation lost request view: {outgoing}"
+        );
+        let prepared = server.request("textDocument/prepareTypeHierarchy", json!({
+            "textDocument":{"uri":uri},"position":pos(source, source.find("bridge.Common").unwrap() + "bridge.".len()),
+        }));
+        assert_eq!(prepared["result"][0]["data"]["viewUri"], uri, "{prepared}");
+        let supers = server.request(
+            "typeHierarchy/supertypes",
+            json!({"item":prepared["result"][0]}),
+        );
+        assert_eq!(
+            supers["result"],
+            json!([{
+                "name":"Want","kind":11,"detail":"example.com/request/bridge",
+                "uri":server.uri("bridge/shared.go"),"range":range(bridge,"Want"),"selectionRange":range(bridge,"Want"),
+                "data":{"viewUri":uri},
+            }]),
+            "method relation continuation lost request view: {supers}"
+        );
+        let subtypes = server.request(
+            "goquery/embedding/subtypes",
+            json!({"item":prepared["result"][0]}),
+        );
+        let embedded = json!({
+            "name":"Embedded","kind":5,"detail":"example.com/request/p","uri":uri,
+            "range":range(source,"Embedded"),"selectionRange":range(source,"Embedded"),
+        });
+        assert_eq!(
+            subtypes["result"],
+            json!([embedded]),
+            "embedding lookup lost the original request view: {subtypes}"
+        );
+        let supers = server.request("goquery/embedding/supertypes", json!({"item":embedded}));
+        assert_eq!(
+            supers["result"], prepared["result"],
+            "native embedding continuation lost its shared declaration: {supers}"
+        );
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_completion_context_ranks_native_types_and_edits_literal_keys() {
+        let source = concat!(
+            "package p\ntype Box[T any] struct{ Value T; Count int }\n",
+            "var PickA string\nvar PickB int\nfunc Handler(v int) int { return v }\n",
+            "func f() {\nvar _ int = Pick\nvar _ func(int)int = Hand\n",
+            "_ = Box[string]{\nCount:1,\nVa\n}\n_ = Box[string]{Valu: \"\"}\n",
+            "_ = Box[string]{\nCount:1,\nVal,\n}\n}\n",
+        );
+        let mut server = SemaTestServer::start_configured(
+            "completion-context",
+            &[
+                ("go.mod", "module example.com/context\n\ngo 1.27.3\n"),
+                ("p.go", source),
+            ],
+            Some(("linux", "amd64")),
+            true,
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, source);
+        for (written, prefix, expected) in [
+            (
+                "= Pick",
+                "Pick",
+                vec![("PickB", 6, None, "PickB"), ("PickA", 6, None, "PickA")],
+            ),
+            (
+                "= Hand",
+                "Hand",
+                vec![("Handler", 3, Some("func(v int) int"), "Handler")],
+            ),
+            (
+                "\nVa\n",
+                "Va",
+                vec![("Value", 5, Some("string"), "Value: ${1:string},")],
+            ),
+            (
+                "{Valu:",
+                "Valu",
+                vec![("Value", 5, Some("string"), "Value")],
+            ),
+            (
+                "\nVal,",
+                "Val",
+                vec![("Value", 5, Some("string"), "Value: ${1:string}")],
+            ),
+        ] {
+            let start = source.find(written).unwrap() + written.find(prefix).unwrap();
+            let reply = server.request(
+                "textDocument/completion",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(source,start + prefix.len()),
+                }),
+            );
+            let items:Vec<_> = expected.into_iter().enumerate().map(|(rank,(label,kind,detail,text))| {
+                let mut item = json!({"label":label,"kind":kind,"filterText":label,"insertTextFormat":2,
+                    "textEdit":{"range":{"start":pos(source,start),"end":pos(source,start + prefix.len())},"newText":text},
+                    "sortText":format!("{rank:05}")});
+                if rank == 0 { item["preselect"] = true.into(); }
+                if let Some(detail) = detail { item["detail"] = detail.into(); }
+                item
+            }).collect();
+            assert_eq!(
+                reply["result"],
+                json!({"isIncomplete":true,"items":items}),
+                "{written}: {reply}"
+            );
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_package_document_links_preserve_the_request_build_view() {
+        let source = "package p\nimport b \"example.com/docview/bridge\"\nvar _ b.Common\n";
+        let shared =
+            "// Package bridge documents [Common.Chosen].\npackage bridge\ntype Common struct{}\n";
+        let linux = "package bridge\nfunc (Common) Chosen() int32 { return 0 }\n";
+        let mut server = SemaTestServer::start_in_target(
+            "package-doc-view",
+            &[
+                ("go.mod", "module example.com/docview\n\ngo 1.27.3\n"),
+                ("p/base.go", "package p\n"),
+                ("p/use_linux_386.go", source),
+                ("bridge/shared.go", shared),
+                ("bridge/m_linux_386.go", linux),
+                (
+                    "bridge/m_windows_amd64.go",
+                    "package bridge\nfunc (Common) Chosen() string { return \"\" }\n",
+                ),
+            ],
+            Some(("windows", "amd64")),
+        );
+        let uri = server.uri("p/use_linux_386.go");
+        server.did_open(&uri, source);
+        let reply = server.request(
+            "textDocument/hover",
+            json!({
+                "textDocument":{"uri":uri}, "position":pos(source,source.find("b \"").unwrap()),
+            }),
+        );
+        let path_start = source.find('"').unwrap();
+        let path_end = source[path_start + 1..].find('"').unwrap() + path_start + 2;
+        let target = pos(linux, linux.find("Chosen").unwrap());
+        let link = format!(
+            "{}#{},{}",
+            server.uri("bridge/m_linux_386.go"),
+            target["line"].as_u64().unwrap() + 1,
+            target["character"].as_u64().unwrap() + 1
+        );
+        assert_eq!(
+            reply["result"],
+            json!({
+            "contents":{"kind":"markdown", "value":format!("```go\npackage bridge\n```\n\n---\n\nPackage bridge documents [Common.Chosen]({link}).\n")},
+                "range":{"start":pos(source,path_start),"end":pos(source,path_end)},
+            }),
+            "package docs lost the original native member view: {reply}"
+        );
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_literal_keys_refresh_with_module_language_and_respect_file_overrides() {
+        let source = concat!(
+            "package p\ntype Base[T any] struct{ Value T }\n",
+            "type Outer struct{ Base[string] }\nfunc f(){ _ = Outer{Va} }\n",
+        );
+        let downgraded = format!("//go:build go1.26\n\n{source}");
+        let mut server = SemaTestServer::start_configured(
+            "literal-version",
+            &[
+                ("go.mod", "module example.com/version\ngo 1.26.1\n"),
+                ("p.go", source),
+                ("old/p.go", &downgraded),
+            ],
+            Some(("linux", "amd64")),
+            true,
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, source);
+        for (version, promoted) in [(26, false), (27, true), (26, false)] {
+            std::fs::write(
+                server.root.join("go.mod"),
+                format!("module example.com/version\ngo 1.{version}.1\n"),
+            )
+            .unwrap();
+            server.notify(
+                "workspace/didChangeWatchedFiles",
+                json!({"changes":[{"uri":server.uri("go.mod"),"type":2}]}),
+            );
+            let start = source.find("{Va}").unwrap() + 1;
+            let reply = server.request(
+                "textDocument/completion",
+                json!({"textDocument":{"uri":uri}, "position":pos(source,start+2)}),
+            );
+            let items = if promoted {
+                vec![
+                    json!({"label":"Value", "kind":5, "detail":"string", "filterText":"Value", "insertTextFormat":2,
+                "preselect":true,"sortText":"00000", "textEdit":{"range":{"start":pos(source,start),"end":pos(source,start+2)},"newText":"Value: ${1:string}"}}),
+                ]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(
+                reply["result"],
+                json!({"isIncomplete":true,"items":items}),
+                "module go1.{version}: {reply}"
+            );
+            let old_uri = server.uri("old/p.go");
+            server.did_open(&old_uri, &downgraded);
+            let start = downgraded.find("{Va}").unwrap() + 1;
+            let reply = server.request(
+                "textDocument/completion",
+                json!({"textDocument":{"uri":old_uri},"position":pos(&downgraded,start+2)}),
+            );
+            assert_eq!(
+                reply["result"],
+                json!({"isIncomplete":true,"items":[]}),
+                "file override: {reply}"
+            );
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_generic_member_hover_and_completion_use_unimported_native_instances() {
+        let library = concat!(
+            "package a\ntype Box[T any] struct{ Value T; Transform func(input T) (output T) }\n",
+            "type Port[T any] interface{ Do(value T) (result T) }\n",
+        );
+        let bridge = concat!(
+            "package b\nimport \"example.com/native/a\"\n",
+            "func Make() a.Box[string] { return a.Box[string]{} }\n",
+            "func Port() a.Port[int] { return nil }\n",
+        );
+        let source = concat!(
+            "package c\nimport \"example.com/native/b\"\n",
+            "func f() { s := b.Make(); p := b.Port(); _ = s.Value; _ = s.Transform; _ = p.Do }\n",
+        );
+        let mut server = SemaTestServer::start(
+            "native-member-hover",
+            &[
+                ("go.mod", "module example.com/native\n\ngo 1.27.3\n"),
+                ("a/a.go", library),
+                ("b/b.go", bridge),
+                ("c/c.go", source),
+            ],
+        );
+        let uri = server.uri("c/c.go");
+        server.did_open(&uri, source);
+        for (written, code, owner) in [
+            ("s.Value", "field Value string", "Box"),
+            (
+                "s.Transform",
+                "field Transform func(input string) (output string)",
+                "Box",
+            ),
+            (
+                "p.Do",
+                "func (a.Port[int]) Do(value int) (result int)",
+                "Port",
+            ),
+        ] {
+            let name = &written[2..];
+            let start = source.find(written).unwrap() + 2;
+            let reply = server.request(
+                "textDocument/hover",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(source,start),
+                }),
+            );
+            assert_eq!(
+                reply["result"],
+                json!({
+                    "contents":{"kind":"markdown","value":format!("```go\n{code}\n```\n\n---\n\n[`(a.{owner}).{name}` on pkg.go.dev](https://pkg.go.dev/example.com/native/a#{owner}.{name})")},
+                    "range":{"start":pos(source,start),"end":pos(source,start + name.len())},
+                }),
+                "generic member type escaped its native instance: {reply}"
+            );
+        }
+        for (written, detail, kind) in [
+            ("s.Value", "string", 5),
+            ("s.Transform", "func(input string) (output string)", 5),
+            ("p.Do", "func(value int) (result int)", 2),
+        ] {
+            let name = &written[2..];
+            let start = source.find(written).unwrap() + 2;
+            let reply = server.request(
+                "textDocument/completion",
+                json!({
+                    "textDocument":{"uri":uri}, "position":pos(source,start + 1),
+                }),
+            );
+            assert_eq!(
+                reply["result"],
+                json!({
+                    "isIncomplete":true, "items":[{
+                        "label":name, "kind":kind, "filterText":name, "insertTextFormat":1,
+                        "textEdit":{"range":{"start":pos(source,start),"end":pos(source,start + name.len())},"newText":name},
+                        "detail":detail, "sortText":"00000", "preselect":true,
+                    }],
+                }),
+                "completion lost the checked generic instance: {reply}"
+            );
+        }
         server.shutdown();
     }
 
@@ -5355,7 +6264,7 @@ mod sema_e2e {
             let mut out = Vec::with_capacity(data.len() / 5);
             let mut line = 0u32;
             let mut start = 0u32;
-            for chunk in data.chunks_exact(5) {
+            for chunk in data.as_chunks::<5>().0 {
                 let d_line = chunk[0].as_u64().expect("deltaLine") as u32;
                 let d_start = chunk[1].as_u64().expect("deltaStart") as u32;
                 let length = chunk[2].as_u64().expect("length") as u32;

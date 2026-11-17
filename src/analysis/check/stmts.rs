@@ -366,8 +366,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 let ch_op = self.check_expr(channel, None);
                 let elem_ty = ch_op.and_then(|op| self.arena.send_element(op.ty));
                 let val_op = self.check_expr(value, elem_ty);
-                if let (Some(target), Some(val)) = (elem_ty, val_op) {
-                    let _ = self.arena.assign_value(val, target, self.int_bits());
+                if let (Some(target), Some(val), Some(int_bits)) =
+                    (elem_ty, val_op, self.int_bits())
+                {
+                    let _ = self.arena.assign_value(val, target, int_bits);
                 }
             }
             Action::Increment { expression } => {
@@ -406,6 +408,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     fn check_type_switch(&mut self, guard: StmtId, cases: &[StmtId]) {
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let (guard_var_span, guard_operand_expr) = match self.body.statement(guard).map(|s| &s.kind)
         {
             Some(StmtKind::Assignment { left, right, .. }) => {
@@ -438,7 +444,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             case_id: StmtId,
             span: Range<usize>,
             range: Range<usize>,
-            single_type_span: Option<[u32; 2]>,
             statements: Vec<StmtId>,
         }
 
@@ -464,18 +469,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 default_count += 1;
             }
             let start = all_targets.len();
-            let mut single_type_span = None;
-            let value_len = values.len();
             for val_id in values {
                 match self.resolve_type_switch_case_item(val_id) {
                     TypeSwitchCaseItem::Nil => all_targets.push(None),
                     TypeSwitchCaseItem::Type(ty) => {
-                        if !is_default && value_len == 1 {
-                            single_type_span = self
-                                .body
-                                .expression(self.unwrap_parens(val_id))
-                                .map(|e| self.abs_span(&e.span));
-                        }
                         all_targets.push(Some(ty));
                     }
                     TypeSwitchCaseItem::Invalid => {
@@ -489,12 +486,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 case_id,
                 span: case_span,
                 range: start..end,
-                single_type_span,
                 statements,
             });
         }
 
-        let int_bits = self.int_bits();
         for clause in clauses {
             let clause_op = if all_cases_valid {
                 source_op.and_then(|src| {
@@ -546,9 +541,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             self.region.set_local_init(local_id, g_span);
                         }
                         if let Some(op) = clause_op {
-                            if let Some(ann_span) = clause.single_type_span {
-                                self.region.set_local_annotation(local_id, ann_span);
-                            }
                             self.region.set_local_type(
                                 local_id,
                                 Operand {
@@ -713,6 +705,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         name: name.to_string(),
                         selection: abs_name_range,
                         annotation: ann_text.to_string(),
+                        annotation_start: abs_ann_start,
                         alias: is_alias,
                     });
                     self.declaring_type = Some(lid);
@@ -723,8 +716,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         .iter()
                         .map(|e| LocalTypeDefinition {
                             name: e.name.as_str(),
-                            selection: e.selection.clone(),
+                            selection: self.file_offset(e.selection.start)
+                                ..self.file_offset(e.selection.end),
                             annotation: e.annotation.as_str(),
+                            annotation_start: self.file_offset(e.annotation_start),
                             alias: e.alias,
                         })
                         .collect();
@@ -732,7 +727,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         extra_env.iter().map(|(n, t)| (n.as_str(), *t)).collect();
                     resolved_ty = self
                         .arena
-                        .declared_scope_type_in(self.file, name, &defs, &env_pairs)
+                        .declared_scope_type_in(self.file, name, None, &defs, &env_pairs)
                         .filter(|&ty| self.arena.validate_type(ty).is_some());
                 }
                 self.declaring_type = None;
@@ -750,9 +745,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 is_alias,
             };
             self.region.defs.push((abs_name_span, obj));
-            if let Some(ann_r) = annotation {
-                self.region.set_local_annotation(lid, self.abs_span(ann_r));
-            }
             if let Some(ty) = resolved_ty {
                 self.region.set_local_type(
                     lid,
@@ -843,7 +835,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if all_constraints_valid
                     && let Some(tp_ty) = self
                         .arena
-                        .parse_parameterized(self.file, name, &formals, None)
+                        .parse_parameterized(self.file, name, None, &formals, None)
                 {
                     self.type_param_env.push((name.to_string(), tp_ty));
                 }
@@ -877,6 +869,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         values: &[ExprId],
         const_group: &mut Option<ConstGroupState>,
     ) {
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let prev_state = const_group.take();
         let (iota_val, prev_ann, effective_values): (u32, Option<Range<usize>>, Vec<ExprId>) =
             if let Some(prev) = prev_state {
@@ -906,7 +902,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.iota = saved_iota;
 
         let arity_ok = names.len() == rhs_ops.len();
-        let int_bits = self.int_bits();
 
         for (idx, name_range) in names.iter().enumerate() {
             let abs_span = self.abs_span(name_range);
@@ -944,10 +939,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 span: abs_span,
             });
             self.region.defs.push((abs_span, obj));
-            if let Some(ann_r) = prev_ann.as_ref() {
-                self.region
-                    .set_local_annotation(local_id, self.abs_span(ann_r));
-            }
             if let Some(op) = final_op {
                 self.region.set_local_type(local_id, op);
                 if arity_ok && let Some(expr) = self.body.expression(effective_values[idx]) {
@@ -970,10 +961,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         annotation: Option<&Range<usize>>,
         values: &[ExprId],
     ) {
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let has_ann = annotation.is_some();
         let ann_ty = annotation.and_then(|r| self.resolve_type_syntax_span(r));
         let ann_valid = !has_ann || ann_ty.is_some();
-        let int_bits = self.int_bits();
 
         let (resolved_ops, is_one_to_one): (Vec<Option<Operand>>, bool) = if values.is_empty() {
             (vec![None; names.len()], false)
@@ -1011,14 +1005,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } else if values.is_empty() {
                 ann_ty
             } else if let Some(target) = ann_ty {
-                match resolved_ops.get(idx).and_then(|o| *o) {
-                    Some(rhs_op) => self
-                        .arena
-                        .assign_value(rhs_op, target, int_bits)
-                        .unwrap_or(false)
-                        .then_some(target),
-                    None => None,
+                if let Some(rhs_op) = resolved_ops.get(idx).and_then(|o| *o) {
+                    let _ = self.check_assignment(
+                        rhs_op,
+                        target,
+                        values[idx.min(values.len() - 1)],
+                        "variable declaration",
+                    );
                 }
+                // The declaration's explicit type remains known even when its
+                // initializer is incomplete or has an assignment error.
+                Some(target)
             } else {
                 resolved_ops.get(idx).and_then(|o| *o).and_then(|rhs_op| {
                     if rhs_op.mode == Mode::TypeExpr {
@@ -1030,10 +1027,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             };
 
             self.record_local_var_def(local_id, abs_span, VarKind::Local, var_ty);
-            if let Some(ann_r) = annotation {
-                self.region
-                    .set_local_annotation(local_id, self.abs_span(ann_r));
-            }
             if is_one_to_one
                 && var_ty.is_some()
                 && let Some(expr) = self.body.expression(values[idx])
@@ -1045,7 +1038,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     fn check_short_var_decl(&mut self, lhs: &[ExprId], rhs: &[ExprId]) {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let (rhs_ops, is_one_to_one): (Vec<Option<Operand>>, bool) = if lhs.len() > 1
             && rhs.len() == 1
         {
@@ -1106,8 +1102,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 && self.is_active(existing_id)
             {
                 let existing = self.region.local_type(existing_id);
+                self.region.writes.push(abs_span);
                 if let (Some(target), Some(op)) = (existing, rhs_op) {
-                    let _ = self.arena.assign_value(op, target.ty, int_bits);
+                    let _ = self.check_assignment(
+                        op,
+                        target.ty,
+                        rhs[idx.min(rhs.len() - 1)],
+                        "assignment",
+                    );
                 }
                 if let Some(obj) = self.local_object(existing_id) {
                     self.region.uses.push((abs_span, obj));
@@ -1117,7 +1119,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     fn check_assign(&mut self, lhs: &[ExprId], op_range: Option<&Range<usize>>, rhs: &[ExprId]) {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let mut lhs_ops = Vec::with_capacity(lhs.len());
         for &l_id in lhs {
             let is_blank = self
@@ -1128,6 +1133,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             if is_blank {
                 lhs_ops.push(None);
             } else {
+                if op_range.is_none() {
+                    self.record_write_only(l_id);
+                }
                 lhs_ops.push(self.check_expr(l_id, None));
             }
         }
@@ -1138,7 +1146,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             {
                 for (l_op, r_op) in lhs_ops.iter().zip(rhs_ops.iter()) {
                     if let Some(l) = l_op {
-                        let _ = self.arena.assign_value(*r_op, l.ty, int_bits);
+                        let _ = self.check_assignment(*r_op, l.ty, rhs[0], "assignment");
                     }
                 }
             }
@@ -1155,7 +1163,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             .arena
                             .binary_expr(bin_op, *l, r_op, Some(l.ty), int_bits);
                     } else if let Some(l) = l_op {
-                        let _ = self.arena.assign_value(r_op, l.ty, int_bits);
+                        let _ = self.check_assignment(r_op, l.ty, r_id, "assignment");
                     }
                 }
             }
@@ -1167,6 +1175,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     fn check_range_for(&mut self, clause_id: StmtId, body_id: StmtId) {
+        let Some(int_bits) = self.int_bits() else {
+            return;
+        };
+
         let Some((lhs, define, iterable)) =
             self.body.statement(clause_id).and_then(|s| match &s.kind {
                 StmtKind::RangeClause {
@@ -1186,7 +1198,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return;
         };
 
-        let int_bits = self.int_bits();
         let iter_op = self.check_expr(iterable, None);
         let count = lhs.len();
 
@@ -1226,9 +1237,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(obj) = self.local_object(existing_id)
                 {
                     self.region.uses.push((abs_span, obj));
+                    self.region.writes.push(abs_span);
                 }
                 continue;
             }
+            self.record_write_only(lhs_id);
             if let Some(lhs_op) = self.check_expr(lhs_id, slot_ty)
                 && let Some(s_ty) = slot_ty
             {
@@ -1244,9 +1257,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.check_stmt(body_id);
     }
 
+    /// Selectors, indexes and dereferences read their receiver; only a bare
+    /// (possibly parenthesized) name is write-only in an ordinary assignment.
+    fn record_write_only(&mut self, id: ExprId) {
+        if let Some(expr) = self.body.expression(self.unwrap_parens(id))
+            && matches!(expr.kind, ExprKind::Name)
+        {
+            self.region.writes.push(self.abs_span(&expr.span));
+        }
+    }
+
     fn check_return_stmt(&mut self, results: &[ExprId]) {
         let expected_results = self.result_types.clone();
-        let int_bits = self.int_bits();
         if results.is_empty() {
             return;
         }
@@ -1256,7 +1278,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         {
             for (op, expected) in ops.iter().zip(expected_results.iter()) {
                 if let Some(target) = *expected {
-                    let _ = self.arena.assign_value(*op, target, int_bits);
+                    let _ = self.check_assignment(*op, target, results[0], "return statement");
                 }
             }
             return;
@@ -1266,7 +1288,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             if let Some(op) = self.check_expr(res_id, expected)
                 && let Some(target) = expected
             {
-                let _ = self.arena.assign_value(op, target, int_bits);
+                let _ = self.check_assignment(op, target, res_id, "return statement");
             }
         }
     }

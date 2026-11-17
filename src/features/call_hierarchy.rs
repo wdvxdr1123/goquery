@@ -32,7 +32,7 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
             }
         }
     }
-    json!({
+    let mut item = json!({
         "name":if initializer {"init"} else {&symbol.name},
         "kind":if initializer {tower_lsp::lsp_types::SymbolKind::VARIABLE} else {tower_lsp::lsp_types::SymbolKind::FUNCTION},
         "detail":detail,
@@ -40,7 +40,11 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
         "range":range,
         "selectionRange":range,
         "data":{"uri":uri,"start":symbol.start,"name":symbol.name}
-    })
+    });
+    if let Some(origin) = context.hierarchy_view_origin(file) {
+        item["data"]["viewUri"] = json!(workspace::uri(origin));
+    }
+    item
 }
 
 pub(super) fn execute(
@@ -57,7 +61,17 @@ pub(super) fn execute(
         crate::error::INVALID_PARAMS,
         "missing symbol identity".into(),
     ))? as usize;
-    let (file, target) = context.call_target(&file, start, data["name"].as_str())?;
+    let origin = data
+        .get("viewUri")
+        .map(|value| {
+            workspace::path(value).ok_or((
+                crate::error::INVALID_PARAMS,
+                "invalid call hierarchy view".into(),
+            ))
+        })
+        .transpose()?;
+    let (file, target) =
+        context.call_target(&file, start, data["name"].as_str(), origin.as_deref())?;
     let groups = if incoming && target.is_value() {
         Vec::new()
     } else if incoming {

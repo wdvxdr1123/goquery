@@ -19,7 +19,18 @@ impl<'a, View> Context<'a, View> {
         file: &Path,
         start: usize,
         name: Option<&str>,
+        view_origin: Option<&Path>,
     ) -> Result<(&'a Path, &'a Symbol), (i32, String)> {
+        if view_origin.is_some_and(|file| !self.workspace.files.contains_key(file)) {
+            return Err((-32801, "call hierarchy view is unavailable".into()));
+        }
+        self.select_query_file(view_origin.unwrap_or(file))?;
+        if !self.resolver().file_visible(file) {
+            return Err((
+                -32801,
+                "call hierarchy item is outside the selected view".into(),
+            ));
+        }
         self.workspace
             .files
             .get_key_value(file)

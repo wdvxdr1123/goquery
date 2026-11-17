@@ -9,21 +9,17 @@ use crate::analysis::check::{
 };
 use crate::analysis::obj::{BuiltinFunction, DeclId, ObjectRef};
 use crate::analysis::scope::tree::LocalBindingKind;
-use crate::analysis::types::{
-    BasicKind, Constant, Mode, Operand, PromotionIndices, Selection, SelectionKind, TypeId,
-};
+use crate::analysis::types::{BasicKind, Constant, Mode, Operand, TypeId};
 use crate::syntax::{self, ExprId, ExprKind, Signature, SymbolKind};
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
     pub(crate) fn check_expr(&mut self, id: ExprId, expected: Option<TypeId>) -> Option<Operand> {
         match self.check_expr_outcome(id, expected) {
-            ExprOutcome::Value(op) => Some(op),
-            ExprOutcome::Builtin(_)
+            ExprOutcome::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => Some(op),
+            ExprOutcome::Value(_)
             | ExprOutcome::Package { .. }
             | ExprOutcome::PartialGenericFunc { .. }
-            | ExprOutcome::GenericType(_)
-            | ExprOutcome::Void
-            | ExprOutcome::Missing => None,
+            | ExprOutcome::GenericType(_) => None,
         }
     }
 
@@ -32,6 +28,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         id: ExprId,
         expected_count: usize,
     ) -> Option<Vec<Operand>> {
+        let int_bits = self.int_bits()?;
+
         if expected_count <= 1 {
             return self.check_expr(id, None).map(|op| vec![op]);
         }
@@ -86,7 +84,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             _ => MultiAction::Other,
         };
 
-        let int_bits = self.int_bits();
         let ops = match action {
             MultiAction::Index { operand, arguments } if expected_count == 2 => {
                 let recv = self.check_expr(operand, None)?;
@@ -225,9 +222,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         let Some(e) = self.body.expression(id) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
         let span = e.span.clone();
+        // Unknown inner contexts are barriers: an enclosing expression's
+        // expectation must not leak into unrelated operands or callee names.
+        self.region.record_expected(self.abs_span(&span), expected);
         let action = match &e.kind {
             ExprKind::Name => ExprAction::Name(span),
             ExprKind::Literal => ExprAction::Literal(span),
@@ -306,11 +306,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         };
 
         let outcome = match action {
-            ExprAction::Missing => ExprOutcome::Missing,
+            ExprAction::Missing => ExprOutcome::invalid(),
             ExprAction::Name(span) => self.check_name(&span),
             ExprAction::Literal(span) => match self.arena.literal(self.text(&span)) {
                 Some(op) => ExprOutcome::Value(op),
-                None => ExprOutcome::Missing,
+                None => ExprOutcome::invalid(),
             },
             ExprAction::Type(span) => match self.resolve_type_syntax_span(&span) {
                 Some(ty) => ExprOutcome::Value(Operand {
@@ -318,7 +318,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     ty,
                     value: None,
                 }),
-                None => ExprOutcome::Missing,
+                None => ExprOutcome::invalid(),
             },
             ExprAction::Composite {
                 span,
@@ -385,7 +385,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             }
             let kind = self.binding(local_id).map(|b| b.kind);
             let Some(op) = local_op else {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             };
             return match kind {
                 Some(LocalBindingKind::Const) => ExprOutcome::Value(Operand {
@@ -417,7 +417,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             FileSymbolLookup::Found(decl) => {
                 return self.resolve_decl_as_outcome(decl, abs_span);
             }
-            FileSymbolLookup::Ambiguous => return ExprOutcome::Missing,
+            FileSymbolLookup::Ambiguous => return ExprOutcome::invalid(),
             FileSymbolLookup::NotFound => {}
         }
 
@@ -432,7 +432,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: None,
                     })
                 })
-                .unwrap_or(ExprOutcome::Missing)
+                .unwrap_or(ExprOutcome::invalid())
             }
             "true" => {
                 let ty = self.arena.basic(BasicKind::UntypedBool);
@@ -446,7 +446,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: Some(Constant::Boolean),
                     })
                 })
-                .unwrap_or(ExprOutcome::Missing)
+                .unwrap_or(ExprOutcome::invalid())
             }
             "false" => {
                 let ty = self.arena.basic(BasicKind::UntypedBool);
@@ -460,11 +460,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: Some(Constant::Boolean),
                     })
                 })
-                .unwrap_or(ExprOutcome::Missing)
+                .unwrap_or(ExprOutcome::invalid())
             }
             "iota" => {
                 let Some(iota_v) = self.iota else {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 };
                 let ty = self.arena.basic(BasicKind::UntypedInt);
                 self.region
@@ -477,14 +477,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: Some(Constant::Int(iota_v as i128)),
                     })
                 })
-                .unwrap_or(ExprOutcome::Missing)
+                .unwrap_or(ExprOutcome::invalid())
             }
             _ => {
                 if let Some(bf) = BuiltinFunction::from_name(name) {
                     self.region
                         .uses
                         .push((abs_span, ObjectRef::BuiltinFunction(bf)));
-                    ExprOutcome::Builtin(bf)
+                    ExprOutcome::builtin(bf)
                 } else if let Some(ty) = self.arena.builtin_type(self.file, name) {
                     if let Some(bname) = builtin_type_static_name(name) {
                         self.region
@@ -497,7 +497,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: None,
                     })
                 } else {
-                    ExprOutcome::Missing
+                    self.report_missing_name(name, self.abs_range(span));
+                    ExprOutcome::invalid()
                 }
             }
         }
@@ -527,7 +528,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         let Some(op) = self.decls.operand_of(self.arena, decl) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
         ExprOutcome::Value(op)
     }
@@ -550,15 +551,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     fn check_unary(&mut self, operator: &Range<usize>, operand: ExprId) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let op_str = self.text(operator);
         let Some(op) = self.check_expr(operand, None) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
-        let int_bits = self.int_bits();
         match op_str {
             "<-" => match self.arena.receive_slot(op, 0, 1) {
                 Some(recv_op) => ExprOutcome::Value(recv_op),
-                None => ExprOutcome::Missing,
+                None => ExprOutcome::invalid(),
             },
             "*" => {
                 if op.mode == Mode::TypeExpr {
@@ -568,12 +572,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             ty: ptr_ty,
                             value: None,
                         }),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
                     match self.arena.indirect(op) {
                         Some(ind_op) => ExprOutcome::Value(ind_op),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 }
             }
@@ -589,15 +593,15 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             ty: ptr_ty,
                             value: None,
                         }),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             _ => match self.arena.unary_expr(op_str, op, int_bits) {
                 Some(res) => ExprOutcome::Value(res),
-                None => ExprOutcome::Missing,
+                None => ExprOutcome::invalid(),
             },
         }
     }
@@ -609,21 +613,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         right: ExprId,
         expected: Option<TypeId>,
     ) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let op_str = self.text(operator);
         let left_op = self.check_expr(left, None);
         let right_op = self.check_expr(right, None);
         let (Some(l), Some(r)) = (left_op, right_op) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
         if l.mode == Mode::TypeExpr || r.mode == Mode::TypeExpr {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         }
-        match self
-            .arena
-            .binary_expr(op_str, l, r, expected, self.int_bits())
-        {
+        match self.arena.binary_expr(op_str, l, r, expected, int_bits) {
             Some(res) => ExprOutcome::Value(res),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -635,10 +640,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             ExprOutcome::Package { alias, .. } => {
                 match self.resolve_imported_decl(alias, field_name) {
                     Some(d) => self.resolve_decl_as_outcome(d, field_span),
-                    None => ExprOutcome::Missing,
+                    None => {
+                        let qualifier_start = self
+                            .body
+                            .expression(operand)
+                            .map_or(field_span[0] as usize, |expr| {
+                                self.body_base + expr.span.start
+                            });
+                        self.report_missing_imported_name(
+                            alias,
+                            field_name,
+                            qualifier_start,
+                            self.abs_range(field),
+                        );
+                        ExprOutcome::invalid()
+                    }
                 }
             }
-            ExprOutcome::Value(op) => {
+            ExprOutcome::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => {
                 if op.mode == Mode::TypeExpr {
                     match self.arena.lookup_method_expr(op.ty, self.file, field_name) {
                         Some(Some(sel)) => {
@@ -651,7 +670,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                                 value: None,
                             })
                         }
-                        _ => ExprOutcome::Missing,
+                        _ => ExprOutcome::invalid(),
                     }
                 } else {
                     let addressable = op.mode == Mode::Variable;
@@ -677,11 +696,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                                 value: None,
                             })
                         }
-                        _ => ExprOutcome::Missing,
+                        _ => ExprOutcome::invalid(),
                     }
                 }
             }
-            _ => ExprOutcome::Missing,
+            _ => ExprOutcome::invalid(),
         }
     }
 
@@ -700,7 +719,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         let env_pairs: Vec<(&str, TypeId)> = env.iter().map(|(n, t)| (n.as_str(), *t)).collect();
         let sig_ty = if refs_valid {
             self.arena
-                .signature(self.file, sig_slice, &parsed_sig, &env_pairs, 0)
+                .signature(
+                    self.file,
+                    sig_slice,
+                    Some(self.file_offset(abs_sig.start)),
+                    &parsed_sig,
+                    &env_pairs,
+                    0,
+                )
                 .filter(|&ty| self.arena.validate_type(ty).is_some())
         } else {
             None
@@ -724,6 +750,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             child.restore_closure_snapshot(snap);
             child.populate_closure_signature(sig_slice, abs_sig.start, &parsed_sig);
             child.check_body();
+        } else {
+            self.region.uses_complete = false;
         }
 
         match sig_ty {
@@ -732,18 +760,25 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 ty,
                 value: None,
             }),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
     fn check_composite(
         &mut self,
-        _span: &Range<usize>,
+        span: &Range<usize>,
         literal_type: Option<ExprId>,
         elements: &[ExprId],
         expected: Option<TypeId>,
     ) -> ExprOutcome<'a, 'b> {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
+        if elements.len() > crate::analysis::budget::MAX_NODES {
+            self.region.uses_complete = false;
+            return ExprOutcome::invalid();
+        }
         let mut inferred_array_elem: Option<TypeId> = None;
 
         let container_ty = if let Some(lt_id) = literal_type {
@@ -828,7 +863,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             }
 
             if !ok {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             }
             return self
                 .arena
@@ -840,13 +875,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: None,
                     })
                 })
-                .unwrap_or(ExprOutcome::Missing);
+                .unwrap_or(ExprOutcome::invalid());
         }
 
         let Some(target_ty) = container_ty else {
             self.check_unknown_composite_elements(elements);
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
+        self.region.record_literal(self.abs_span(span), target_ty);
 
         if let Some((key_ty_opt, elem_ty)) = self.arena.composite_container_types(target_ty) {
             let mut ok = true;
@@ -961,7 +997,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             }
 
             if !ok {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             }
             return ExprOutcome::Value(Operand {
                 mode: Mode::Value,
@@ -976,6 +1012,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             let mut has_keyed = false;
             let mut has_unkeyed = false;
             let mut seen_fields = BTreeSet::new();
+            let mut seen_paths: Vec<crate::analysis::types::PromotionIndices> = Vec::new();
             let mut ok = true;
 
             for (idx, &el_id) in elements.iter().enumerate() {
@@ -1000,25 +1037,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     if !seen_fields.insert(fname.to_string()) {
                         ok = false;
                     }
-                    if let Some((member, fty)) =
-                        self.arena.direct_struct_field(target_ty, self.file, fname)
-                    {
+                    if let Some(selection) = self.arena.literal_field(target_ty, self.file, fname) {
                         let abs_key = self.abs_span(&key_span);
-                        let obj = ObjectRef::Field(member);
-                        self.region.uses.push((abs_key, obj));
-                        if let Some(indices) = PromotionIndices::from_slice(&[]) {
-                            self.region.selections.push((
-                                abs_key,
-                                Selection {
-                                    kind: SelectionKind::FieldVal,
-                                    recv: target_ty,
-                                    obj,
-                                    ty: fty,
-                                    indices,
-                                    indirect: false,
-                                },
-                            ));
+                        let fty = selection.ty;
+                        if seen_paths
+                            .iter()
+                            .any(|path| path.conflicts(&selection.indices))
+                        {
+                            ok = false;
                         }
+                        seen_paths.push(selection.indices.clone());
+                        self.region.uses.push((abs_key, selection.obj));
+                        self.region.selections.push((abs_key, selection));
                         if let Some(val_op) = self.check_expr(val_id, Some(fty)) {
                             if !self
                                 .arena
@@ -1069,7 +1099,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 ok = false;
             }
             if !ok {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             }
             return ExprOutcome::Value(Operand {
                 mode: Mode::Value,
@@ -1079,7 +1109,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         self.check_unknown_composite_elements(elements);
-        ExprOutcome::Missing
+        ExprOutcome::invalid()
     }
 
     fn check_unknown_composite_elements(&mut self, elements: &[ExprId]) {
@@ -1106,7 +1136,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         operand: ExprId,
         arguments: &[ExprId],
     ) -> ExprOutcome<'a, 'b> {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let ident_span = self
             .callee_ident_span(operand)
             .unwrap_or_else(|| self.abs_span(index_span));
@@ -1118,7 +1151,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 explicit_type_args,
             } => {
                 if !explicit_type_args.is_empty() {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 }
                 let mut type_args = Vec::with_capacity(arguments.len());
                 let mut valid = !arguments.is_empty();
@@ -1137,7 +1170,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     || type_args.is_empty()
                     || type_args.len() > parsed_sig.type_parameters.len()
                 {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 }
                 if type_args.len() < parsed_sig.type_parameters.len() {
                     return ExprOutcome::PartialGenericFunc {
@@ -1149,7 +1182,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 }
                 match self
                     .arena
-                    .instantiated_signature(decl.file, &header, &parsed_sig, &type_args)
+                    .instantiated_signature(
+                        decl.file,
+                        &header,
+                        decl.symbol.declaration().map(|span| span.start),
+                        &parsed_sig,
+                        &type_args,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
                 {
                     Some(ty) => {
@@ -1167,7 +1206,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             value: None,
                         })
                     }
-                    None => ExprOutcome::Missing,
+                    None => ExprOutcome::invalid(),
                 }
             }
             ExprOutcome::GenericType(decl) => {
@@ -1185,7 +1224,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     }
                 }
                 if !valid {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 }
                 if let Some(inst_ty) = self
                     .arena
@@ -1213,7 +1252,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         });
                     }
                 }
-                ExprOutcome::Missing
+                ExprOutcome::invalid()
             }
             ExprOutcome::Value(op) if op.mode == Mode::TypeExpr => {
                 let mut type_args = Vec::with_capacity(arguments.len());
@@ -1230,7 +1269,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     }
                 }
                 if !valid {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 }
                 if let Some((decl, _existing, is_alias)) = self.arena.named_declaration(op.ty)
                     && let Some(inst_ty) = self
@@ -1259,28 +1298,28 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         });
                     }
                 }
-                ExprOutcome::Missing
+                ExprOutcome::invalid()
             }
-            ExprOutcome::Value(op) => {
+            ExprOutcome::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => {
                 if arguments.len() != 1 {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 }
                 let Some(idx_op) = self.check_expr(arguments[0], None) else {
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 };
                 match self.arena.index(op, idx_op, 0, 1, int_bits) {
                     Some(res) => ExprOutcome::Value(res),
-                    None => ExprOutcome::Missing,
+                    None => ExprOutcome::invalid(),
                 }
             }
             _ => {
                 for &arg_id in arguments {
                     let _ = self.check_expr_outcome(arg_id, None);
                 }
-                ExprOutcome::Missing
+                ExprOutcome::invalid()
             }
         }
     }
@@ -1293,19 +1332,23 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         max: Option<ExprId>,
         full: bool,
     ) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let op = self.check_expr(operand, None);
         let low_op = low.and_then(|id| self.check_expr(id, None));
         let high_op = high.and_then(|id| self.check_expr(id, None));
         let max_op = max.and_then(|id| self.check_expr(id, None));
         let Some(input) = op else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
         match self
             .arena
-            .slice(input, [low_op, high_op, max_op], full, self.int_bits())
+            .slice(input, [low_op, high_op, max_op], full, int_bits)
         {
             Some(res) => ExprOutcome::Value(res),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -1314,14 +1357,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         operand: ExprId,
         asserted_type: &Range<usize>,
     ) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let src = self.check_expr(operand, None);
         let target = self.resolve_type_syntax_span(asserted_type);
         let (Some(src), Some(target)) = (src, target) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
-        match self.arena.assertion(src, target, 0, 1, self.int_bits()) {
+        match self.arena.assertion(src, target, 0, 1, int_bits) {
             Some(res) => ExprOutcome::Value(res),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -1333,7 +1380,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         arguments: &[ExprId],
         callee_obj: Option<ObjectRef<'a>>,
         signature: Option<TypeId>,
-        type_args: Box<[TypeId]>,
         is_conversion: bool,
         is_const_builtin: bool,
     ) -> CallSiteInfo<'a> {
@@ -1363,30 +1409,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             arg_spans,
             callee_obj,
             signature,
-            type_args,
             is_conversion,
             is_const_builtin,
         }
-    }
-
-    fn explicit_call_type_args(&self, function: ExprId) -> Box<[TypeId]> {
-        if !self
-            .body
-            .expression(self.unwrap_parens(function))
-            .is_some_and(|e| matches!(e.kind, ExprKind::Index { .. }))
-        {
-            return Box::new([]);
-        }
-        let Some(ident_span) = self.callee_ident_span(function) else {
-            return Box::new([]);
-        };
-        self.region
-            .instances
-            .iter()
-            .rev()
-            .find(|(sp, _)| *sp == ident_span)
-            .map(|(_, inst)| inst.type_args.clone())
-            .unwrap_or_default()
     }
 
     fn callee_obj_at(&self, function: ExprId) -> Option<ObjectRef<'a>> {
@@ -1422,7 +1447,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             arguments,
             self.callee_obj_at(function),
             Some(target_ty),
-            Box::new([]),
             true,
             false,
         );
@@ -1431,14 +1455,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             for &arg_id in arguments {
                 let _ = self.check_expr_outcome(arg_id, None);
             }
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         }
         let Some(arg_op) = self.check_expr(arguments[0], None) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
         match self.arena.convert(arg_op, target_ty, int_bits) {
             Some(res) => ExprOutcome::Value(res),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -1449,11 +1473,15 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         variadic: bool,
         call_span: &Range<usize>,
     ) -> ExprOutcome<'a, 'b> {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         match self.check_expr_outcome(function, None) {
-            ExprOutcome::Builtin(bf) => {
-                self.check_builtin_call(bf, function, arguments, variadic, call_span)
-            }
+            ExprOutcome::Value(Operand {
+                mode: Mode::Builtin(bf),
+                ..
+            }) => self.check_builtin_call(bf, function, arguments, variadic, call_span),
             ExprOutcome::Value(callee) if callee.mode == Mode::TypeExpr => self
                 .finish_conversion_call(
                     function, callee.ty, arguments, variadic, call_span, int_bits,
@@ -1474,14 +1502,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
                     self.region.calls.push(info);
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 };
-                let Some((inst_ty, actual_ops, type_args)) = self.instantiate_generic_call(
+                let Some((inst_ty, actual_ops)) = self.instantiate_generic_call(
                     decl,
                     callee_span,
                     &header,
@@ -1496,18 +1523,16 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
                     self.region.calls.push(info);
-                    return ExprOutcome::Missing;
+                    return ExprOutcome::invalid();
                 };
                 self.finish_signature_call_with_args(
                     function,
                     inst_ty,
                     Some(decl_object(decl)),
-                    type_args,
                     arguments,
                     actual_ops,
                     variadic,
@@ -1516,26 +1541,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     1,
                 )
             }
-            ExprOutcome::Value(callee) => {
+            ExprOutcome::Value(callee) if callee.mode.is_value() => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 self.finish_signature_call(
-                    function, callee.ty, obj, type_args, arguments, variadic, call_span, 0, 1,
+                    function, callee.ty, obj, arguments, variadic, call_span, 0, 1,
                 )
             }
             _ => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 for &arg_id in arguments {
                     let _ = self.check_expr_outcome(arg_id, None);
                 }
                 if obj.is_some() {
                     let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, type_args, false, false,
+                        call_span, function, arguments, obj, None, false, false,
                     );
                     self.region.calls.push(info);
                 }
-                ExprOutcome::Missing
+                ExprOutcome::invalid()
             }
         }
     }
@@ -1548,9 +1571,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         call_span: &Range<usize>,
         expected_count: usize,
     ) -> Option<Vec<Operand>> {
+        let int_bits = self.int_bits()?;
+
         let (callee_ty, actual_ops) =
             self.resolve_callable_with_info(function, arguments, variadic, call_span)?;
-        let int_bits = self.int_bits();
         let (_, results, _) = self.arena.signature_parts(callee_ty)?;
         if results.len() != expected_count {
             return None;
@@ -1566,16 +1590,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         call_span: &Range<usize>,
     ) -> Option<(TypeId, Vec<Operand>)> {
         match self.check_expr_outcome(function, None) {
-            ExprOutcome::Value(op) if op.mode != Mode::TypeExpr => {
+            ExprOutcome::Value(op) if op.mode.is_value() => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 let info = self.build_call_site_info(
                     call_span,
                     function,
                     arguments,
                     obj,
                     Some(op.ty),
-                    type_args,
                     false,
                     false,
                 );
@@ -1599,14 +1621,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
                     self.region.calls.push(info);
                     return None;
                 };
-                let Some((inst, ops, type_args)) = self.instantiate_generic_call(
+                let Some((inst, ops)) = self.instantiate_generic_call(
                     decl,
                     callee_span,
                     &header,
@@ -1621,7 +1642,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
@@ -1634,7 +1654,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     arguments,
                     Some(decl_object(decl)),
                     Some(inst),
-                    type_args,
                     false,
                     false,
                 );
@@ -1643,13 +1662,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             }
             _ => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 for &arg_id in arguments {
                     let _ = self.check_expr_outcome(arg_id, None);
                 }
                 if obj.is_some() {
                     let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, type_args, false, false,
+                        call_span, function, arguments, obj, None, false, false,
                     );
                     self.region.calls.push(info);
                 }
@@ -1687,9 +1705,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         variadic: bool,
         call_span: &Range<usize>,
     ) -> Option<Vec<Operand>> {
-        let int_bits = self.int_bits();
+        let int_bits = self.int_bits()?;
+
         let (callee_ty, actual_ops) = match self.check_expr_outcome(function, None) {
-            ExprOutcome::Builtin(bf) => {
+            ExprOutcome::Value(Operand {
+                mode: Mode::Builtin(bf),
+                ..
+            }) => {
                 let outcome = self.check_builtin_call(bf, function, arguments, variadic, call_span);
                 if let ExprOutcome::Value(op) = outcome {
                     self.region.expr_types.push((self.abs_span(call_span), op));
@@ -1723,14 +1745,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
                     self.region.calls.push(info);
                     return None;
                 };
-                let Some((inst_ty, actual_ops, type_args)) = self.instantiate_generic_call(
+                let Some((inst_ty, actual_ops)) = self.instantiate_generic_call(
                     decl,
                     callee_span,
                     &header,
@@ -1745,7 +1766,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         arguments,
                         Some(decl_object(decl)),
                         None,
-                        explicit_type_args.into_boxed_slice(),
                         false,
                         false,
                     );
@@ -1758,23 +1778,20 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     arguments,
                     Some(decl_object(decl)),
                     Some(inst_ty),
-                    type_args,
                     false,
                     false,
                 );
                 self.region.calls.push(info);
                 (inst_ty, actual_ops)
             }
-            ExprOutcome::Value(callee) => {
+            ExprOutcome::Value(callee) if callee.mode.is_value() => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 let info = self.build_call_site_info(
                     call_span,
                     function,
                     arguments,
                     obj,
                     Some(callee.ty),
-                    type_args,
                     false,
                     false,
                 );
@@ -1784,13 +1801,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             }
             _ => {
                 let obj = self.callee_obj_at(function);
-                let type_args = self.explicit_call_type_args(function);
                 for &arg_id in arguments {
                     let _ = self.check_expr_outcome(arg_id, None);
                 }
                 if obj.is_some() {
                     let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, type_args, false, false,
+                        call_span, function, arguments, obj, None, false, false,
                     );
                     self.region.calls.push(info);
                 }
@@ -1836,9 +1852,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         explicit_type_args: &[TypeId],
         arguments: &[ExprId],
         variadic: bool,
-    ) -> Option<(TypeId, Vec<Operand>, Box<[TypeId]>)> {
+    ) -> Option<(TypeId, Vec<Operand>)> {
+        let int_bits = self.int_bits()?;
+
         let actual_ops = self.eval_call_arg_operands(arguments, variadic, None)?;
-        let int_bits = self.int_bits();
         let inferred = self.arena.infer_call_arguments(
             decl.file,
             header,
@@ -1848,19 +1865,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             int_bits,
             variadic,
         )?;
-        let inst_ty = self
-            .arena
-            .instantiated_signature(decl.file, header, parsed_sig, &inferred)?;
-        let type_args = inferred.into_boxed_slice();
+        let inst_ty = self.arena.instantiated_signature(
+            decl.file,
+            header,
+            decl.symbol.declaration().map(|span| span.start),
+            parsed_sig,
+            &inferred,
+        )?;
         self.region.instances.push((
             callee_span,
             InstanceInfo {
                 target: decl_object(decl),
-                type_args: type_args.clone(),
+                type_args: inferred.into_boxed_slice(),
                 instantiated: inst_ty,
             },
         ));
-        Some((inst_ty, actual_ops, type_args))
+        Some((inst_ty, actual_ops))
     }
 
     fn eval_call_arg_operands(
@@ -1911,20 +1931,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         function: ExprId,
         callee_ty: TypeId,
         callee_obj: Option<ObjectRef<'a>>,
-        type_args: Box<[TypeId]>,
         arguments: &[ExprId],
         variadic: bool,
         call_span: &Range<usize>,
         result: usize,
         count: usize,
     ) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let info = self.build_call_site_info(
             call_span,
             function,
             arguments,
             callee_obj,
             Some(callee_ty),
-            type_args,
             false,
             false,
         );
@@ -1934,19 +1956,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             for &arg_id in arguments {
                 let _ = self.check_expr_outcome(arg_id, None);
             }
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
 
         let Some(actual_ops) = self.evaluate_call_args(callee_ty, arguments, variadic) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
-        let int_bits = self.int_bits();
 
         if results.is_empty() {
             if !self.validate_void_call(&params, is_var, &actual_ops, variadic, int_bits) {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             }
-            return ExprOutcome::Void;
+            return ExprOutcome::no_value();
         }
 
         match self
@@ -1958,7 +1979,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 ty: res_ty,
                 value: None,
             }),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -1968,7 +1989,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         function: ExprId,
         callee_ty: TypeId,
         callee_obj: Option<ObjectRef<'a>>,
-        type_args: Box<[TypeId]>,
         arguments: &[ExprId],
         actual_ops: Vec<Operand>,
         variadic: bool,
@@ -1976,28 +1996,30 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         result: usize,
         count: usize,
     ) -> ExprOutcome<'a, 'b> {
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let info = self.build_call_site_info(
             call_span,
             function,
             arguments,
             callee_obj,
             Some(callee_ty),
-            type_args,
             false,
             false,
         );
         self.region.calls.push(info);
 
         let Some((params, results, is_var)) = self.arena.signature_parts(callee_ty) else {
-            return ExprOutcome::Missing;
+            return ExprOutcome::invalid();
         };
-        let int_bits = self.int_bits();
 
         if results.is_empty() {
             if !self.validate_void_call(&params, is_var, &actual_ops, variadic, int_bits) {
-                return ExprOutcome::Missing;
+                return ExprOutcome::invalid();
             }
-            return ExprOutcome::Void;
+            return ExprOutcome::no_value();
         }
 
         match self
@@ -2009,7 +2031,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 ty: res_ty,
                 value: None,
             }),
-            None => ExprOutcome::Missing,
+            None => ExprOutcome::invalid(),
         }
     }
 
@@ -2088,14 +2110,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         variadic: bool,
         call_span: &Range<usize>,
     ) -> ExprOutcome<'a, 'b> {
-        let int_bits = self.int_bits();
+        let Some(int_bits) = self.int_bits() else {
+            return ExprOutcome::invalid();
+        };
+
         let outcome = match bf {
             BuiltinFunction::Len | BuiltinFunction::Cap => {
                 if arguments.len() != 1 || variadic {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 } else {
                     let has_call = self.expr_has_call(arguments[0]);
                     match self.check_expr(arguments[0], None) {
@@ -2106,9 +2131,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             int_bits,
                         ) {
                             Some(op) => ExprOutcome::Value(op),
-                            None => ExprOutcome::Missing,
+                            None => ExprOutcome::invalid(),
                         },
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 }
             }
@@ -2117,26 +2142,28 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 } else {
                     match self.check_expr_outcome(arguments[0], None) {
                         ExprOutcome::Value(op) if op.mode == Mode::TypeExpr => {
                             match self.arena.builtin_new(op.ty) {
                                 Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::Missing,
+                                None => ExprOutcome::invalid(),
                             }
                         }
-                        ExprOutcome::Value(op) => {
+                        ExprOutcome::Value(op)
+                            if op.mode.is_value() || op.mode == Mode::TypeExpr =>
+                        {
                             match self
                                 .arena
                                 .default_operand(op, int_bits)
                                 .and_then(|ty| self.arena.builtin_new(ty))
                             {
                                 Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::Missing,
+                                None => ExprOutcome::invalid(),
                             }
                         }
-                        _ => ExprOutcome::Missing,
+                        _ => ExprOutcome::invalid(),
                     }
                 }
             }
@@ -2145,7 +2172,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 } else {
                     let target_ty = match self.check_expr_outcome(arguments[0], None) {
                         ExprOutcome::Value(op) if op.mode == Mode::TypeExpr => Some(op.ty),
@@ -2162,10 +2189,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     if let (Some(ty), true) = (target_ty, sizes_ok) {
                         match self.arena.builtin_make(ty, &sizes, int_bits) {
                             Some(res) => ExprOutcome::Value(res),
-                            None => ExprOutcome::Missing,
+                            None => ExprOutcome::invalid(),
                         }
                     } else {
-                        ExprOutcome::Missing
+                        ExprOutcome::invalid()
                     }
                 }
             }
@@ -2173,10 +2200,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if let Some(args) = self.eval_call_arg_operands(arguments, variadic, None) {
                     match self.arena.builtin_append(&args, variadic, int_bits) {
                         Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             BuiltinFunction::Copy => {
@@ -2186,7 +2213,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 {
                     match self.arena.builtin_copy(args[0], args[1], int_bits) {
                         Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
                     if variadic {
@@ -2194,7 +2221,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             let _ = self.check_expr_outcome(arg_id, None);
                         }
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             BuiltinFunction::Complex => {
@@ -2204,7 +2231,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 {
                     match self.arena.builtin_complex(&args, int_bits) {
                         Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
                     if variadic {
@@ -2212,7 +2239,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             let _ = self.check_expr_outcome(arg_id, None);
                         }
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             BuiltinFunction::Real | BuiltinFunction::Imag => {
@@ -2220,7 +2247,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 } else {
                     match self.check_expr(arguments[0], None) {
                         Some(arg_op) => {
@@ -2229,10 +2256,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                                 .builtin_component(arg_op, bf == BuiltinFunction::Imag)
                             {
                                 Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::Missing,
+                                None => ExprOutcome::invalid(),
                             }
                         }
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 }
             }
@@ -2241,7 +2268,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     for &arg_id in arguments {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 } else if let Some(args) = self.eval_call_arg_operands(arguments, false, None)
                     && !args.is_empty()
                 {
@@ -2250,10 +2277,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         .builtin_minmax(&args, bf == BuiltinFunction::Max, int_bits)
                     {
                         Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             BuiltinFunction::Recover => {
@@ -2267,10 +2294,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             ty,
                             value: None,
                         }),
-                        None => ExprOutcome::Missing,
+                        None => ExprOutcome::invalid(),
                     }
                 } else {
-                    ExprOutcome::Missing
+                    ExprOutcome::invalid()
                 }
             }
             BuiltinFunction::Close
@@ -2291,7 +2318,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         let _ = self.check_expr_outcome(arg_id, None);
                     }
                 }
-                ExprOutcome::Void
+                ExprOutcome::no_value()
             }
         };
 
@@ -2305,7 +2332,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             arguments,
             Some(ObjectRef::BuiltinFunction(bf)),
             None,
-            Box::new([]),
             false,
             is_const_builtin,
         );

@@ -9,11 +9,10 @@ This records the implementation checkpoints and remaining differences.
 
 - Repository: https://github.com/gohugoio/hugo
 - Pinned revision: `ef7c52509321b14b0dfce34ef04be010b37ca05d`.
-- `scripts/fetch-hugo.ps1` prepares the revision, with optional module downloads
-  and module-manifest enumeration. `compare_features.py` accepts `--project hugo`,
-  checks revision/cleanliness and reuses existing feature plans and comparison.
-- `--hierarchical-symbols` explicitly negotiates nested document symbols;
-  the legacy flat response remains the default for prior measurements.
+- The pinned checkout and cached module manifests are prepared before
+  measurement. Revision and cleanliness are verified before comparison.
+- Nested document symbols are explicitly negotiated; prior measurements use
+  the legacy flat response.
 - Initial measurements had 271 unavailable cached manifests. `go mod download`
   succeeded, but offline `go list -m all` still failed. Online module-manifest
   preparation initially terminated with IPv6 timeouts to proxy.golang.org.
@@ -94,8 +93,7 @@ is applied to leaf members. Cross-package e2e covers both fields and methods.
 SDK version lookup also reads individual interface-method API records, such as
 the `testing.TB.Skipf` addition in Go 1.2.
 
-`scripts/compare_types.py` was still invoking the thin binary's nonexistent
-oracle test. It now selects `--lib`: pinned Go/types differential reports 1153
+The pinned go/types differential at this checkpoint reports 1153
 body matches, 1 body unknown, 1 type-declaration match and 5 type-declaration
 unknowns, with zero incorrect/rejected/unverified results.
 
@@ -1168,8 +1166,7 @@ The initial 17-position and 19-position runs are subsets, not additional coverag
 Both the 39-request strict golden replay and generic-value 31-request comparison
 were repeated with `target/signature-documentation.exe`.
 
-The new deterministic `scripts/features/signature_help.py` plan is included in
-the local feature verifier. It chooses lexical callable sites independently of
+The signature-help workload chooses lexical callable sites independently of
 server results. Some are conversions/null responses; their counts are explicit:
 
 | Corpus | Complete matches | Matches among non-null gopls signatures |
@@ -1439,3 +1436,35 @@ excluded/unmeasured. Independent runs do not establish a memory reduction.
 
 Validation performed for the first Rust fix: `cargo fmt --check`, `cargo test`,
 `cargo clippy --all-targets -- -D warnings`, and `cargo build --release`.
+
+## Native typechecking architecture migration (2026-11-17)
+
+Semantic requests now use one request facade and native arena for declaration
+identities, member selection, implementation relations and type presentation.
+Independent type trees and receiver environments have been retired. Completion
+uses checked expectations and literal fields; signature help and generic hover
+render checked signatures with bounded source parameter names. Module and file
+language metadata governs promoted literal keys and refreshes through workspace
+events. Local hover and alias navigation keep unavailable facts unknown.
+
+Cursor candidates share the current parsed function body with native checking.
+Bodies are limited to 128 KiB and signature headers to 16 KiB. Exact declaration
+offsets permit long comments without reading an entire closed file. Region
+transitions rewind local formals and types, while at most 64 newly used global
+declarations are promoted below the next body's permanent watermark. Method
+enumeration rejects unrelated receiver candidates before checking signatures;
+alias and dot-import receivers still require exact native identity.
+Implementation searches select the required public methods before signature
+checking, while private requirements keep package-qualified inventories and the
+final proof still checks the complete interface.
+
+The final local verification uses real stdio end-to-end tests, including complete
+member completion replies in a package with 4,500 unrelated methods and universe
+method documentation through aliases and embedded interfaces. The 18 stdio tests,
+formatting and Clippy checks pass on Windows and Linux.
+
+Pinned semantic comparisons, workload measurements and remaining differences are
+recorded in [the validation report](typecheck-validation-20261117.md). Full
+compiler diagnostic coverage, arbitrary-precision constant evaluation and some
+budget-limited semantic results remain incomplete; the architecture migration
+does not establish full gopls parity.

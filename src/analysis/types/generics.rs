@@ -2,11 +2,21 @@
 use super::constraints::{self, Constraint};
 use super::{BasicKind, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
 use crate::syntax::Signature;
-use crate::workspace::Workspace;
 use std::path::Path;
 
 pub(crate) fn completion_inferable(
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
+    file: &Path,
+    parameters: &[(&str, &str)],
+    inputs: &[&str],
+) -> Option<Vec<bool>> {
+    arena.with_projection(true, |arena| {
+        completion_inferable_inner(arena, file, parameters, inputs)
+    })
+}
+
+fn completion_inferable_inner(
+    arena: &mut TypeArena<'_>,
     file: &Path,
     parameters: &[(&str, &str)],
     inputs: &[&str],
@@ -14,7 +24,7 @@ pub(crate) fn completion_inferable(
     if parameters.len() > 32 {
         return None;
     }
-    let mut arena = TypeArena::new_symbolic(workspace);
+    let base = arena.local_parameters.len();
     let mut environment = Vec::with_capacity(parameters.len());
     for (name, _) in parameters {
         let ty = arena.push_symbolic_parameter(file, name)?;
@@ -22,21 +32,21 @@ pub(crate) fn completion_inferable(
             environment.push((*name, ty));
         }
     }
-    let mut inferred = vec![false; parameters.len()];
+    let mut inferred = vec![false; base + parameters.len()];
     for input in inputs {
         let ty = arena.parse_in(file, input, &environment)?;
-        collect_free_params(&mut arena, ty, &mut inferred, 0)?;
+        collect_free_params(arena, ty, &mut inferred, 0)?;
     }
     for _ in 0..=parameters.len() {
         let before = inferred.clone();
         for (index, (_, constraint)) in parameters.iter().enumerate() {
-            if inferred[index] {
+            if inferred[base + index] {
                 let constraint = arena.constraint(file, constraint, &environment)?;
-                collect_constraint_params(&mut arena, &constraint, &mut inferred, 0)?;
+                collect_constraint_params(arena, &constraint, &mut inferred, 0)?;
             }
         }
         if before == inferred {
-            return Some(inferred);
+            return Some(inferred[base..].to_vec());
         }
     }
     None
@@ -54,6 +64,7 @@ fn collect_free_params(
     }
     let input = arena.unalias(input)?;
     match arena.nodes.get(usize::from(input.0))?.clone() {
+        Ty::Invalid => None,
         Ty::Parameter(index) => {
             if let Some(slot) = inferred.get_mut(index) {
                 *slot = true;
@@ -435,6 +446,7 @@ impl TypeArena<'_> {
             return None;
         }
         let node = match self.nodes[usize::from(input.0)].clone() {
+            Ty::Invalid => return None,
             Ty::Parameter(index) => return *bindings.get(index)?,
             Ty::Basic(_) | Ty::Error(_) | Ty::LocalDeclaration { .. } => return Some(input),
             Ty::Interface {
@@ -448,6 +460,10 @@ impl TypeArena<'_> {
                 let mut methods = self.methods[methods].to_vec();
                 for method in &mut methods {
                     method.signature = self.substitute(method.signature, bindings, depth + 1)?;
+                    if let Some(receiver) = method.declared_on {
+                        method.declared_on =
+                            Some(self.substitute(receiver, bindings, depth + 1)?);
+                    }
                 }
                 return self.store_interface(origin, methods);
             }
@@ -468,7 +484,9 @@ impl TypeArena<'_> {
                     .into_iter()
                     .map(|ty| self.substitute(ty, bindings, depth + 1))
                     .collect::<Option<_>>()?;
-                return self.store_signature(parameters, results, variadic);
+                let ty = self.store_signature(parameters, results, variadic)?;
+                self.copy_signature_names(input, ty, false);
+                return Some(ty);
             }
             Ty::Struct { origin, fields } => {
                 let mut fields = self.fields[fields].to_vec();

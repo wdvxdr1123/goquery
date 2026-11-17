@@ -224,21 +224,7 @@
   {
     "id": 8,
     "jsonrpc": "2.0",
-    "result": [
-      {
-        "range": {
-          "end": {
-            "character": 37,
-            "line": 2
-          },
-          "start": {
-            "character": 31,
-            "line": 2
-          }
-        },
-        "uri": "$LIB_URI"
-      }
-    ]
+    "result": null
   },
   {
     "id": 9,

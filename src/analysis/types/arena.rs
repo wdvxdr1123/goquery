@@ -1,105 +1,12 @@
 //! Bounded, query-local structural types. No closed source is retained.
-use super::{BasicKind, Field, MAX_NODES, Method, Qualifier};
+use super::ty::SliceRef;
+use super::{BasicKind, Direction, Field, Method, Qualifier, Ty, TypeId};
 
 use crate::analysis::budget::MAX_SHARED_ARENA_NODES;
 use crate::analysis::obj::DeclId;
 use crate::workspace::Workspace;
 use std::collections::HashMap;
-use std::ops::Range;
 use std::path::Path;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct TypeId(pub(super) u16);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(super) struct SliceRef {
-    pub(super) start: u32,
-    pub(super) len: u16,
-}
-
-impl SliceRef {
-    pub(super) fn from_range(range: Range<usize>) -> Option<Self> {
-        Some(Self {
-            start: u32::try_from(range.start).ok()?,
-            len: u16::try_from(range.len()).ok()?,
-        })
-    }
-
-    pub(super) fn range(self) -> Range<usize> {
-        let start = self.start as usize;
-        start..start + usize::from(self.len)
-    }
-
-    pub(super) const fn len(self) -> usize {
-        self.len as usize
-    }
-
-    pub(super) const fn is_empty(self) -> bool {
-        self.len == 0
-    }
-}
-
-#[derive(Clone)]
-pub(super) enum Ty<'a> {
-    Basic(BasicKind),
-    Error(TypeId),
-    /// A formal's identity is its TypeId; the index is only for schema substitution.
-    Parameter(usize),
-    /// Declaration-only local identity: no underlying/checking facts are invented.
-    LocalDeclaration {
-        origin: &'a Path,
-        selection: Range<usize>,
-        formal: bool,
-    },
-    Interface {
-        origin: &'a Path,
-        methods: Range<usize>,
-        builtin_any: bool,
-    },
-    Signature {
-        parameters: Range<usize>,
-        results: Range<usize>,
-        variadic: bool,
-    },
-    Struct {
-        origin: &'a Path,
-        fields: Range<usize>,
-    },
-    Named {
-        declaration: DeclId<'a>,
-        arguments: SliceRef,
-    },
-    Alias {
-        declaration: DeclId<'a>,
-        arguments: SliceRef,
-    },
-    Tuple(SliceRef),
-    Pointer(TypeId),
-    Slice(TypeId),
-    Array {
-        length: u64,
-        element: TypeId,
-    },
-    Map {
-        key: TypeId,
-        value: TypeId,
-    },
-    Chan {
-        direction: Direction,
-        element: TypeId,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum Direction {
-    Both,
-    Send,
-    Receive,
-}
-
-// Keep the 64-bit per-node ceiling unchanged when adding projection metadata.
-#[cfg(target_pointer_width = "64")]
-const _: () = assert!(std::mem::size_of::<Ty<'static>>() <= 48);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum InternArgs {
@@ -170,13 +77,22 @@ pub(crate) struct ArenaWatermark {
     field_bytes: usize,
     methods: usize,
     method_bytes: usize,
+    signature_names: usize,
+    signature_name_bytes: usize,
     invalid_type: bool,
+}
+
+impl ArenaWatermark {
+    pub(crate) fn node_count(self) -> u16 {
+        self.nodes as u16
+    }
 }
 
 /// Nodes and argument lists live only as long as the current type operation.
 /// Unsupported/invalid/budget-limited inputs return None, never an `any` type.
 pub(crate) struct TypeArena<'a> {
     pub(super) workspace: &'a Workspace,
+    pub(super) build_view: crate::workspace::BuildView<'a>,
     pub(super) node_limit: usize,
     pub(super) byte_limit: usize,
     basics: [u16; BasicKind::COUNT],
@@ -188,6 +104,7 @@ pub(crate) struct TypeArena<'a> {
     pub(super) named_check_depth: usize,
     pub(super) relation_steps: usize,
     pub(super) expansion_depth: usize,
+    pub(super) constant_depth: usize,
     pub(super) constraint_depth: usize,
     pub(super) constraint_terms: usize,
     // Facts belong to fresh formal nodes, not the substitution indices reused by owners.
@@ -199,6 +116,8 @@ pub(crate) struct TypeArena<'a> {
     pub(super) field_bytes: usize,
     pub(super) methods: Vec<Method<'a>>,
     pub(super) method_bytes: usize,
+    pub(super) signature_names: Vec<super::signature_names::SignatureNames>,
+    pub(super) signature_name_bytes: String,
     pub(super) pkg_methods:
         HashMap<(&'a Path, &'a str, bool), Option<super::methods::PkgMethodIndex<'a>>>,
     pub(super) concrete_methods: HashMap<DeclId<'a>, super::methods::ConcreteMethodMemo>,
@@ -209,6 +128,33 @@ pub(crate) struct TypeArena<'a> {
 impl<'a> TypeArena<'a> {
     pub(crate) fn has_type_error(&self) -> bool {
         self.invalid_type
+    }
+
+    /// Speculative presentation/inference shares this arena's storage. Callers
+    /// return owned projections, never TypeIds allocated after the watermark.
+    pub(crate) fn with_projection<R>(
+        &mut self,
+        symbolic: bool,
+        project: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let mark = self.mark();
+        let (saved_symbolic, saved_steps) = (self.symbolic, self.relation_steps);
+        let (saved_nodes, saved_bytes) = (self.node_limit, self.byte_limit);
+        self.symbolic = symbolic;
+        self.node_limit = saved_nodes.min(mark.nodes.saturating_add(super::MAX_NODES));
+        self.byte_limit = saved_bytes.min(
+            self.field_bytes
+                .max(self.method_bytes)
+                .saturating_add(super::MAX_BYTES),
+        );
+        self.reset_steps();
+        let result = project(self);
+        self.rewind(mark);
+        self.symbolic = saved_symbolic;
+        self.relation_steps = saved_steps;
+        self.node_limit = saved_nodes;
+        self.byte_limit = saved_bytes;
+        result
     }
 
     pub(crate) fn basic(&mut self, kind: BasicKind) -> Option<TypeId> {
@@ -229,15 +175,11 @@ impl<'a> TypeArena<'a> {
         }
     }
 
-    pub(crate) fn new(workspace: &'a Workspace) -> Self {
-        Self::with_limit(workspace, MAX_NODES, super::MAX_BYTES)
+    pub(crate) fn resolver(&self) -> crate::analysis::resolve::View<'a> {
+        crate::analysis::resolve::View::new(self.workspace, self.build_view)
     }
-
-    pub(crate) fn new_symbolic(workspace: &'a Workspace) -> Self {
-        Self {
-            symbolic: true,
-            ..Self::new(workspace)
-        }
+    pub(crate) fn integer_bits(&self) -> Option<u32> {
+        self.build_view.integer_bits()
     }
 
     pub(crate) fn workspace(&self) -> &'a Workspace {
@@ -257,31 +199,46 @@ impl<'a> TypeArena<'a> {
         self.nodes.len() > self.node_limit / 2
             || self.constraint_terms > self.node_limit / 2
             || self.parameter_constraints.len() > self.node_limit / 2
-            || self.local_parameters.len() >= (self.node_limit / 16).max(16)
-            || self.local_types.len() >= (self.node_limit / 8).max(32)
+            || self.local_parameters.len() >= 16
+            || self.local_types.len() >= 32
             || self.local_type_bytes > super::MAX_BYTES / 2
             || self.field_bytes > self.byte_limit / 2
             || self.method_bytes > self.byte_limit / 2
     }
 
-    pub(crate) fn with_shared_budget(workspace: &'a Workspace) -> Self {
-        Self::with_limit(workspace, MAX_SHARED_ARENA_NODES, super::MAX_BYTES * 4)
+    pub(crate) fn with_shared_budget(
+        workspace: &'a Workspace,
+        view: crate::workspace::BuildView<'a>,
+    ) -> Self {
+        Self::with_limit(
+            workspace,
+            view,
+            MAX_SHARED_ARENA_NODES,
+            super::MAX_BYTES * 4,
+        )
     }
 
-    fn with_limit(workspace: &'a Workspace, node_limit: usize, byte_limit: usize) -> Self {
+    fn with_limit(
+        workspace: &'a Workspace,
+        build_view: crate::workspace::BuildView<'a>,
+        node_limit: usize,
+        byte_limit: usize,
+    ) -> Self {
         Self {
             workspace,
+            build_view,
             node_limit,
             byte_limit,
             basics: [u16::MAX; BasicKind::COUNT],
             interner: HashMap::new(),
-            nodes: Vec::new(),
+            nodes: vec![Ty::Invalid],
             arguments: Vec::new(),
             expansions: Vec::new(),
             named_checks: Vec::new(),
             named_check_depth: 0,
             relation_steps: crate::analysis::budget::RELATION_STEPS,
             expansion_depth: 0,
+            constant_depth: 0,
             constraint_depth: 0,
             constraint_terms: 0,
             parameter_constraints: Vec::new(),
@@ -292,6 +249,8 @@ impl<'a> TypeArena<'a> {
             field_bytes: 0,
             methods: Vec::new(),
             method_bytes: 0,
+            signature_names: Vec::new(),
+            signature_name_bytes: String::new(),
             pkg_methods: HashMap::new(),
             concrete_methods: HashMap::new(),
             invalid_type: false,
@@ -314,11 +273,14 @@ impl<'a> TypeArena<'a> {
             field_bytes: self.field_bytes,
             methods: self.methods.len(),
             method_bytes: self.method_bytes,
+            signature_names: self.signature_names.len(),
+            signature_name_bytes: self.signature_name_bytes.len(),
             invalid_type: self.invalid_type,
         }
     }
 
     pub(crate) fn rewind(&mut self, mark: ArenaWatermark) {
+        let removed_nodes = self.nodes.len() > mark.nodes;
         self.nodes.truncate(mark.nodes);
         self.arguments.truncate(mark.arguments);
         self.expansions.truncate(mark.expansions);
@@ -333,16 +295,21 @@ impl<'a> TypeArena<'a> {
         self.field_bytes = mark.field_bytes;
         self.methods.truncate(mark.methods);
         self.method_bytes = mark.method_bytes;
+        self.signature_names.truncate(mark.signature_names);
+        self.signature_name_bytes
+            .truncate(mark.signature_name_bytes);
         self.invalid_type = mark.invalid_type;
         self.relation_steps = crate::analysis::budget::RELATION_STEPS;
-        for slot in &mut self.basics {
-            if *slot != u16::MAX && usize::from(*slot) >= mark.nodes {
-                *slot = u16::MAX;
+        if removed_nodes {
+            for slot in &mut self.basics {
+                if *slot != u16::MAX && usize::from(*slot) >= mark.nodes {
+                    *slot = u16::MAX;
+                }
             }
+            self.interner.retain(|_, id| usize::from(id.0) < mark.nodes);
+            self.concrete_methods
+                .retain(|_, memo| memo.arena_len <= mark.nodes);
         }
-        self.interner.retain(|_, id| usize::from(id.0) < mark.nodes);
-        self.concrete_methods
-            .retain(|_, memo| memo.arena_len <= mark.nodes);
     }
 
     fn push_raw(&mut self, ty: Ty<'a>) -> Option<TypeId> {
@@ -359,6 +326,7 @@ impl<'a> TypeArena<'a> {
             return self.basic(kind);
         }
         let key = match &ty {
+            Ty::Invalid => return Some(TypeId::INVALID),
             Ty::Pointer(element) => Some(InternKey::Pointer(*element)),
             Ty::Slice(element) => Some(InternKey::Slice(*element)),
             Ty::Array { length, element } => Some(InternKey::Array {
@@ -494,7 +462,7 @@ impl<'a> TypeArena<'a> {
     }
 
     pub(crate) fn array(&mut self, element: TypeId, length: u64) -> Option<TypeId> {
-        let maximum = (1_u64 << (self.workspace.integer_bits()? - 1)) - 1;
+        let maximum = (1_u64 << (self.integer_bits()? - 1)) - 1;
         (length <= maximum).then_some(())?;
         self.push(Ty::Array { length, element })
     }

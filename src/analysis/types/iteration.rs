@@ -33,7 +33,11 @@ impl TypeArena<'_> {
             return None;
         };
         Some(Operand {
-            mode: Mode::Value,
+            mode: if count == 1 {
+                Mode::CommaOk
+            } else {
+                Mode::Value
+            },
             ty: if result == 0 {
                 element
             } else {

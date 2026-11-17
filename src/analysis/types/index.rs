@@ -27,7 +27,11 @@ impl TypeArena<'_> {
             self.comparable(key, 0)?.then_some(())?;
             self.assignable(index, key, int_bits)?.then_some(())?;
             return Some(Operand {
-                mode: Mode::Value,
+                mode: if count == 1 {
+                    Mode::MapIndex
+                } else {
+                    Mode::Value
+                },
                 ty: if result == 0 {
                     projection.element
                 } else {
@@ -123,7 +127,7 @@ impl TypeArena<'_> {
                 } else {
                     None
                 };
-                (None, self.basic(BasicKind::Uint8)?, Mode::Value, bound)
+                (None, self.basic(BasicKind::Byte)?, Mode::Value, bound)
             }
             _ => return None,
         };

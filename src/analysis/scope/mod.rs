@@ -3,14 +3,13 @@ mod body;
 mod cursor;
 mod kind;
 pub(crate) mod named;
+pub(crate) mod occurrences;
 pub(crate) mod signature;
 pub(crate) mod tree;
 pub(crate) mod universe;
 pub(crate) use cursor::CursorScope;
 pub(crate) use kind::ObjectKind;
-pub(crate) use named::{
-    arguments as type_arguments, named_root, named_type, parameters as type_parameters,
-};
+pub(crate) use named::{named_root, named_type};
 pub(crate) use signature::receiver_parameters;
 
 use std::ops::Range;
@@ -58,12 +57,6 @@ impl Binding {
         self.initializer
             .as_ref()
             .filter(|value| value.kind == InitializerKind::Value)
-            .map(|value| (&value.span, value.result, value.count))
-    }
-    pub(crate) fn range_initializer(&self) -> Option<(&Range<usize>, usize, usize)> {
-        self.initializer
-            .as_ref()
-            .filter(|value| value.kind == InitializerKind::Range)
             .map(|value| (&value.span, value.result, value.count))
     }
     pub(crate) fn is_inner_than(&self, other: &Self) -> bool {

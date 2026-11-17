@@ -7,7 +7,6 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 const MAX_PACKAGE_FILES: usize = 256;
-const MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Hover over the package name in the package clause.
 pub(super) fn clause(context: &Context<'_>, range: super::SourceRange) -> Option<HoverContent> {
@@ -16,7 +15,7 @@ pub(super) fn clause(context: &Context<'_>, range: super::SourceRange) -> Option
     let name = workspace.files.get(file)?.package.clone();
     let mut content = HoverContent::new(range);
     content.code = Some(format!("package {name}"));
-    if let Some(documents) = package_doc(workspace, file, &name) {
+    if let Some(documents) = package_doc(context, file, &name) {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -46,8 +45,9 @@ pub(super) fn import_alias(
     }
     // gopls reports the import path literal's range for import-spec hover.
     let path_span = alias_path_span(source, span.start, &import.path)?;
-    let package = workspace
-        .declared_package_name(&import.path)
+    let package = context
+        .resolver()
+        .declared_package_name(file, &import.path)
         .map(str::to_owned)
         .or_else(|| import.path.rsplit('/').next().map(str::to_owned))?;
     let mut content = HoverContent::new(super::SourceRange::new(
@@ -56,7 +56,7 @@ pub(super) fn import_alias(
     ));
     let _ = range;
     content.code = Some(format!("package {package}"));
-    if let Some(documents) = imported_package_doc(workspace, file, &import.path, &package) {
+    if let Some(documents) = imported_package_doc(context, file, &import.path, &package) {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -128,16 +128,19 @@ pub(super) fn qualifier(
     let name = source.get(span.clone())?;
     let stub = workspace.files.get(file)?;
     let import = stub.imports.iter().find(|import| {
-        !import.is_dot() && !import.is_blank() && workspace.import_name(import) == Some(name)
+        !import.is_dot()
+            && !import.is_blank()
+            && context.resolver().import_name(file, import) == Some(name)
     })?;
     let import_path = import.path.clone();
-    let package = workspace
-        .declared_package_name(&import_path)
+    let package = context
+        .resolver()
+        .declared_package_name(file, &import_path)
         .map(str::to_owned)
         .or_else(|| import_path.rsplit('/').next().map(str::to_owned))?;
     let mut content = HoverContent::new(range);
     content.code = Some(format!("package {package}"));
-    if let Some(documents) = imported_package_doc(workspace, file, &import_path, &package) {
+    if let Some(documents) = imported_package_doc(context, file, &import_path, &package) {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -181,8 +184,8 @@ fn qualified(source: &str, end: usize) -> bool {
 }
 
 /// First production file with a package documentation comment.
-fn package_doc(workspace: &Workspace, file: &Path, package: &str) -> Option<super::doc::Documents> {
-    let view = workspace.orphan_view_target(file);
+fn package_doc(context: &Context<'_>, file: &Path, package: &str) -> Option<super::doc::Documents> {
+    let workspace = context.workspace();
     let directory = file.parent()?;
     let external = package.ends_with("_test");
     let internal_test = file
@@ -198,6 +201,7 @@ fn package_doc(workspace: &Workspace, file: &Path, package: &str) -> Option<supe
         .filter(|(path, stub)| {
             path.parent() == Some(directory)
                 && stub.package == package
+                && context.resolver().file_visible(path)
                 && (external
                     || crate::workspace::production_file(path)
                     || (internal_test
@@ -213,7 +217,7 @@ fn package_doc(workspace: &Workspace, file: &Path, package: &str) -> Option<supe
         let Some(source) = header_source(workspace, candidate) else {
             continue;
         };
-        let Some(documents) = package_comment(workspace, candidate, &source, view.as_ref()) else {
+        let Some(documents) = package_comment(context, candidate, &source) else {
             continue;
         };
         if !documents.text.is_empty() {
@@ -224,10 +228,9 @@ fn package_doc(workspace: &Workspace, file: &Path, package: &str) -> Option<supe
 }
 
 fn package_comment(
-    workspace: &Workspace,
+    context: &Context<'_>,
     file: &Path,
     source: &str,
-    view: Option<&crate::buildconstraint::Target>,
 ) -> Option<super::doc::Documents> {
     let mut tokens = Lexer::new(source);
     let package = tokens
@@ -238,9 +241,8 @@ fn package_comment(
         .next()
         .filter(|token| token.kind == TokenKind::Ident)?;
     let _ = name;
-    let context = Context::borrowed(workspace, file, source);
-    super::doc::attached_in_view(
-        &context,
+    super::doc::attached(
+        context,
         file,
         source,
         super::doc::Target {
@@ -249,19 +251,18 @@ fn package_comment(
             declaration: None,
             trailing: false,
         },
-        view,
     )
 }
 
 /// Package documentation for an imported package, searched in file-path order.
 fn imported_package_doc(
-    workspace: &Workspace,
-    from: &Path,
+    context: &Context<'_>,
+    _from: &Path,
     import_path: &str,
     package: &str,
 ) -> Option<super::doc::Documents> {
-    let directory = imported_directory(workspace, from, import_path)?;
-    let view = workspace.orphan_view_target(from);
+    let workspace = context.workspace();
+    let directory = imported_directory(context, import_path)?;
     let external = package.ends_with("_test");
     for (path, _stub) in workspace
         .files
@@ -273,6 +274,7 @@ fn imported_package_doc(
         .filter(|(path, stub)| {
             path.parent() == Some(directory.as_path())
                 && stub.package == package
+                && context.resolver().file_visible(path)
                 && (external || crate::workspace::production_file(path))
         })
         .take(MAX_PACKAGE_FILES)
@@ -280,7 +282,7 @@ fn imported_package_doc(
         let Some(source) = header_source(workspace, path) else {
             continue;
         };
-        if let Some(documents) = package_comment(workspace, path, &source, view.as_ref())
+        if let Some(documents) = package_comment(context, path, &source)
             && !documents.text.is_empty()
         {
             return Some(documents);
@@ -291,19 +293,11 @@ fn imported_package_doc(
 
 /// Bounded header read: package documentation lives before declarations.
 fn header_source(workspace: &Workspace, file: &Path) -> Option<String> {
-    let source = workspace
-        .source(file)
-        .filter(|text| text.len() <= MAX_SOURCE_BYTES)?;
-    let end = source
-        .char_indices()
-        .take_while(|(offset, _)| *offset < 64 * 1024)
-        .last()
-        .map(|(offset, ch)| offset + ch.len_utf8())
-        .unwrap_or(0);
-    Some(source.get(..end).map(str::to_owned).unwrap_or(source))
+    workspace.source_prefix(file, 64 * 1024)
 }
 
-fn imported_directory(workspace: &Workspace, _from: &Path, import_path: &str) -> Option<PathBuf> {
+fn imported_directory(context: &Context<'_>, import_path: &str) -> Option<PathBuf> {
+    let workspace = context.workspace();
     // Module roots map import prefixes to on-disk directories.
     let mut directories = Vec::new();
     for (root, module) in &workspace.modules {
@@ -325,7 +319,17 @@ fn imported_directory(workspace: &Workspace, _from: &Path, import_path: &str) ->
         } else {
             root.join(&suffix)
         };
-        if candidate.is_dir() {
+        if workspace
+            .files
+            .range::<Path, _>((
+                std::ops::Bound::Included(candidate.as_path()),
+                std::ops::Bound::Unbounded,
+            ))
+            .take_while(|(path, _)| path.starts_with(&candidate))
+            .any(|(path, _)| {
+                path.parent() == Some(candidate.as_path()) && context.resolver().file_visible(path)
+            })
+        {
             directories.push(candidate);
         }
     }
@@ -364,15 +368,8 @@ fn footer(context: &Context<'_>, file: &Path) -> Option<String> {
     {
         attrs.push(("Module", module.clone()));
     }
-    if let Some((root, _)) = module_root {
-        let manifest = std::fs::read_to_string(root.join("go.mod"))
-            .ok()
-            .and_then(|source| crate::gomod::parse(&source).ok());
-        if let Some(version) = manifest.and_then(|manifest| manifest.go)
-            && let Some(language) = language_version(&version)
-        {
-            attrs.push(("Language version", language));
-        }
+    if let Some(version) = workspace.package_go_version(file) {
+        attrs.push(("Language version", format!("go1.{version}")));
     }
     let _ = workspace::uri;
     (!attrs.is_empty()).then(|| {
@@ -382,18 +379,4 @@ fn footer(context: &Context<'_>, file: &Path) -> Option<String> {
             .collect::<Vec<_>>()
             .join("\n")
     })
-}
-
-fn language_version(version: &str) -> Option<String> {
-    let mut parts = version.split('.');
-    let major = parts.next()?;
-    if major != "1" {
-        return None;
-    }
-    let minor = parts.next()?;
-    let digits: String = minor.chars().take_while(char::is_ascii_digit).collect();
-    if digits.is_empty() {
-        return None;
-    }
-    Some(format!("go1.{digits}"))
 }

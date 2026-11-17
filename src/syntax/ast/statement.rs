@@ -131,6 +131,29 @@ pub struct BlockTree {
 }
 
 impl BlockTree {
+    /// Reuse expression nodes as a checkable region without reparsing synthetic
+    /// var/const text or shifting source coordinates.
+    pub(crate) fn from_expression(tree: crate::syntax::ExpressionTree) -> Self {
+        let span = tree
+            .nodes
+            .get(tree.root.index())
+            .map(|expr| expr.span.clone())
+            .unwrap_or(0..0);
+        Self {
+            root: StmtId(0),
+            statements: vec![Statement {
+                kind: StmtKind::Expression {
+                    expression: tree.root,
+                },
+                span,
+            }],
+            expressions: tree.nodes,
+            diagnostics: tree.diagnostics,
+            type_references: tree.type_references,
+            type_parameters: Vec::new(),
+        }
+    }
+
     pub fn root(&self) -> StmtId {
         self.root
     }

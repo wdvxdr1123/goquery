@@ -1,15 +1,10 @@
 //! Client-aware insertion edits, rendered only after candidate collection is capped.
-use crate::analysis::query::Context;
-use crate::analysis::query::completion::{
-    Kind, Locals, ParameterLabel, Presentation as MemberPresentation,
-};
-use crate::features::completion::collect::Candidate;
+use crate::analysis::query::completion::{Item, Kind, ParameterLabel};
 use crate::syntax::{Lexer, TokenKind};
 use crate::text::SourceMap;
 use serde_json::{Value, json};
 use std::fmt::Write;
 use std::ops::Range;
-use std::path::Path;
 
 #[derive(Clone, Copy)]
 pub(crate) struct CompletionConfig {
@@ -61,74 +56,72 @@ impl CompletionConfig {
     }
 }
 
-pub(super) struct EditContext<'a, 'workspace> {
-    pub query: &'a Context<'workspace>,
+pub(super) struct EditContext<'a> {
     pub config: &'a CompletionConfig,
-    pub file: &'a Path,
     pub source: &'a str,
-    pub locals: &'a Locals,
     pub map: &'a SourceMap<'a>,
     pub span: Range<usize>,
     pub cursor: usize,
     pub calls: bool,
-    pub receiver: Option<(&'a Path, &'a str)>,
 }
 
-pub(super) fn completion_item(
-    label: &str,
-    candidate: &Candidate<'_>,
-    context: &EditContext<'_, '_>,
-    member: Option<MemberPresentation>,
-) -> Option<Value> {
+pub(super) fn completion_item(item: Item, context: &EditContext<'_>) -> Value {
     use tower_lsp::lsp_types::CompletionItemKind as LspKind;
-    let kind = candidate.kind()?;
-    let config = context.config;
-    let (member_detail, member_signature, type_parameters, kind) =
-        member.map_or((None, None, None, kind), |member| {
-            (
-                member.detail,
-                member.signature,
-                member.type_parameters,
-                member
-                    .kind
-                    .map(|kind| match kind {
-                        Kind::Struct => LspKind::STRUCT,
-                        Kind::Interface => LspKind::INTERFACE,
-                        Kind::TypeName => LspKind::CLASS,
-                    })
-                    .unwrap_or(kind),
-            )
-        });
-    let information = match candidate {
-        Candidate::Symbol(_, symbol) if symbol.is_callable() => member_signature,
-        Candidate::Local(binding) => context.query.binding_signature(context.locals, binding),
-        Candidate::Member(_) if config.snippets => member_signature,
-        _ => None,
+    let kind = match item.kind {
+        Kind::Struct => LspKind::STRUCT,
+        Kind::Interface => LspKind::INTERFACE,
+        Kind::TypeName => LspKind::CLASS,
+        Kind::Function => LspKind::FUNCTION,
+        Kind::Method => LspKind::METHOD,
+        Kind::Variable => LspKind::VARIABLE,
+        Kind::Constant => LspKind::CONSTANT,
+        Kind::Field => LspKind::FIELD,
     };
+    let config = context.config;
     let existing_call = Lexer::new(&context.source[context.span.end..])
         .next()
         .is_some_and(|token| {
             token.kind == TokenKind::LParen
-                || type_parameters.is_some() && token.kind == TokenKind::LBrack
+                || item.type_parameters.is_some() && token.kind == TokenKind::LBrack
         });
     let new_text = if config.snippets {
-        if let Some((information, _)) = &information
+        if let Some(key) = item.field_key
+            && key.colon
+        {
+            format!(
+                "{}: ${{1:{}}}{}",
+                escape(&item.label),
+                if config.placeholders {
+                    escape(item.detail.as_deref().unwrap_or(""))
+                } else {
+                    String::new()
+                },
+                if key.comma
+                    && !Lexer::new(&context.source[context.span.end..])
+                        .next()
+                        .is_some_and(|token| token.kind == TokenKind::Comma)
+                {
+                    ","
+                } else {
+                    ""
+                }
+            )
+        } else if let Some(signature) = &item.signature
             && context.calls
             && !existing_call
-            && (matches!(candidate, Candidate::Symbol(_, symbol) if symbol.is_callable())
-                || matches!(candidate, Candidate::Member(member) if member.kind == crate::syntax::MemberKind::Method))
+            && matches!(item.kind, Kind::Function | Kind::Method)
         {
             snippet(
-                label,
-                type_parameters.as_deref().unwrap_or(&[]),
-                &information.parameters,
+                &item.label,
+                item.type_parameters.as_deref().unwrap_or(&[]),
+                &signature.parameters,
                 config.placeholders,
             )
         } else {
-            escape(label)
+            escape(&item.label)
         }
     } else {
-        label.to_owned()
+        item.label.clone()
     };
     let replace = context.map.range(context.span.start, context.span.end);
     let edit = if config.insert_replace {
@@ -142,18 +135,19 @@ pub(super) fn completion_item(
     } else {
         json!({"range":replace,"newText":new_text})
     };
-    let mut item = json!({"label":label,"kind":kind,"filterText":label,
-            "insertTextFormat":if config.snippets {2} else {1}, "textEdit":edit});
-    if let Some((information, _)) = information {
-        let opening = information.label.find('(').expect("callable signature");
-        item["detail"] = format!("func{}", &information.label[opening..]).into();
-    } else if let Some(detail) = member_detail.or_else(|| match candidate {
-        Candidate::Local(binding) => context.query.binding_detail(context.locals, binding),
-        _ => None,
-    }) {
-        item["detail"] = detail.into();
+    let mut result = json!({"label":item.label,"kind":kind,"filterText":item.label,
+        "insertTextFormat":if config.snippets {2} else {1}, "textEdit":edit});
+    if let Some(detail) = item.detail {
+        result["detail"] = detail.into();
     }
-    Some(item)
+    if let Some(documentation) = item.documentation {
+        result["documentation"] = if config.markdown {
+            json!({"kind":"markdown","value":documentation})
+        } else {
+            documentation.into()
+        };
+    }
+    result
 }
 fn snippet(
     label: &str,

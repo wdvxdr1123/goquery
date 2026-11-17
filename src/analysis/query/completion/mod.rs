@@ -1,169 +1,122 @@
 //! Completion semantic facts remain independent of snippets and wire items.
+mod candidates;
+mod comments;
+mod context;
+mod items;
 mod presentation;
 mod signatures;
 mod type_position;
 use super::Context;
-pub(crate) use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
-pub(crate) use crate::analysis::query::signatures::label::{CallableSignature, ParameterLabel};
-use crate::analysis::scope::CursorScope;
-pub(crate) use crate::analysis::scope::{Binding, Locals};
-use crate::syntax::{Expr, ExprId, ExprKind, Lexer, StmtKind, TokenKind};
-use crate::text::SourceMap;
-pub(crate) use signatures::{PreparedMethods, SignatureSource};
-pub(in crate::analysis::query) use type_position::type_position;
+use crate::analysis::obj::{MethodOrigin, ObjectRef};
+use crate::analysis::resolve::MemberDescription;
+use crate::index::IndexedSymbol;
 
-#[derive(Clone)]
-pub(crate) struct CompletionReceiver<'a> {
-    pub(crate) scope: &'a std::path::Path,
-    pub(crate) text: String,
+/// Source metadata decorates a proven selection; its type stays native.
+pub(in crate::analysis::query) struct CompletionMember<'a> {
+    pub(crate) name: String,
+    pub(crate) object: ObjectRef<'a>,
+    pub(crate) method: Option<(&'a std::path::Path, &'a IndexedSymbol)>,
+    pub(crate) declaration: Option<MemberDescription<'a>>,
+    pub(crate) field_key: Option<FieldKey>,
+    pub(crate) field_order: Option<u16>,
 }
 
+impl CompletionMember<'_> {
+    fn origin(&self) -> &std::path::Path {
+        match self.object {
+            ObjectRef::Method(MethodOrigin::Concrete(decl)) => decl.file,
+            ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member)) => {
+                member.file
+            }
+            _ => unreachable!("only native members enter completion"),
+        }
+    }
+}
+pub(in crate::analysis::query) struct CompletionMembers<'a> {
+    pub(crate) site: crate::analysis::sema::CompletionSite,
+    pub(crate) used: Vec<[u32; 2]>,
+    pub(crate) offset: u32,
+    pub(crate) members: Vec<CompletionMember<'a>>,
+}
+impl CompletionMembers<'_> {
+    pub(in crate::analysis::query) fn request(&self) -> crate::analysis::sema::MemberRequest<'_> {
+        crate::analysis::sema::MemberRequest {
+            site: self.site,
+            offset: self.offset,
+            used: &self.used,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) struct FieldKey {
+    pub(crate) colon: bool,
+    pub(crate) comma: bool,
+}
+pub(crate) use crate::analysis::query::signatures::label::{CallableSignature, ParameterLabel};
+pub(in crate::analysis::query) use signatures::SignatureSource;
+pub(in crate::analysis::query) use type_position::type_position;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
     Struct,
     Interface,
     TypeName,
+    Function,
+    Method,
+    Variable,
+    Constant,
+    Field,
 }
-pub(crate) struct Presentation {
+pub(in crate::analysis::query) struct Presentation {
     pub(crate) detail: Option<String>,
     pub(crate) signature: Option<(CallableSignature, bool)>,
     pub(crate) type_parameters: Option<Vec<String>>,
     pub(crate) kind: Option<Kind>,
 }
 
+/// Domain result; protocol edit shape, snippets and markup tags belong to the
+/// feature adapter. No lexical bindings or indexed declarations escape here.
+pub(crate) struct Completion {
+    pub(crate) span: std::ops::Range<usize>,
+    pub(crate) calls: bool,
+    pub(crate) items: Vec<Item>,
+}
+
+pub(crate) struct Item {
+    pub(crate) label: String,
+    pub(crate) kind: Kind,
+    pub(crate) detail: Option<String>,
+    pub(crate) signature: Option<CallableSignature>,
+    pub(crate) type_parameters: Option<Vec<String>>,
+    pub(crate) documentation: Option<String>,
+    pub(crate) field_key: Option<FieldKey>,
+}
+
 impl<'a> Context<'a> {
+    pub(crate) fn completion(
+        &self,
+        offset: usize,
+        call_context: bool,
+        render_documentation: Option<&mut dyn FnMut(&str) -> String>,
+    ) -> Result<Completion, (i32, String)> {
+        candidates::collect(self, offset, call_context, render_documentation)
+    }
     pub(crate) fn trace_queries(&self) -> bool {
         self.workspace.trace.queries
     }
 
-    pub(crate) fn imported_symbols(
+    pub(in crate::analysis::query) fn imported_symbols(
         &self,
         alias: &str,
     ) -> impl Iterator<Item = (&'a std::path::PathBuf, &'a crate::index::IndexedSymbol)> + use<'a>
     {
-        crate::analysis::resolve::imported_symbol_iter(self.workspace, self.file(), alias)
+        self.resolver().imported_symbol_iter(self.file(), alias)
     }
 
-    pub(crate) fn file_symbols_in_scope(
+    pub(in crate::analysis::query) fn file_symbols_in_scope(
         &self,
     ) -> impl Iterator<Item = (&'a std::path::PathBuf, &'a crate::index::IndexedSymbol)> + use<'a>
     {
-        crate::analysis::resolve::file_symbol_iter(self.workspace, self.file())
+        self.resolver().file_symbol_iter(self.file())
     }
-
-    pub(crate) fn function_value_context(&self, offset: usize, scope: &CursorScope) -> bool {
-        let file = self.file();
-        let source = self.source();
-        let Some(body) = &scope.body else {
-            let map = SourceMap::new(source);
-            return self.workspace.files[file]
-                .symbols
-                .iter()
-                .filter(|symbol| symbol.is_var())
-                .any(|symbol| {
-                    let Some(end) = map.offset(symbol.range.end) else {
-                        return false;
-                    };
-                    if !(symbol.end..=end).contains(&offset) {
-                        return false;
-                    }
-                    let Some(assignment) = Lexer::new(&source[symbol.end..end])
-                        .find(|token| token.kind == TokenKind::Assign)
-                    else {
-                        return false;
-                    };
-                    let assignment = symbol.end + assignment.span.start;
-                    offset > assignment
-                        && self
-                            .with_sema(|sema| {
-                                let arena = sema.arena_mut();
-                                let ty =
-                                    arena.parse(file, source[symbol.end..assignment].trim())?;
-                                arena.is_callable(ty)
-                            })
-                            .unwrap_or(false)
-                });
-        };
-        for statement in &body.tree.statements {
-            if !(body.base + statement.span.start..=body.base + statement.span.end)
-                .contains(&offset)
-            {
-                continue;
-            }
-            match &statement.kind {
-                StmtKind::Declaration {
-                    annotation: Some(annotation),
-                    values,
-                    ..
-                } if direct_value(&body.tree.expressions, values, body.base, offset) => {
-                    let ann_slice =
-                        source[body.base + annotation.start..body.base + annotation.end].trim();
-                    let is_callable = self
-                        .with_sema(|sema| {
-                            if let (Ok(off), Ok(ann_pos)) = (
-                                u32::try_from(offset),
-                                u32::try_from(body.base + annotation.start),
-                            ) && let Some((region, arena)) =
-                                sema.region_and_arena_at(file, source, off, Some(offset))
-                            {
-                                let env =
-                                    super::signatures::visible_local_env(region, source, ann_pos);
-                                let ty = arena.parse_in(file, ann_slice, &env)?;
-                                return arena.is_callable(ty);
-                            }
-                            let arena = sema.arena_mut();
-                            let ty = arena.parse(file, ann_slice)?;
-                            arena.is_callable(ty)
-                        })
-                        .unwrap_or(false);
-                    if is_callable {
-                        return true;
-                    }
-                }
-                StmtKind::Assignment {
-                    left,
-                    operator,
-                    right,
-                } if left.len() == 1
-                    && direct_value(&body.tree.expressions, right, body.base, offset)
-                    && &source[body.base + operator.start..body.base + operator.end] == "=" =>
-                {
-                    let expression = &body.tree.expressions[left[0].0];
-                    if matches!(expression.kind, ExprKind::Name)
-                        && let Some(binding) = scope.locals.resolve_at(
-                            offset,
-                            &source[body.base + expression.span.start
-                                ..body.base + expression.span.end],
-                        )
-                        && self
-                            .local_binding_signature(
-                                &binding.selection,
-                                binding.scope_start(),
-                                &binding.name,
-                            )
-                            .is_some()
-                    {
-                        return true;
-                    }
-                }
-                _ => {}
-            }
-        }
-        self.expects_callable_argument(offset, (&body.tree.expressions, body.base))
-    }
-}
-
-fn direct_value(expressions: &[Expr], values: &[ExprId], base: usize, offset: usize) -> bool {
-    values.iter().any(|value| {
-        let mut expression = &expressions[value.0];
-        if !(base + expression.span.start..=base + expression.span.end).contains(&offset) {
-            return false;
-        }
-        while let ExprKind::Parenthesized { expression: inner } = expression.kind {
-            expression = &expressions[inner.0];
-        }
-        matches!(
-            expression.kind,
-            ExprKind::Name | ExprKind::Selector { .. } | ExprKind::Missing
-        )
-    })
 }

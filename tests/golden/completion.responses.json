@@ -1002,30 +1002,7 @@
     "jsonrpc": "2.0",
     "result": {
       "isIncomplete": true,
-      "items": [
-        {
-          "detail": "func()",
-          "filterText": "Run",
-          "insertTextFormat": 1,
-          "kind": 2,
-          "label": "Run",
-          "preselect": true,
-          "sortText": "00000",
-          "textEdit": {
-            "newText": "Run",
-            "range": {
-              "end": {
-                "character": 45,
-                "line": 2
-              },
-              "start": {
-                "character": 43,
-                "line": 2
-              }
-            }
-          }
-        }
-      ]
+      "items": []
     }
   },
   {

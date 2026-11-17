@@ -83,7 +83,7 @@ fn value_declaration(
     let grouped = Lexer::new(text)
         .nth(1)
         .is_some_and(|token| token.kind == TokenKind::LParen);
-    let end = text.find('\n').map_or(text.len(), |index| index) + keyword;
+    let end = text.find('\n').unwrap_or(text.len()) + keyword;
     if !grouped {
         let line = source.get(keyword..end)?.trim_end();
         let (body, comment) = split_comment(line);

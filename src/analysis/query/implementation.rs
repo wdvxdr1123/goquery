@@ -7,10 +7,11 @@
 //! corresponding member of its method set.
 use super::hierarchy::SymbolTarget;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
+use crate::analysis::obj::NamedObject;
+use crate::analysis::resolve::MemberDescription;
+use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::{self, DeclarationKind};
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::{Name, Role, SourceAnalysis};
 use crate::index::{IndexedSymbol as Symbol, SymbolKind};
 use crate::syntax::MemberKind;
 use crate::text::SourceMap;
@@ -61,7 +62,8 @@ impl<'a> Context<'a> {
                 return Err((0, "not a dynamic function call".to_owned()));
             }
         }
-        let Some(selection) = crate::analysis::source::identifier_at(source, offset) else {
+        let Some(selection) = crate::analysis::scope::occurrences::identifier_at(source, offset)
+        else {
             return Err((0, "no identifier found".to_owned()));
         };
         let file = self.file();
@@ -89,12 +91,16 @@ impl<'a> Context<'a> {
         {
             classify_member(member)?
         } else {
-            let analysis = SourceAnalysis::new(source, stub)?;
+            let analysis = Occurrences::new(source, stub)?;
             let Some(name) = analysis.names.iter().find(|name| name.span == selection) else {
                 return Err((0, "no identifier found".to_owned()));
             };
-            let identity =
-                IdentityResolver::new(self.workspace, file).resolve(&analysis, source, name);
+            let identity = self.resolve_identity(
+                &mut IdentityResolver::new(self.workspace, file),
+                &analysis,
+                source,
+                name,
+            );
             classify_identity(self.workspace, file, source, &analysis, name, identity)?
         };
         let mut builtin = None;
@@ -103,11 +109,12 @@ impl<'a> Context<'a> {
             Target::Type { file, symbol } => {
                 let supers = !self.type_is_interface(file, symbol);
                 if supers
-                    && crate::analysis::query::hierarchy::relations::implements_builtin_error(
-                        self.workspace,
-                        file,
-                        symbol,
-                    )
+                    && self.with_sema(|sema| {
+                        sema.implements_universe_error(crate::analysis::obj::DeclId {
+                            file,
+                            symbol,
+                        }) == Some(true)
+                    })
                 {
                     builtin = Some("error");
                 }
@@ -119,11 +126,12 @@ impl<'a> Context<'a> {
             Target::Method { file, owner, name } => {
                 let supers = !self.type_is_interface(file, owner);
                 if supers
-                    && crate::analysis::query::hierarchy::relations::implements_builtin_error(
-                        self.workspace,
-                        file,
-                        owner,
-                    )
+                    && self.with_sema(|sema| {
+                        sema.implements_universe_error(crate::analysis::obj::DeclId {
+                            file,
+                            symbol: owner,
+                        }) == Some(true)
+                    })
                 {
                     // gopls reports the universe error type for any method query
                     // on a type that satisfies it, not only for Error itself.
@@ -155,29 +163,19 @@ impl<'a> Context<'a> {
         name: &'a str,
     ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
         let supers = !self.type_is_interface(file, owner);
-        let required = [name];
         let mut locations: Vec<SourceLocation<'a>> = Vec::new();
         for target in self.type_relations(file, owner, supers)? {
-            let Some(spelling) = crate::analysis::types::lookup::implementation_spelling(
-                self.workspace,
-                target.file,
-                target.symbol,
-            ) else {
+            let Some((_, members)) = self.with_sema(|sema| {
+                sema.implementation_members_matching(
+                    crate::analysis::obj::DeclId {
+                        file: target.file,
+                        symbol: target.symbol,
+                    },
+                    Some(&[name]),
+                )
+            }) else {
                 continue;
             };
-            let root = self
-                .workspace
-                .files
-                .get_key_value(target.file)
-                .map(|(path, _)| (path, target.symbol));
-            let members = crate::analysis::types::lookup::implementation_members(
-                self.workspace,
-                target.file,
-                &spelling,
-                Some(&required),
-                None,
-                root,
-            );
             for member in members {
                 if !self.member_matches(member, file, name) {
                     continue;
@@ -195,31 +193,28 @@ impl<'a> Context<'a> {
     }
 
     /// Unexported method names carry the declaring package's identity.
-    fn member_matches(&self, member: ReceiverMember<'a>, file: &Path, name: &str) -> bool {
-        let (origin, member_name) = match member {
-            ReceiverMember::Method(origin, symbol) => (origin.as_path(), symbol.name.as_str()),
-            ReceiverMember::Declaration(declaration) => {
-                (declaration.file.as_path(), declaration.name)
-            }
+    fn member_matches(&self, member: NamedObject<'a>, file: &Path, name: &str) -> bool {
+        let Some(origin) = member.file() else {
+            return false;
         };
-        member_name == name
-            && crate::analysis::types::lookup::member_id(self.workspace, origin, member_name)
-                == crate::analysis::types::lookup::member_id(self.workspace, file, name)
+        member.name == name
+            && crate::analysis::resolve::member_id(self.workspace, origin, member.name)
+                == crate::analysis::resolve::member_id(self.workspace, file, name)
     }
 
-    fn member_location(&self, member: ReceiverMember<'a>) -> Option<SourceLocation<'a>> {
-        match member {
-            ReceiverMember::Method(file, symbol) => Some(SourceLocation {
-                file: file.as_path(),
-                range: selection_range(&symbol.selection),
-            }),
-            ReceiverMember::Declaration(declaration) => {
-                let data = declaration.data(self.workspace)?;
-                Some(SourceLocation {
-                    file: declaration.file.as_path(),
-                    range: selection_range(&data.selection),
-                })
-            }
+    fn member_location(&self, member: NamedObject<'a>) -> Option<SourceLocation<'a>> {
+        if let Some(decl) = member.method() {
+            Some(SourceLocation {
+                file: decl.file,
+                range: selection_range(&decl.symbol.selection),
+            })
+        } else {
+            let identity = member.member_id()?;
+            let range = self.member_selection(identity, &SourceMap::new(self.source()))?;
+            Some(SourceLocation {
+                file: identity.file,
+                range,
+            })
         }
     }
 }
@@ -327,7 +322,7 @@ fn classify_symbol<'a>(
     }
 }
 
-fn classify_member(member: MemberDeclaration<'_>) -> Result<Target<'_>, (i32, String)> {
+fn classify_member(member: MemberDescription<'_>) -> Result<Target<'_>, (i32, String)> {
     if member.kind == MemberKind::Method {
         Ok(Target::Method {
             file: member.file,
@@ -343,14 +338,16 @@ fn classify_identity<'a>(
     workspace: &'a Workspace,
     file: &'a Path,
     source: &str,
-    analysis: &SourceAnalysis,
+    analysis: &Occurrences,
     name: &Name,
     identity: Option<Identity<'a>>,
 ) -> Result<Target<'a>, (i32, String)> {
     let spelling = &source[name.span.clone()];
     match identity {
         Some(Identity::Global(path, symbol)) => classify_symbol(workspace, path, symbol),
-        Some(Identity::Member(member)) => classify_member(member),
+        Some(Identity::Member(member)) => member
+            .describe(workspace)
+            .map_or(Ok(Target::Empty), classify_member),
         Some(Identity::Local(selection)) => {
             if let Some(binding) = analysis
                 .locals

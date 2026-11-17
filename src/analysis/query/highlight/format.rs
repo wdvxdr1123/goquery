@@ -3,6 +3,7 @@ use super::{MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
 use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::check::region::RegionInfo;
 use crate::analysis::obj::{MethodOrigin, ObjectRef};
+use crate::analysis::query::Context;
 use crate::analysis::sema::Semantics;
 use crate::analysis::types::TypeArena;
 use crate::syntax::{self, Lexer, Token, TokenKind};
@@ -15,16 +16,17 @@ const MAX_SCOPES: usize = 512;
 const MAX_ARGUMENT_TOKEN_VISITS: usize = super::MAX_STATEMENTS * super::MAX_NESTED_SCOPES;
 
 pub(super) fn calls_at(
-    workspace: &Workspace,
+    context: &Context<'_>,
     file: &Path,
     source: &str,
     offset: usize,
 ) -> Vec<PrintfCall> {
-    calls(workspace, file, source, Some(offset))
+    context.with_sema(|sema| calls(context.workspace(), sema, file, source, Some(offset)))
 }
 
 fn calls(
     workspace: &Workspace,
+    sema: &mut Semantics<'_>,
     file: &Path,
     source: &str,
     cursor: Option<usize>,
@@ -33,7 +35,6 @@ fn calls(
     let mut region_time = std::time::Duration::ZERO;
     let mut signature_time = std::time::Duration::ZERO;
     let tokens: Vec<_> = Lexer::new(source).collect();
-    let mut sema: Option<Semantics<'_>> = None;
     let mut last_region: Option<[u32; 2]> = None;
     let mut scopes = 0usize;
     let mut candidates = 0usize;
@@ -85,9 +86,7 @@ fn calls(
         };
 
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let sema_ref = sema.get_or_insert_with(|| Semantics::new(workspace));
-        let Some((region, arena)) = sema_ref.region_and_arena_at(file, source, open_byte, None)
-        else {
+        let Some((region, arena)) = sema.region_and_arena_at(file, source, open_byte, None) else {
             if let Some(phase) = phase {
                 region_time += phase.elapsed();
             }

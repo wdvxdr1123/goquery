@@ -1,4 +1,4 @@
-//! Generated from mvdan.cc/xurls/v2 v2.6.0 by scripts/generate_document_link_tables.py; do not edit.
+//! Generated from mvdan.cc/xurls/v2 v2.6.0; do not edit the generated table.
 
 /// Longest ASCII TLD byte length (all ASCII entries are single-byte).
 pub(super) const MAX_ASCII_TLD: usize = 18;

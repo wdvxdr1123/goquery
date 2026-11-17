@@ -24,7 +24,7 @@ pub(super) fn instantiated(
         .map(|(p, _)| p.as_path())?;
     let s0 = u32::try_from(span.start).ok()?;
     let s1 = u32::try_from(span.end).ok()?;
-    let type_args = context.with_sema(|sema| {
+    let checked = context.with_sema(|sema| {
         if let Some((region, arena)) =
             sema.region_and_arena_at(context.file(), context.source(), s0, None)
             && let Some(inst) = region.instance_by_span([s0, s1])
@@ -34,81 +34,33 @@ pub(super) fn instantiated(
                     if d.file == decl_file && std::ptr::eq(d.symbol, symbol)
             )
         {
-            let args = inst.type_args.to_vec();
             return crate::analysis::query::signatures::instantiated::format_instantiated_signature(
-                context.workspace(),
                 context.file(),
                 arena,
-                crate::analysis::obj::DeclId {
-                    file: decl_file,
-                    symbol,
-                },
-                &args,
+                &symbol.name,
+                inst.instantiated,
             );
         }
         None
     });
-    let instantiated = match type_args {
+    let instantiated = match checked {
         Some(res) => Some(res),
         None => {
             let (base, text) = super::value_initializer(context, span.start)?;
             if text.len() > MAX_GENERIC_HEADER {
                 return None;
             }
-            let prefix = "_ = ";
-            let wrapped = format!("{prefix}{text}");
-            let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Var);
-            if !tree.diagnostics().is_empty() {
-                return None;
-            }
-            let rel_start = span.start.checked_sub(base)?.checked_add(prefix.len())?;
-            let rel_end = span.end.checked_sub(base)?.checked_add(prefix.len())?;
-            let r0 = u32::try_from(rel_start).ok()?;
-            let r1 = u32::try_from(rel_end).ok()?;
-            let wrapped_end = u32::try_from(wrapped.len()).ok()?;
-            let consumer = context.file();
-            let scopes = crate::analysis::scope::tree::ScopeTree::from_top_level_decl(
-                &wrapped, 0, &tree, None,
-            );
-            let mut region =
-                crate::analysis::check::region::RegionInfo::new(None, [0, wrapped_end], scopes);
-            let mut arena =
-                crate::analysis::types::TypeArena::with_shared_budget(context.workspace());
-            let mut decls = crate::analysis::check::decls::DeclCache::new();
-            {
-                let mut checker = crate::analysis::check::RegionChecker::new(
-                    &mut arena,
-                    &mut decls,
-                    consumer,
-                    &wrapped,
-                    0,
-                    &tree,
-                    &mut region,
-                    None,
-                    None,
-                );
-                checker.check_decl_spec(false);
-            }
-            region.finalize();
-            let inst = region.instance_by_span([r0, r1])?;
-            if !matches!(
-                inst.target,
-                crate::analysis::obj::ObjectRef::Func(d)
-                    if d.file == decl_file && std::ptr::eq(d.symbol, symbol)
-            ) {
-                return None;
-            }
-            let args = inst.type_args.to_vec();
-            crate::analysis::query::signatures::instantiated::format_instantiated_signature(
-                context.workspace(),
-                consumer,
-                &mut arena,
-                crate::analysis::obj::DeclId {
-                    file: decl_file,
-                    symbol,
-                },
-                &args,
-            )
+            let r0 = u32::try_from(span.start.checked_sub(base)?).ok()?;
+            let r1 = u32::try_from(span.end.checked_sub(base)?).ok()?;
+            context.with_sema(|sema| sema.with_expression(context.file(), text, |region, arena, _| {
+                let inst = region.instance_by_span([r0, r1])?;
+                if !matches!(inst.target, crate::analysis::obj::ObjectRef::Func(d) if d.file == decl_file && std::ptr::eq(d.symbol, symbol)) {
+                    return None;
+                }
+                crate::analysis::query::signatures::instantiated::format_instantiated_signature(
+                    context.file(), arena, &symbol.name, inst.instantiated,
+                )
+            }))
         }
     }?;
     let source_text = render::declaration_source(context, path)?;

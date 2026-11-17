@@ -21,6 +21,7 @@ pub(super) fn target(source: &str) -> Option<TypeTarget> {
     if alias {
         tokens.next();
     }
+    let body_start = u32::try_from(tokens.peek()?.span.start).ok()?;
     let mut name = String::new();
     if tokens.peek()?.kind == TokenKind::Mul {
         tokens.next();
@@ -84,6 +85,7 @@ pub(super) fn target(source: &str) -> Option<TypeTarget> {
         return None;
     }
     Some(TypeTarget {
+        body_start,
         name,
         alias,
         generic,

@@ -37,7 +37,7 @@ impl<'a> TypeArena<'a> {
         }
     }
 
-    fn parse_in_internal(
+    pub(super) fn parse_in_internal(
         &mut self,
         origin: &Path,
         source: &str,
@@ -52,17 +52,6 @@ impl<'a> TypeArena<'a> {
         tokens
             .all(|token| token.kind == TokenKind::Semicolon)
             .then_some(ty)
-    }
-
-    pub(super) fn read(
-        &mut self,
-        origin: &Path,
-        source: &str,
-        tokens: &mut Peekable<Lexer<'_>>,
-        environment: &[(&str, TypeId)],
-        depth: usize,
-    ) -> Option<TypeId> {
-        self.read_at(origin, source, None, tokens, environment, depth)
     }
 
     pub(super) fn read_at(
@@ -109,7 +98,14 @@ impl<'a> TypeArena<'a> {
                 }
                 let header = &source[first.span.start..end];
                 let signature = crate::syntax::parse_literal_signature(header);
-                return self.signature(origin, header, &signature, environment, depth + 1);
+                return self.signature(
+                    origin,
+                    header,
+                    file_offset.map(|base| base + first.span.start),
+                    &signature,
+                    environment,
+                    depth + 1,
+                );
             }
             TokenKind::Struct => {
                 take(tokens, TokenKind::LBrace)?;
@@ -173,7 +169,7 @@ impl<'a> TypeArena<'a> {
                     let length = source[start..end].trim();
                     let length = parse_symbolic_integer(length)
                         .or_else(|| self.eval_const_array_length(origin, length))?;
-                    let maximum = (1_u64 << (self.workspace.integer_bits()? - 1)) - 1;
+                    let maximum = (1_u64 << (self.integer_bits()? - 1)) - 1;
                     if length > maximum {
                         return None;
                     }
@@ -236,16 +232,14 @@ impl<'a> TypeArena<'a> {
                     return Some(*ty);
                 }
                 let declaration = if name.contains('.') {
-                    crate::analysis::resolve::resolve_type_declaration(self.workspace, origin, name)
+                    self.resolver().resolve_type_declaration(origin, name)
                 } else {
                     // Missing file scope cannot prove an unshadowed universe name.
                     self.workspace.files.get(origin)?;
-                    if crate::analysis::scope::universe::imported_name(self.workspace, origin, name)
-                    {
+                    if self.resolver().imported_name(origin, name) {
                         return None;
                     }
-                    let declaration =
-                        crate::analysis::resolve::unqualified_symbol(self.workspace, origin, name);
+                    let declaration = self.resolver().unqualified_symbol(origin, name);
                     if declaration.is_some_and(|(_, symbol)| !symbol.is_type()) {
                         return None;
                     }
@@ -386,71 +380,25 @@ pub(crate) fn unparenthesized_type(mut source: &str) -> Option<&str> {
 }
 
 impl<'a> TypeArena<'a> {
-    fn eval_const_array_length(&self, origin: &Path, expr: &str) -> Option<u64> {
-        thread_local! {
-            static DEPTH: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
-        }
-        struct Guard;
-        impl Drop for Guard {
-            fn drop(&mut self) {
-                DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
-            }
-        }
+    fn eval_const_array_length(&mut self, origin: &Path, expr: &str) -> Option<u64> {
         if expr.is_empty() || expr.len() > 1024 {
             return None;
         }
-        let cur = DEPTH.with(|d| d.get());
-        if cur >= 4 {
-            return None;
-        }
-        DEPTH.with(|d| d.set(cur + 1));
-        let _guard = Guard;
-
-        let origin_file = self.workspace.files.get_key_value(origin)?.0.as_path();
-        let int_bits = self.workspace.integer_bits()?;
-        let wrapped = format!("_ = {expr}");
-        let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Const);
-        if !tree.diagnostics().is_empty() {
-            return None;
-        }
-        let values = match &tree.statement(tree.root())?.kind {
-            crate::syntax::StmtKind::Declaration { values, .. } if values.len() == 1 => values,
-            _ => return None,
-        };
-        let end = u32::try_from(wrapped.len()).ok()?;
-        let scopes = crate::analysis::scope::tree::ScopeTree::empty([0, end]);
-        let mut region = crate::analysis::check::region::RegionInfo::new(None, [0, end], scopes);
-        let mut temp_arena = TypeArena::new(self.workspace);
-        let mut temp_decls = crate::analysis::check::decls::DeclCache::new();
-        let op = {
-            let mut checker = crate::analysis::check::RegionChecker::new(
-                &mut temp_arena,
-                &mut temp_decls,
-                origin_file,
-                &wrapped,
-                0,
-                &tree,
-                &mut region,
-                None,
-                None,
-            );
-            checker.check_expr(values[0], None)?
-        };
-        if op.mode != super::Mode::Constant {
-            return None;
-        }
-        let kind = temp_arena.basic_kind(op.ty)?;
+        let int_bits = self.integer_bits()?;
+        let op = self.constant_expression(origin, expr)?;
+        let kind = self.basic_kind(op.ty)?;
         if !kind.untyped() && !kind.integer() {
             return None;
         }
         super::operand::representable(op.value?, BasicKind::Int, int_bits).then_some(())?;
-        let v = match op.value? {
-            super::Constant::Int(v)
+        let value = match op.value? {
+            super::Constant::Int(value)
             | super::Constant::Float {
-                integral: Some(v), ..
-            } => v,
+                integral: Some(value),
+                ..
+            } => value,
             _ => return None,
         };
-        u64::try_from(v).ok()
+        u64::try_from(value).ok()
     }
 }

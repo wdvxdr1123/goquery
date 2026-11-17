@@ -5,6 +5,7 @@ mod content;
 mod declaration;
 mod doc;
 mod generic;
+mod member;
 mod package;
 mod promote;
 mod render;
@@ -12,7 +13,6 @@ mod size;
 mod symbol;
 mod value;
 mod version;
-mod view;
 
 pub(crate) use content::{HoverContent, HoverLink};
 
@@ -30,7 +30,7 @@ pub(crate) fn execute(
 ) -> Result<Option<HoverContent>, (i32, String)> {
     let source = context.source();
     let file = context.file();
-    if detached_with_custom_tags(context.workspace(), file, source) {
+    if !context.workspace().orphan_metadata_available(file) {
         // gopls cannot load a package for an orphaned custom-tag file.
         return Err((
             0,
@@ -45,50 +45,35 @@ pub(crate) fn execute(
     };
     let map = SourceMap::new(source);
     let name = &source[span.clone()];
+    let range = SourceRange::new(&map, span.clone());
+    if let Some(content) = member::checked(context, &span, range) {
+        return Ok(Some(content));
+    }
     let scope = match context.cursor_scope(offset) {
         Ok(scope) => scope,
         Err(_) => {
             if let Ok(navigation) = context.navigation_target(offset) {
                 match navigation.target {
                     Target::Member(member) => {
-                        let content = render::member(
-                            context,
-                            member,
-                            None,
-                            &span,
-                            super::SourceRange::new(&map, span.clone()),
-                        );
+                        let content = render::member_id(context, member, &span, range);
                         if !content.is_empty() {
                             return Ok(Some(content));
                         }
                     }
                     Target::Global(path, symbol) => {
-                        if let Ok(Some(content)) = symbol::reference(
-                            context,
-                            path,
-                            symbol,
-                            super::SourceRange::new(&map, span.clone()),
-                        ) {
+                        if let Ok(Some(content)) = symbol::reference(context, path, symbol, range) {
                             return Ok(Some(content));
                         }
                     }
                     _ => {}
                 }
             }
-            if let Some(code) = render::anonymous_field_near(context, offset, name) {
-                let mut content = HoverContent::new(super::SourceRange::new(&map, span.clone()));
-                content.code = Some(code);
-                return Ok(Some(content));
-            }
-            if let Some(code) = on_disk_type(context, name) {
-                let mut content = HoverContent::new(super::SourceRange::new(&map, span.clone()));
-                content.code = Some(code);
-                return Ok(Some(content));
-            }
             return Ok(None);
         }
     };
-    let range = SourceRange::new(&map, span.clone());
+    if !scope.available {
+        return Ok(None);
+    }
     // A declaration name always takes precedence over a use of the same name.
     if let Some(symbol) = context.workspace().files.get(file).and_then(|stub| {
         stub.symbols
@@ -108,13 +93,7 @@ pub(crate) fn execute(
                 .find(|binding| binding.selection == span)
         })
     {
-        return Ok(Some(render::local(
-            context,
-            &scope.locals,
-            binding,
-            offset,
-            range,
-        )));
+        return Ok(Some(render::local(context, &scope.locals, binding, range)));
     }
     if let Some(hover) = render::header_binding(context, &span, range)? {
         return Ok(Some(hover));
@@ -141,7 +120,7 @@ pub(crate) fn execute(
             }
             if symbol.is_method()
                 && let Some(content_ref) = content.as_mut()
-                && let Some(promoted) = promoted_method(context, &scope, &span, path, symbol)
+                && let Some(promoted) = promoted_method(context, &span, path, symbol)
             {
                 if let Some(code) = content_ref.code.as_mut() {
                     code.push_str(&promoted.suffix);
@@ -152,24 +131,10 @@ pub(crate) fn execute(
                     content_ref.link = Some(link);
                 }
             }
-            if content.is_none()
-                && let Some(hover) = variant_value_hover(context, name, &span, range)
-            {
-                return Ok(Some(hover));
-            }
             return Ok(content);
         }
         Target::Member(member) => {
-            let receiver = member_receiver(context, &scope, &span);
-            let receiver = receiver
-                .as_ref()
-                .map(|(path, text)| (path.as_path(), text.as_str()));
-            let content = render::member(context, member, receiver, &span, range);
-            if content.code.is_none()
-                && let Some(hover) = selector_fallback(context, offset, &scope, &span, range)
-            {
-                return Ok(Some(hover));
-            }
+            let content = render::member_id(context, member, &span, range);
             return Ok(Some(content));
         }
         Target::Local(selection) => {
@@ -178,7 +143,7 @@ pub(crate) fn execute(
                 .visible_bindings(offset)
                 .find(|binding| binding.selection == selection)
             {
-                let hover = render::local(context, &scope.locals, binding, offset, range);
+                let hover = render::local(context, &scope.locals, binding, range);
                 return Ok(Some(hover));
             }
             if let Some(hover) = render::nested_function_binding(context, offset, &selection, range)
@@ -186,11 +151,7 @@ pub(crate) fn execute(
                 return Ok(Some(hover));
             }
         }
-        Target::Unresolved => {
-            if let Some(hover) = selector_fallback(context, offset, &scope, &span, range) {
-                return Ok(Some(hover));
-            }
-        }
+        Target::Unresolved => {}
     }
     if let Some(hover) = package_initializer_target(context, offset, &span, range)? {
         return Ok(Some(hover));
@@ -201,361 +162,10 @@ pub(crate) fn execute(
     if let Some(hover) = builtin::hover(context, name, range) {
         return Ok(Some(hover));
     }
-    // Method value of the builtin `error` interface: gopls special-cases Error.
-    if name == "Error"
-        && source
-            .get(..span.start)
-            .is_some_and(|prefix| prefix.trim_end().ends_with('.'))
-    {
-        let mut content = HoverContent::new(range);
-        content.code = Some("func (error).Error() string".to_owned());
-        return Ok(Some(content));
-    }
     if let Some(hover) = render::nested_function_local(context, offset, name, range) {
         return Ok(Some(hover));
     }
-    if let Some(hover) = anonymous_struct_field(context, offset, &span, range) {
-        return Ok(Some(hover));
-    }
-    if let Some(code) = render::anonymous_field_near(context, offset, name) {
-        let mut content = HoverContent::new(range);
-        content.code = Some(code);
-        return Ok(Some(content));
-    }
-    if let Some(code) = on_disk_type(context, name) {
-        let mut content = HoverContent::new(range);
-        content.code = Some(code);
-        return Ok(Some(content));
-    }
-    if let Some(hover) = variant_value_hover(context, name, &span, range) {
-        return Ok(Some(hover));
-    }
     Ok(None)
-}
-
-const MAX_VARIANT_BYTES: usize = 4 * 1024 * 1024;
-
-/// A type declaration from a same-directory file that the workspace did not
-/// admit (build-excluded files answer from the host view in gopls).
-fn on_disk_type(context: &Context<'_>, name: &str) -> Option<String> {
-    let source = context.source();
-    let directory = context.file().parent()?;
-    let package = crate::syntax::stub(source).package;
-    let mut files: Vec<_> = std::fs::read_dir(directory)
-        .ok()?
-        .take(256)
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "go"))
-        .collect();
-    files.sort();
-    let mut total = 0usize;
-    for path in files.into_iter().take(64) {
-        let text = context
-            .workspace()
-            .source(&path)
-            .or_else(|| std::fs::read_to_string(&path).ok())?;
-        total = total.saturating_add(text.len());
-        if total > MAX_VARIANT_BYTES {
-            break;
-        }
-        let stub = crate::syntax::stub(&text);
-        if stub.package != package {
-            continue;
-        }
-        let Some(symbol) = stub
-            .symbols
-            .iter()
-            .find(|symbol| symbol.name == name && symbol.kind == crate::syntax::SymbolKind::Type)
-        else {
-            continue;
-        };
-        let declaration = text.get(symbol.range.clone())?;
-        return Some(format!("type {}", declaration.trim_end()));
-    }
-    None
-}
-
-/// A var/const declaration visible only in a detached document's build view.
-fn variant_value_hover(
-    context: &Context<'_>,
-    name: &str,
-    span: &Range<usize>,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let workspace = context.workspace();
-    let file = context.file();
-    let target = workspace.orphan_view_target(file);
-    let source = context.source();
-    let alias = {
-        let prefix = source.get(..span.start)?.trim_end().strip_suffix('.')?;
-        let start = prefix
-            .char_indices()
-            .rev()
-            .find(|(_, ch)| !(ch.is_alphanumeric() || *ch == '_'))
-            .map_or(0, |(offset, ch)| offset + ch.len_utf8());
-        Some(&prefix[start..])
-    };
-    let (directory, package, import_path) = match alias {
-        Some(alias) if !alias.is_empty() => {
-            let import = workspace.files.get(file)?.imports.iter().find(|import| {
-                !import.is_dot()
-                    && !import.is_blank()
-                    && workspace.import_name(import) == Some(alias)
-            })?;
-            let directory = view::import_directory(workspace, &import.path)?;
-            let package = workspace
-                .declared_package_name(&import.path)
-                .map(str::to_owned)
-                .unwrap_or_else(|| alias.to_owned());
-            (directory, package, Some(import.path.clone()))
-        }
-        _ => (
-            file.parent()?.to_path_buf(),
-            workspace.files.get(file)?.package.clone(),
-            None,
-        ),
-    };
-    let test_export = target.is_none()
-        && file
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().ends_with("_test.go"))
-        && import_path.is_some()
-        && directory == *file.parent()?;
-    if target.is_none() && !test_export {
-        return None;
-    }
-    let location = view::package_symbol(
-        workspace,
-        target.as_ref(),
-        &directory,
-        &package,
-        name,
-        target.is_none(),
-    )
-    .or_else(|| {
-        target
-            .as_ref()
-            .and_then(|_| view::package_symbol(workspace, None, &directory, &package, name, false))
-    })?;
-    let source = workspace
-        .source(&location.path)
-        .or_else(|| std::fs::read_to_string(&location.path).ok())?;
-    if source.len() > MAX_VARIANT_BYTES {
-        return None;
-    }
-    let stub = crate::syntax::stub(&source);
-    let symbol = stub
-        .symbols
-        .iter()
-        .find(|symbol| symbol.selection.start == location.offset && symbol.receiver.is_none())?;
-    let declaration = source.get(symbol.range.clone())?.trim();
-    let declaration = declaration
-        .strip_prefix("var ")
-        .or_else(|| declaration.strip_prefix("const "))
-        .unwrap_or(declaration);
-    let rest = declaration.strip_prefix(name)?;
-    let rest = rest.trim_start();
-    let code = match symbol.kind {
-        crate::syntax::SymbolKind::Type => format!("type {name} {}", rest.trim()),
-        crate::syntax::SymbolKind::Variable => {
-            if let Some(expression) = rest.strip_prefix('=') {
-                let expression = expression.trim();
-                let operand = expression.strip_prefix('&')?;
-                let inner = view::package_symbol(
-                    workspace,
-                    target.as_ref(),
-                    &directory,
-                    &package,
-                    operand,
-                    true,
-                )?;
-                let inner_source = workspace
-                    .source(&inner.path)
-                    .or_else(|| std::fs::read_to_string(&inner.path).ok())?;
-                let inner_stub = crate::syntax::stub(&inner_source);
-                let inner_symbol = inner_stub
-                    .symbols
-                    .iter()
-                    .find(|symbol| symbol.selection.start == inner.offset)?;
-                let inner_text = inner_source.get(inner_symbol.range.clone())?;
-                let inner_text = inner_text
-                    .trim()
-                    .strip_prefix("var ")
-                    .unwrap_or(inner_text.trim())
-                    .strip_prefix(operand)?
-                    .trim();
-                if inner_text.is_empty() {
-                    return None;
-                }
-                format!("var {package}.{name} *{inner_text}")
-            } else {
-                format!("var {package}.{name} {rest}")
-            }
-        }
-        crate::syntax::SymbolKind::Constant => {
-            let (annotation, expression) = rest.split_once('=')?;
-            let expression = expression.trim();
-            let literal = value::literal(expression)?;
-            let annotation = annotation.trim();
-            let ty = if annotation.is_empty() {
-                format!("untyped {}", literal.untyped?)
-            } else {
-                annotation.to_owned()
-            };
-            format!(
-                "const {package}.{name} {ty} = {}",
-                if expression == literal.value {
-                    literal.value
-                } else {
-                    format!("{expression} // {}", literal.value)
-                }
-            )
-        }
-        _ => return None,
-    };
-    let _ = import_path;
-    let mut content = HoverContent::new(range);
-    content.code = Some(code);
-    content.link = render::package_link(context, &location.path, name, format!("{package}.{name}"));
-    Some(content)
-}
-
-/// Field declaration inside an anonymous `struct { ... }` type expression.
-type AnonymousStructCandidate = (usize, usize, Option<(usize, usize)>);
-
-fn anonymous_struct_field(
-    context: &Context<'_>,
-    offset: usize,
-    span: &Range<usize>,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let source = context.source();
-    let file = context.file();
-    let tokens: Vec<_> = Lexer::new(source).filter(|token| !token.inserted).collect();
-    let mut candidate: Option<AnonymousStructCandidate> = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.span.start >= offset {
-            break;
-        }
-        if token.kind != TokenKind::Struct {
-            continue;
-        }
-        let Some(brace) = tokens
-            .get(index + 1)
-            .filter(|token| token.kind == TokenKind::LBrace)
-        else {
-            continue;
-        };
-        let mut depth = 0usize;
-        let mut type_end = None;
-        let mut close_index = None;
-        for (position, close) in tokens.iter().enumerate().skip(index + 1) {
-            match close.kind {
-                TokenKind::LBrace => depth += 1,
-                TokenKind::RBrace => {
-                    depth = depth.saturating_sub(1);
-                    if depth == 0 {
-                        type_end = Some(close.span.end);
-                        close_index = Some(position);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        let Some(type_end) = type_end else {
-            continue;
-        };
-        let _ = brace;
-        // A composite literal of this anonymous type: `[]struct{...}{...}`.
-        let mut literal = None;
-        if let Some(position) = close_index
-            && tokens
-                .get(position + 1)
-                .is_some_and(|token| token.kind == TokenKind::LBrace)
-        {
-            let mut depth = 0usize;
-            for close in tokens.iter().skip(position + 1) {
-                match close.kind {
-                    TokenKind::LBrace => depth += 1,
-                    TokenKind::RBrace => {
-                        depth = depth.saturating_sub(1);
-                        if depth == 0 {
-                            if token.span.start < offset && offset < close.span.end {
-                                literal = Some((tokens[position + 1].span.start, close.span.end));
-                            }
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let contained = (token.span.start < offset && offset < type_end) || literal.is_some();
-        if contained && candidate.is_none_or(|(start, _, _)| token.span.start > start) {
-            candidate = Some((token.span.start, type_end, literal));
-        }
-    }
-    let (start, type_end, _literal) = candidate?;
-    let text = source.get(start..type_end)?;
-    let entries = crate::syntax::aggregate_members(text);
-    let entry = if span.end <= type_end {
-        entries.iter().find(|entry| {
-            start + entry.selection.start == span.start && start + entry.selection.end == span.end
-        })?
-    } else {
-        let name = &source[span.clone()];
-        entries
-            .iter()
-            .find(|entry| text.get(entry.selection.clone()) == Some(name))?
-    };
-    let annotation = text.get(entry.annotation.clone())?;
-    let declaring =
-        start + entry.selection.start == span.start && start + entry.selection.end == span.end;
-    let workspace = context.workspace();
-    let mut ty =
-        render::normalize_type(&crate::analysis::query::signatures::label::signature_type(
-            workspace, file, file, annotation,
-        )?);
-    ty = render::replace_invalid_qualified(workspace, file, &ty);
-    let mut content = HoverContent::new(range);
-    let mut code = format!("field {} {ty}", &source[span.clone()]);
-    if declaring
-        && let Some(layout) = size::struct_text_layout(context, file, text)
-        && let Some(field) = layout
-            .fields
-            .iter()
-            .find(|field| field.name.as_str() == &source[span.clone()])
-    {
-        let mut summary = format!("size={}", size::number(field.size));
-        if let Some(class) = size::size_class(field.size).filter(|class| *class > field.size) {
-            summary.push_str(&format!(", class={}", size::number(class)));
-        }
-        summary.push_str(&format!(", offset={}", size::number(field.offset)));
-        code.push_str(" // ");
-        code.push_str(&summary);
-    }
-    content.code = Some(code);
-    let field_start = render::field_start(text, entry.selection.start).map_or(
-        render::line_start_token(source, start + entry.selection.start),
-        |offset| start + offset,
-    );
-    if let Some(documents) = doc::attached(
-        context,
-        file,
-        source,
-        doc::Target {
-            start: field_start,
-            end: start + entry.annotation.end,
-            declaration: None,
-            trailing: true,
-        },
-    ) {
-        content.doc = Some(documents.text);
-        content.doc_links = documents.links;
-    }
-    Some(content)
 }
 
 /// Package initializers share the same source span across hover consumers.
@@ -602,41 +212,17 @@ fn package_initializer_target(
         if text.len() > crate::analysis::budget::MAX_BYTES {
             return None;
         }
-        let prefix = "_ = ";
-        let wrapped = format!("{prefix}{text}");
-        let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Var);
-        if !tree.diagnostics().is_empty() {
-            return None;
-        }
-        let rel_start = span.start.checked_sub(base)?.checked_add(prefix.len())?;
-        let rel_end = span.end.checked_sub(base)?.checked_add(prefix.len())?;
-        let r0 = u32::try_from(rel_start).ok()?;
-        let r1 = u32::try_from(rel_end).ok()?;
-        let wrapped_end = u32::try_from(wrapped.len()).ok()?;
-        let scopes =
-            crate::analysis::scope::tree::ScopeTree::from_top_level_decl(&wrapped, 0, &tree, None);
-        let mut region =
-            crate::analysis::check::region::RegionInfo::new(None, [0, wrapped_end], scopes);
-        let mut arena = crate::analysis::types::TypeArena::with_shared_budget(workspace);
-        let mut decls = crate::analysis::check::decls::DeclCache::new();
-        {
-            let mut checker = crate::analysis::check::RegionChecker::new(
-                &mut arena,
-                &mut decls,
-                file,
-                &wrapped,
-                0,
-                &tree,
-                &mut region,
-                None,
-                None,
-            );
-            checker.check_decl_spec(false);
-        }
-        region.finalize();
-        region
-            .use_by_span([r0, r1])
-            .or_else(|| region.selection_by_span([r0, r1]).map(|s| s.obj))
+        let r0 = u32::try_from(span.start.checked_sub(base)?).ok()?;
+        let r1 = u32::try_from(span.end.checked_sub(base)?).ok()?;
+        context.with_sema(|sema| {
+            sema.with_expression(file, text, |region, _, _| {
+                region.use_by_span([r0, r1]).or_else(|| {
+                    region
+                        .selection_by_span([r0, r1])
+                        .map(|selection| selection.obj)
+                })
+            })
+        })
     });
     let Some(obj) = resolved else {
         return Ok(None);
@@ -661,152 +247,13 @@ fn package_initializer_target(
         | crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(
             member,
         )) => {
-            let Some(member_decl) = member.to_member_declaration(workspace) else {
+            let Some(member_decl) = member.describe(workspace) else {
                 return Ok(None);
             };
-            Ok(Some(render::member(
-                context,
-                member_decl,
-                None,
-                span,
-                range,
-            )))
+            Ok(Some(render::member(context, member_decl, span, range)))
         }
         _ => Ok(None),
     }
-}
-
-/// Resolve a selector whose navigation target inference failed by typing the
-/// receiver with the request-local binding facts, then looking up the member.
-fn selector_fallback(
-    context: &Context<'_>,
-    offset: usize,
-    scope: &crate::analysis::scope::CursorScope,
-    span: &Range<usize>,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let body = scope.body.as_ref()?;
-    let source = context.source();
-    let file = context.file();
-    let workspace = context.workspace();
-    let expressions = &body.tree.expressions;
-    let base = body.base;
-    let operand = expressions.iter().find_map(|entry| {
-        let crate::syntax::ExprKind::Selector { operand, field } = &entry.kind else {
-            return None;
-        };
-        ((base + field.start..base + field.end) == *span).then_some(*operand)
-    })?;
-    let operand_expression = expressions.get(operand.0)?;
-    let receiver = match &operand_expression.kind {
-        crate::syntax::ExprKind::Name => {
-            let name = source
-                .get(base + operand_expression.span.start..base + operand_expression.span.end)?;
-            let nested = render::nested_locals(context, offset);
-            let locals = if scope
-                .locals
-                .resolve_at(base + operand_expression.span.start, name)
-                .is_some()
-            {
-                &scope.locals
-            } else {
-                nested.as_ref()?
-            };
-            let binding = locals.resolve_at(base + operand_expression.span.start, name)?;
-            let native = context.binding_type(locals, binding);
-            native
-                .or_else(|| render::binding_text(context, locals, binding))
-                .or_else(|| render::binding_initializer_type(context, source, locals, binding, 0))?
-        }
-        _ => {
-            let op_start = u32::try_from(base + operand_expression.span.start).ok()?;
-            let op_end = u32::try_from(base + operand_expression.span.end).ok()?;
-            context.with_sema(|sema| {
-                let (region, arena) = sema.region_and_arena_at(file, source, op_start, None)?;
-                let op = region.expr_type([op_start, op_end])?;
-                arena
-                    .format_type(op.ty, crate::analysis::types::Qualifier::RelativeTo(file))
-                    .or_else(|| {
-                        arena.format_type(
-                            op.ty,
-                            crate::analysis::types::Qualifier::Presentation(file),
-                        )
-                    })
-            })?
-        }
-    };
-    let name = source.get(span.clone())?;
-    if let Some(member) = crate::analysis::types::lookup::scoped_receiver_member(
-        workspace, file, file, &receiver, name,
-    ) {
-        return match member {
-            crate::analysis::obj::ReceiverMember::Method(path, symbol) => {
-                symbol::reference(context, path, symbol, range).ok()?
-            }
-            crate::analysis::obj::ReceiverMember::Declaration(member) => Some(render::member(
-                context,
-                member,
-                Some((file, receiver.as_str())),
-                span,
-                range,
-            )),
-        };
-    }
-    if let Some(content) = render::anonymous_struct_member(context, &receiver, name, range) {
-        return Some(content);
-    }
-    qualified_member(context, &receiver, name, range)
-}
-
-/// Resolve a member of a package-qualified receiver type even when the
-/// consumer does not import that package spelling.
-fn qualified_member(
-    context: &Context<'_>,
-    receiver: &str,
-    name: &str,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let mut ty = receiver.trim();
-    while let Some(rest) = ty.strip_prefix('*') {
-        ty = rest.trim();
-    }
-    let (package, type_name) = ty.split_once('.')?;
-    let type_name = type_name.split(['[', ' ']).next()?;
-    let workspace = context.workspace();
-    for (path, stub) in workspace.files.iter().take(4096) {
-        if stub.package != package {
-            continue;
-        }
-        let Some(import_path) = workspace.import_path(path) else {
-            continue;
-        };
-        if import_path == package || import_path.rsplit('/').next() != Some(package) {
-            continue;
-        }
-        let Some((_, symbol)) =
-            crate::analysis::resolve::resolve_type_declaration(workspace, path, type_name)
-        else {
-            continue;
-        };
-        let lookup = path.as_path();
-        if let Some((method_file, method)) =
-            crate::analysis::types::lookup::scoped_receiver_methods(
-                workspace,
-                context.file(),
-                lookup,
-                &symbol.name,
-            )
-            .into_iter()
-            .find(|(_, method)| {
-                method.name == name && crate::syntax::is_exported_name(&method.name)
-            })
-            && let Ok(content) = symbol::reference(context, method_file, method, range)
-            && content.is_some()
-        {
-            return content;
-        }
-    }
-    None
 }
 
 /// A promoted method selection: the `// through` suffix and its outer receiver
@@ -814,8 +261,8 @@ fn qualified_member(
 struct PromotedMethod {
     suffix: String,
     method_name: String,
-    receiver_file: std::path::PathBuf,
-    receiver_text: String,
+    outer_file: std::path::PathBuf,
+    outer_start: usize,
 }
 
 impl PromotedMethod {
@@ -826,13 +273,11 @@ impl PromotedMethod {
             return None;
         }
         let workspace = context.workspace();
-        let receiver = self.receiver_text.trim_start_matches('*');
-        let receiver = receiver.split('[').next().unwrap_or(receiver);
-        let (file, symbol) = crate::analysis::resolve::resolve_type_declaration(
-            workspace,
-            &self.receiver_file,
-            receiver,
-        )?;
+        let (file, stub) = workspace.files.get_key_value(&self.outer_file)?;
+        let symbol = stub
+            .symbols
+            .iter()
+            .find(|symbol| symbol.start == self.outer_start)?;
         if !crate::syntax::is_exported_name(&symbol.name) {
             return None;
         }
@@ -860,253 +305,34 @@ impl PromotedMethod {
 /// gopls appends `// through ...` when the selected method is promoted.
 fn promoted_method(
     context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
     span: &Range<usize>,
     method_file: &Path,
     method: &crate::index::IndexedSymbol,
 ) -> Option<PromotedMethod> {
-    let (receiver_file, receiver_text) = method_receiver(context, scope, span)?;
-    let owner = method.receiver.as_deref();
-    let owner = owner?;
-    let (owner_file, owner_symbol) = crate::analysis::resolve::resolve_type_declaration(
-        context.workspace(),
-        method_file,
-        owner,
-    )?;
-    let path = promote::promotion_path(
-        context,
-        &receiver_file,
-        &receiver_text,
-        owner_file,
-        owner_symbol,
-    );
-    let path = path?;
-    (!path.is_empty()).then(|| PromotedMethod {
-        suffix: format!(" // through {}", path.join(", ")),
-        method_name: method.name.clone(),
-        receiver_file,
-        receiver_text,
-    })
-}
-
-/// Receiver type of a selected method, from inference with a binding fallback.
-fn method_receiver(
-    context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
-    span: &Range<usize>,
-) -> Option<(std::path::PathBuf, String)> {
-    if let Some(receiver) = member_receiver(context, scope, span) {
-        return Some(receiver);
-    }
-    let body = scope.body.as_ref()?;
-    let source = context.source();
-    let base = body.base;
-    let operand = body.tree.expressions.iter().find_map(|expression| {
-        let crate::syntax::ExprKind::Selector { operand, field } = &expression.kind else {
-            return None;
-        };
-        ((base + field.start..base + field.end) == *span).then_some(*operand)
-    })?;
-    let expression = body.tree.expressions.get(operand.0)?;
-    let crate::syntax::ExprKind::Name = expression.kind else {
-        return None;
-    };
-    let name = source.get(expression.span.start + base..expression.span.end + base)?;
-    let binding = scope
-        .locals
-        .resolve_at(expression.span.start + base, name)?;
-    let text = binding.declared_type.clone().or_else(|| {
-        binding
-            .annotation()
-            .and_then(|annotation| source.get(annotation.clone()).map(str::to_owned))
-    })?;
-    let rendered = crate::analysis::query::signatures::label::signature_type(
-        context.workspace(),
-        context.file(),
-        context.file(),
-        &text,
-    )?;
-    Some((context.file().to_path_buf(), rendered))
-}
-
-/// Receiver expression of a selected field/method, for instantiated members.
-fn member_receiver(
-    context: &Context<'_>,
-    scope: &crate::analysis::scope::CursorScope,
-    span: &Range<usize>,
-) -> Option<(std::path::PathBuf, String)> {
-    let body = scope.body.as_ref()?;
-    let source = context.source();
-    let file = context.file();
-    let expressions = &body.tree.expressions;
-    let base = body.base;
-    for expression in expressions {
-        let crate::syntax::ExprKind::Selector { operand, field } = &expression.kind else {
-            continue;
-        };
-        if (base + field.start..base + field.end) != *span {
-            continue;
-        }
-        let op_expr = expressions.get(operand.0)?;
-        let op_start = u32::try_from(base + op_expr.span.start).ok()?;
-        let op_end = u32::try_from(base + op_expr.span.end).ok()?;
-        return context.with_sema(|sema| {
-            let (region, arena) = sema.region_and_arena_at(file, source, op_start, None)?;
-            let op = region.expr_type([op_start, op_end])?;
-            if let Some(text) =
-                arena.format_type(op.ty, crate::analysis::types::Qualifier::RelativeTo(file))
-                && crate::analysis::scope::named_type(&text).is_some()
-            {
-                return Some((file.to_path_buf(), text));
-            }
-            if let Some((decl, _, _)) = arena.named_declaration(op.ty)
-                && let Some(text) = arena.format_type(
-                    op.ty,
-                    crate::analysis::types::Qualifier::RelativeTo(decl.file),
-                )
-                && crate::analysis::scope::named_type(&text).is_some()
-            {
-                return Some((decl.file.to_path_buf(), text));
-            }
-            None
-        });
-    }
-    // Composite literal keys: the receiver is the written literal type.
-    for (index, expression) in expressions.iter().enumerate() {
-        let crate::syntax::ExprKind::KeyValue { key, .. } = &expression.kind else {
-            continue;
-        };
-        if (base + expressions[key.0].span.start..base + expressions[key.0].span.end) != *span {
-            continue;
-        }
-        for parent in expressions {
-            let crate::syntax::ExprKind::Composite {
-                literal_type: Some(literal_type),
-                elements,
-            } = &parent.kind
-            else {
-                continue;
-            };
-            if !elements.contains(&crate::syntax::ExprId(index)) {
-                continue;
-            }
-            let span = &expressions[literal_type.0].span;
-            let text = source.get(base + span.start..base + span.end)?;
-            return Some((file.to_path_buf(), text.to_owned()));
-        }
-    }
-    None
-}
-
-/// Whether an orphaned open file is excluded by a non-portability build tag.
-///
-/// gopls answers hover for GOOS/GOARCH-excluded files but reports missing
-/// package metadata for files behind custom tags (boringcrypto, integration,
-/// exclude, ...). Detached admission otherwise mirrors the former.
-fn detached_with_custom_tags(
-    workspace: &crate::workspace::Workspace,
-    file: &Path,
-    source: &str,
-) -> bool {
-    if !workspace.is_detached(file) {
-        return false;
-    }
-    const PLATFORM_TAGS: &[&str] = &[
-        "aix",
-        "android",
-        "darwin",
-        "dragonfly",
-        "freebsd",
-        "hurd",
-        "illumos",
-        "ios",
-        "js",
-        "linux",
-        "netbsd",
-        "openbsd",
-        "plan9",
-        "solaris",
-        "wasip1",
-        "windows",
-        "zos",
-        "386",
-        "amd64",
-        "amd64p32",
-        "arm",
-        "arm64",
-        "arm64be",
-        "armbe",
-        "loong64",
-        "mips",
-        "mipsle",
-        "mips64",
-        "mips64le",
-        "ppc64",
-        "ppc64le",
-        "riscv64",
-        "s390x",
-        "sparc64",
-        "wasm",
-        "unix",
-        "cgo",
-        "gc",
-        "gccgo",
-        "race",
-        "msan",
-        "asan",
-        "purego",
+    let selected = [
+        u32::try_from(span.start).ok()?,
+        u32::try_from(span.end).ok()?,
     ];
-    let mut constrained = false;
-    for line in source.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if !line.starts_with("//") {
-            break;
-        }
-        let Some(constraint) = line
-            .strip_prefix("//go:build")
-            .or_else(|| line.strip_prefix("// +build"))
-        else {
-            continue;
-        };
-        constrained = true;
-        for word in constraint.split(|ch: char| !(ch.is_alphanumeric() || ch == '_' || ch == '.')) {
-            if word.is_empty() || matches!(word, "and" | "or" | "not" | "true" | "false") {
-                continue;
-            }
-            let known = PLATFORM_TAGS.contains(&word)
-                || word
-                    .strip_prefix("go1.")
-                    .is_some_and(|minor| minor.chars().all(|ch| ch.is_ascii_digit()));
-            if !known {
-                // gopls reports missing metadata only when the directory has a
-                // package it could have loaded; a lone custom-tag file in its
-                // own directory is still answered as an orphan package.
-                return directory_has_other_go(file);
-            }
-        }
+    let promotion = context
+        .with_sema(|sema| sema.selected_promotion(context.file(), context.source(), selected))?;
+    let expected = crate::analysis::obj::ObjectRef::Method(
+        crate::analysis::obj::MethodOrigin::Concrete(crate::analysis::obj::DeclId {
+            file: method_file,
+            symbol: method,
+        }),
+    );
+    if promotion.object != expected || promotion.through.is_empty() {
+        return None;
     }
-    let _ = constrained;
-    false
-}
-
-/// Whether the file's directory contains another Go source file.
-fn directory_has_other_go(file: &Path) -> bool {
-    let Some(directory) = file.parent() else {
-        return false;
-    };
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return true;
-    };
-    entries.take(64).filter_map(Result::ok).any(|entry| {
-        let path = entry.path();
-        path != *file && path.extension().is_some_and(|extension| extension == "go")
+    let outer = promotion.outer?;
+    Some(PromotedMethod {
+        suffix: format!(" // through {}", promotion.through.join(", ")),
+        method_name: method.name.clone(),
+        outer_file: outer.file.to_path_buf(),
+        outer_start: outer.symbol.start,
     })
 }
 
-/// Whether the identifier token contains or ends at the cursor offset.
 fn identifier_at(source: &str, offset: usize) -> Option<Range<usize>> {
     let mut previous = None;
     for token in Lexer::new(source) {

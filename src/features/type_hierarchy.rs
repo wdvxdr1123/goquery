@@ -16,7 +16,11 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
     } else {
         tower_lsp::lsp_types::SymbolKind::CLASS
     };
-    json!({"name":symbol.name,"kind":kind,"detail":context.type_package(file),"uri":uri,"range":symbol.selection,"selectionRange":symbol.selection})
+    let mut item = json!({"name":symbol.name,"kind":kind,"detail":context.type_package(file),"uri":uri,"range":symbol.selection,"selectionRange":symbol.selection});
+    if let Some(origin) = context.hierarchy_view_origin(file) {
+        item["data"] = json!({"viewUri":workspace::uri(origin)});
+    }
+    item
 }
 
 pub(super) fn execute(
@@ -42,11 +46,21 @@ pub(super) fn execute(
                     (range.end.line, range.end.character),
                 )
             });
+    let origin = requested["data"]
+        .get("viewUri")
+        .map(|value| {
+            workspace::path(value).ok_or((
+                crate::error::INVALID_PARAMS,
+                "invalid type hierarchy view".into(),
+            ))
+        })
+        .transpose()?;
     let target = context.type_target(
         &file,
         requested["name"].as_str(),
         selection,
         requested["data"]["start"].as_u64(),
+        origin.as_deref(),
     )?;
     let structural = matches!(relation, Relation::Structural);
     let package = if structural {

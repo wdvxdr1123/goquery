@@ -30,9 +30,10 @@ pub(super) fn for_function(
     let source = context.source();
 
     enum DocTarget<'a> {
+        UniverseError,
         Local([u32; 2]),
         Global(&'a std::path::Path, &'a crate::index::IndexedSymbol),
-        Member(crate::analysis::obj::MemberDeclaration<'a>),
+        Member(crate::analysis::obj::MemberDeclId<'a>),
     }
 
     let doc_target = context.with_sema(|sema| {
@@ -68,16 +69,20 @@ pub(super) fn for_function(
             | ObjectRef::Const(SymbolOrigin::Package(decl)) => {
                 Some(DocTarget::Global(decl.file, decl.symbol))
             }
+            ObjectRef::Method(MethodOrigin::Interface(member)) if member.builtin => {
+                Some(DocTarget::UniverseError)
+            }
             ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member))
                 if !member.builtin =>
             {
-                Some(DocTarget::Member(member.to_member_declaration(workspace)?))
+                Some(DocTarget::Member(member.indexed(workspace)?))
             }
             _ => None,
         }
     })?;
 
     match doc_target {
+        DocTarget::UniverseError => Some("Error returns the error message.".to_owned()),
         DocTarget::Local(span) => doc::attached(
             source,
             Target {
@@ -109,6 +114,7 @@ pub(super) fn for_function(
             )
         }
         DocTarget::Member(member) => {
+            let member = member.describe(workspace)?;
             let origin_source = if member.file == file {
                 Cow::Borrowed(source)
             } else {

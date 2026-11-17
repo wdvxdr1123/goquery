@@ -1,6 +1,5 @@
 //! Package-clause metadata, independent of sources and query syntax arenas.
 use super::Workspace;
-use crate::index::IndexedFile;
 use crate::syntax::Import;
 use std::collections::HashMap;
 use std::path::Path;
@@ -82,24 +81,16 @@ impl Workspace {
         self.directory_import_path(file.parent()?)
     }
 
-    /// Only a package's own external tests import its test-augmented namespace.
-    /// Return a canonical metadata directory, keeping import lookup query-local.
-    pub(crate) fn test_import_scope(&self, file: &Path, import: &str) -> Option<&Path> {
-        let (file, stub) = self.files.get_key_value(file)?;
-        if production_file(file) {
-            return None;
-        }
-        let package = stub.package.strip_suffix("_test")?;
-        if self.declared_package_name(import) != Some(package)
-            || self.import_path(file)?.as_str() != import
-        {
-            return None;
-        }
-        file.parent()
-    }
-
     /// Selector visibility and test-package visibility are separate concerns.
-    pub(crate) fn selector_file_visible(&self, file: &Path, candidate: &Path) -> bool {
+    pub(crate) fn selector_file_visible_in_view(
+        &self,
+        file: &Path,
+        candidate: &Path,
+        view: super::BuildView<'_>,
+    ) -> bool {
+        if !view.visible(self, candidate) {
+            return false;
+        }
         if production_file(candidate) {
             return true;
         }
@@ -147,9 +138,5 @@ impl Workspace {
 
     pub(crate) fn declared_package_name(&self, import: &str) -> Option<&str> {
         self.package_names.name(import)
-    }
-
-    pub(crate) fn importable_package(&self, import: &str, stub: &IndexedFile) -> bool {
-        self.package_names.name(import) == Some(stub.package.as_str())
     }
 }

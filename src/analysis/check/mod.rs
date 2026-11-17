@@ -2,6 +2,7 @@
 //! Intra-body semantic checker for Go functions and declaration initializers.
 
 pub(crate) mod decls;
+pub(crate) mod diagnostics;
 mod exprs;
 pub(crate) mod region;
 mod stmts;
@@ -21,10 +22,10 @@ use crate::analysis::types::{
 };
 use crate::syntax::{self, BlockTree, ExprId, ExprKind, Signature, StmtId, SymbolKind};
 
-/// Result of checking an expression without fabricating sentinel `TypeId`s.
+/// Operands share one mode model; packages and unapplied generics retain their
+/// declaration environments until they can produce a concrete operand.
 pub(crate) enum ExprOutcome<'a, 'b> {
     Value(Operand),
-    Builtin(BuiltinFunction),
     Package {
         alias: &'b str,
     },
@@ -35,8 +36,20 @@ pub(crate) enum ExprOutcome<'a, 'b> {
         explicit_type_args: Vec<TypeId>,
     },
     GenericType(DeclId<'a>),
-    Void,
-    Missing,
+}
+
+impl ExprOutcome<'_, '_> {
+    fn invalid() -> Self {
+        Self::Value(Operand::non_value(Mode::Invalid))
+    }
+
+    fn no_value() -> Self {
+        Self::Value(Operand::non_value(Mode::NoValue))
+    }
+
+    fn builtin(function: BuiltinFunction) -> Self {
+        Self::Value(Operand::non_value(Mode::Builtin(function)))
+    }
 }
 
 #[derive(Clone)]
@@ -45,10 +58,12 @@ struct LocalTypeDefEntry {
     name: String,
     selection: Range<usize>,
     annotation: String,
+    annotation_start: usize,
     alias: bool,
 }
 
 pub(crate) struct ClosureSnapshot<'a> {
+    source_base: usize,
     active_locals: Vec<bool>,
     type_param_owner: Option<DeclId<'a>>,
     type_param_env: Vec<(String, TypeId)>,
@@ -63,6 +78,8 @@ pub(crate) struct RegionChecker<'a, 'b> {
     pub(crate) decls: &'b mut DeclCache<'a>,
     pub(crate) file: &'a Path,
     pub(crate) source: &'b str,
+    /// File byte origin of a bounded declaration slice; region spans stay slice-local.
+    source_base: usize,
     pub(crate) body_base: usize,
     pub(crate) body: &'b BlockTree,
     pub(crate) region: &'b mut RegionInfo<'a>,
@@ -92,11 +109,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         cursor_offset: Option<usize>,
     ) -> Self {
         let binding_count = region.scopes.bindings.len();
+        region.uses_complete &= body.diagnostics().is_empty() && cursor_offset.is_none();
         Self {
             arena,
             decls,
             file,
             source,
+            source_base: 0,
             body_base,
             body,
             region,
@@ -113,6 +132,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
     }
 
+    pub(super) fn set_source_base(&mut self, base: usize) {
+        self.source_base = base;
+    }
+
+    fn file_offset(&self, source_offset: usize) -> usize {
+        self.source_base + source_offset
+    }
+
     pub(crate) fn set_type_param_owner(&mut self, owner: DeclId<'a>) {
         self.type_param_owner = Some(owner);
     }
@@ -121,8 +148,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.arena
     }
 
-    pub(crate) fn int_bits(&self) -> u32 {
-        self.arena.workspace().integer_bits().unwrap_or(64)
+    pub(crate) fn int_bits(&mut self) -> Option<u32> {
+        let bits = self.arena.integer_bits();
+        self.region.uses_complete &= bits.is_some();
+        bits
     }
 
     pub(crate) fn abs_range(&self, r: &Range<usize>) -> Range<usize> {
@@ -336,7 +365,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 None
             } else {
                 self.arena
-                    .parse_parameterized(self.file, name, &formals, None)
+                    .parse_parameterized(self.file, name, None, &formals, None)
             };
             if let Some(local_id) = self.region.scopes.definition_at(span[0]) {
                 self.mark_active(local_id);
@@ -374,7 +403,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 None
             } else {
                 self.arena
-                    .parse_parameterized(self.file, name, &formals, recv_ann)
+                    .parse_parameterized(self.file, name, None, &formals, recv_ann)
             };
             if let Some(local_id) = self.region.scopes.definition_at(span[0]) {
                 self.mark_active(local_id);
@@ -412,7 +441,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     None
                 } else {
                     self.arena
-                        .parse_parameterized(self.file, rt, &formals, Some(rt))
+                        .parse_parameterized(
+                            self.file,
+                            rt,
+                            Some(self.file_offset(sig_base + recv.annotation.start)),
+                            &formals,
+                            Some(rt),
+                        )
                         .filter(|&ty| self.arena.validate_type(ty).is_some())
                 }
             } else {
@@ -430,10 +465,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(local_id) = self.region.scopes.definition_at(span[0])
                 {
                     self.record_local_var_entry(local_id, span, VarKind::Receiver, recv_ty);
-                    if !recv.annotation.is_empty() {
-                        self.region
-                            .set_local_annotation(local_id, abs_span(&recv.annotation));
-                    }
                     pending_active.push(local_id);
                 }
             }
@@ -448,12 +479,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } else if param.variadic {
                 let elem_text = ann.trim_start_matches("...").trim();
                 self.arena
-                    .parse_parameterized(self.file, elem_text, &formals, recv_ann)
+                    .parse_parameterized(
+                        self.file,
+                        elem_text,
+                        Some(self.file_offset(sig_base + param.annotation.end - elem_text.len())),
+                        &formals,
+                        recv_ann,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
                     .and_then(|elem| self.arena.slice_type(elem))
             } else {
                 self.arena
-                    .parse_parameterized(self.file, ann, &formals, recv_ann)
+                    .parse_parameterized(
+                        self.file,
+                        ann,
+                        Some(self.file_offset(sig_base + param.annotation.start)),
+                        &formals,
+                        recv_ann,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };
             if let Some(name_range) = &param.name {
@@ -463,10 +506,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(local_id) = self.region.scopes.definition_at(span[0])
                 {
                     self.record_local_var_entry(local_id, span, VarKind::Param, p_ty);
-                    if !param.annotation.is_empty() {
-                        self.region
-                            .set_local_annotation(local_id, abs_span(&param.annotation));
-                    }
                     pending_active.push(local_id);
                 }
             }
@@ -481,7 +520,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 None
             } else {
                 self.arena
-                    .parse_parameterized(self.file, ann, &formals, recv_ann)
+                    .parse_parameterized(
+                        self.file,
+                        ann,
+                        Some(self.file_offset(sig_base + res.annotation.start)),
+                        &formals,
+                        recv_ann,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };
             self.result_types.push(r_ty);
@@ -492,10 +537,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(local_id) = self.region.scopes.definition_at(span[0])
                 {
                     self.record_local_var_entry(local_id, span, VarKind::ResultVar, r_ty);
-                    if !res.annotation.is_empty() {
-                        self.region
-                            .set_local_annotation(local_id, abs_span(&res.annotation));
-                    }
                     pending_active.push(local_id);
                 }
             }
@@ -537,8 +578,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             .iter()
             .map(|entry| LocalTypeDefinition {
                 name: entry.name.as_str(),
-                selection: entry.selection.clone(),
+                selection: self.file_offset(entry.selection.start)
+                    ..self.file_offset(entry.selection.end),
                 annotation: entry.annotation.as_str(),
+                annotation_start: self.file_offset(entry.annotation_start),
                 alias: entry.alias,
             })
             .collect();
@@ -553,12 +596,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } else if param.variadic {
                 let elem_text = ann.trim_start_matches("...").trim();
                 self.arena
-                    .declared_scope_type_in(self.file, elem_text, &defs, &env_pairs)
+                    .declared_scope_type_in(
+                        self.file,
+                        elem_text,
+                        Some(self.file_offset(sig_base + param.annotation.end - elem_text.len())),
+                        &defs,
+                        &env_pairs,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
                     .and_then(|elem| self.arena.slice_type(elem))
             } else {
                 self.arena
-                    .declared_scope_type_in(self.file, ann, &defs, &env_pairs)
+                    .declared_scope_type_in(
+                        self.file,
+                        ann,
+                        Some(self.file_offset(sig_base + param.annotation.start)),
+                        &defs,
+                        &env_pairs,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };
             if let Some(name_range) = &param.name {
@@ -568,10 +623,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(local_id) = self.region.scopes.definition_at(span[0])
                 {
                     self.record_local_var_entry(local_id, span, VarKind::Param, p_ty);
-                    if !param.annotation.is_empty() {
-                        self.region
-                            .set_local_annotation(local_id, abs_span(&param.annotation));
-                    }
                     pending_active.push(local_id);
                 }
             }
@@ -584,7 +635,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 None
             } else {
                 self.arena
-                    .declared_scope_type_in(self.file, ann, &defs, &env_pairs)
+                    .declared_scope_type_in(
+                        self.file,
+                        ann,
+                        Some(self.file_offset(sig_base + res.annotation.start)),
+                        &defs,
+                        &env_pairs,
+                    )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };
             self.result_types.push(r_ty);
@@ -595,10 +652,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     && let Some(local_id) = self.region.scopes.definition_at(span[0])
                 {
                     self.record_local_var_entry(local_id, span, VarKind::ResultVar, r_ty);
-                    if !res.annotation.is_empty() {
-                        self.region
-                            .set_local_annotation(local_id, abs_span(&res.annotation));
-                    }
                     pending_active.push(local_id);
                 }
             }
@@ -620,7 +673,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             };
             if let Some(tp_ty) =
                 self.arena
-                    .parse_parameterized(self.file, name, formals, Some(recv_text))
+                    .parse_parameterized(self.file, name, None, formals, Some(recv_text))
                 && self.arena.format_parameter(tp_ty).is_some()
                 && !self
                     .type_param_env
@@ -786,17 +839,23 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             .iter()
             .map(|entry| LocalTypeDefinition {
                 name: entry.name.as_str(),
-                selection: entry.selection.clone(),
+                selection: self.file_offset(entry.selection.start)
+                    ..self.file_offset(entry.selection.end),
                 annotation: entry.annotation.as_str(),
+                annotation_start: self.file_offset(entry.annotation_start),
                 alias: entry.alias,
             })
             .collect();
         let env_pairs: Vec<(&str, TypeId)> =
             extra_env.iter().map(|(n, ty)| (n.as_str(), *ty)).collect();
 
-        let ty = self
-            .arena
-            .declared_scope_type_in(self.file, text, &defs, &env_pairs)?;
+        let ty = self.arena.declared_scope_type_in(
+            self.file,
+            text,
+            Some(self.file_offset(abs_offset)),
+            &defs,
+            &env_pairs,
+        )?;
         self.arena.validate_type(ty).map(|()| ty)
     }
 
@@ -939,6 +998,19 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 type_references: Vec::new(),
                 type_parameters: Vec::new(),
             };
+            let roots: Vec<_> = is_child
+                .iter()
+                .enumerate()
+                .filter_map(|(index, child)| (!child).then_some(ExprId(index)))
+                .collect();
+            self.region.scopes.include_type_expressions(
+                self.source,
+                abs_offset,
+                &expr_tree,
+                &roots,
+                self.cursor_offset,
+            );
+            self.region.extend_binding_storage();
             let snap = self.closure_snapshot();
             let mut child = RegionChecker::new(
                 self.arena,
@@ -952,10 +1024,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 self.cursor_offset,
             );
             child.restore_closure_snapshot(snap);
-            for (idx, child_flag) in is_child.iter().enumerate() {
-                if !child_flag {
-                    let _ = child.check_expr_outcome(ExprId(idx), None);
-                }
+            for root in roots {
+                let _ = child.check_expr_outcome(root, None);
             }
         }
 
@@ -1031,6 +1101,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             if text.get(sig_name.name.clone()) == Some("_") {
                 continue;
             }
+            let abs_span = [
+                (abs_offset + sig_name.name.start) as u32,
+                (abs_offset + sig_name.name.end) as u32,
+            ];
+            let kind = match sig_name.kind {
+                syntax::SignatureNameKind::Parameter => LocalBindingKind::Param,
+                syntax::SignatureNameKind::Result => LocalBindingKind::NamedResult,
+            };
+            let Some(local_id) = self.region.scopes.signature_name(abs_span, kind) else {
+                self.region.uses_complete = false;
+                continue;
+            };
+            self.region.extend_binding_storage();
+            if let Some(object) = self.local_object(local_id) {
+                self.region.defs.push((abs_span, object));
+            }
             let Some(raw_ann) = text.get(sig_name.annotation.clone()) else {
                 continue;
             };
@@ -1053,10 +1139,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 self.resolve_type_text_unverified(ann_text, ann_offset)
             };
             if let Some(ty) = ty {
-                let abs_span = [
-                    (abs_offset + sig_name.name.start) as u32,
-                    (abs_offset + sig_name.name.end) as u32,
-                ];
+                self.region.set_local_type(
+                    local_id,
+                    Operand {
+                        mode: Mode::Variable,
+                        ty,
+                        value: None,
+                    },
+                );
                 self.region.expr_types.push((
                     abs_span,
                     Operand {
@@ -1149,6 +1239,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return false;
         }
         let Some((pkg_obj, _target_dir)) = self.find_import(qual) else {
+            self.report_missing_name(qual, abs_offset + qual_r.start..abs_offset + qual_r.end);
             return false;
         };
         let qual_span = [
@@ -1158,6 +1249,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.region.uses.push((qual_span, pkg_obj));
 
         let Some(decl) = self.resolve_imported_decl(qual, name) else {
+            self.report_missing_imported_name(
+                qual,
+                name,
+                abs_offset + qual_r.start,
+                abs_offset + name_r.start..abs_offset + name_r.end,
+            );
             return false;
         };
         if decl.symbol.kind != SymbolKind::Type {
@@ -1253,6 +1350,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     }
                     true
                 } else {
+                    self.report_missing_name(name, name_span[0] as usize..name_span[1] as usize);
                     false
                 }
             }
@@ -1320,6 +1418,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
 
     pub(crate) fn closure_snapshot(&self) -> ClosureSnapshot<'a> {
         ClosureSnapshot {
+            source_base: self.source_base,
             active_locals: self.active_locals.clone(),
             type_param_owner: self.type_param_owner,
             type_param_env: self.type_param_env.clone(),
@@ -1330,6 +1429,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     pub(crate) fn restore_closure_snapshot(&mut self, snap: ClosureSnapshot<'a>) {
+        self.source_base = snap.source_base;
         self.active_locals = snap.active_locals;
         self.type_param_owner = snap.type_param_owner;
         self.type_param_env = snap.type_param_env;
@@ -1343,6 +1443,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             && let Some(expr) = self.body.expression(id)
         {
             let span = self.abs_span(&expr.span);
+            if op.mode == Mode::Invalid {
+                self.region.uses_complete = false;
+            }
             self.region.expr_types.push((span, *op));
         }
     }

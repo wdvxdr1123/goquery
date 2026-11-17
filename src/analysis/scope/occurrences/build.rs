@@ -32,7 +32,7 @@ pub(super) enum LiteralType {
     Element { container: usize, key: bool },
 }
 
-pub(crate) struct SourceAnalysis {
+pub(crate) struct Occurrences {
     pub names: Vec<Name>,
     pub locals: Locals,
     pub(super) literal_types: Vec<LiteralType>,
@@ -41,7 +41,7 @@ pub(crate) struct SourceAnalysis {
     pub(super) signature_types: Option<Vec<(usize, Range<usize>, bool)>>,
 }
 
-impl SourceAnalysis {
+impl Occurrences {
     pub(crate) fn new(source: &str, stub: &IndexedFile) -> Result<Self, (i32, String)> {
         Self::build(source, stub, None, None, false)
     }
@@ -107,6 +107,9 @@ impl SourceAnalysis {
         let mut literals = Vec::new();
         for symbol in &stub.symbols {
             if let Some(body) = symbol.body() {
+                if body.len() > crate::analysis::budget::MAX_BODY_BYTES {
+                    continue;
+                }
                 let Some(start) = map.offset(symbol.range.start) else {
                     continue;
                 };
@@ -239,6 +242,11 @@ impl SourceAnalysis {
         }
         // A depth-first work list retains spans, never parent syntax arenas.
         while let Some((signature, body, depth)) = literals.pop() {
+            if body.len() > crate::analysis::budget::MAX_BODY_BYTES
+                || signature.len() > crate::analysis::budget::MAX_BYTES
+            {
+                continue;
+            }
             if name.is_some() && !result.contains_name(&(signature.start..body.end)) {
                 continue;
             }

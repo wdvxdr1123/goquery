@@ -2,10 +2,10 @@
 use super::locations;
 use super::navigation::anonymous;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::obj::MemberDeclaration;
-use crate::analysis::resolve::{self, NameIndex};
+use crate::analysis::obj::MemberDeclId;
+use crate::analysis::resolve::{self, NameProbe};
+use crate::analysis::scope::occurrences::{Occurrences, Role};
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::{Role, SourceAnalysis};
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
@@ -27,7 +27,7 @@ impl<View> Context<'_, View> {
             return Ok(Vec::new());
         };
         let mut candidates = if resolve::exported(name) {
-            crate::analysis::resolve::dependent_candidates(workspace, target_file)
+            self.resolver().dependent_candidates(target_file)
         } else {
             workspace
                 .files
@@ -51,8 +51,7 @@ impl<View> Context<'_, View> {
                     "unable to read anonymous-field reference candidate".to_owned(),
                 )
             })?;
-            let analysis = SourceAnalysis::for_name(&source, stub, name)?;
-            let inline = anonymous::InlineIndex::new(&source);
+            let analysis = Occurrences::for_name(&source, stub, name)?;
             let map = SourceMap::new(&source);
             for occurrence in &analysis.names {
                 if source[occurrence.span.clone()] != *name {
@@ -61,9 +60,7 @@ impl<View> Context<'_, View> {
                 if !include_declaration && file == target_file && occurrence.span == *selection {
                     continue;
                 }
-                let field = anonymous::occurrence_field(
-                    workspace, file, &source, &analysis, occurrence, &inline,
-                );
+                let field = anonymous::occurrence_field(self, file, &source, &analysis, occurrence);
                 if field
                     .is_some_and(|field| field.file == target_file && field.selection == *selection)
                 {
@@ -77,7 +74,7 @@ impl<View> Context<'_, View> {
     pub(crate) fn global_references<'query>(
         &'query self,
         file: &Path,
-        index: &NameIndex<'_>,
+        index: &NameProbe,
         target_file: &Path,
         target: &Symbol,
         include_declaration: bool,
@@ -88,8 +85,7 @@ impl<View> Context<'_, View> {
         let mut scope_time = Duration::ZERO;
         let mut resolve_time = Duration::ZERO;
         let initial_time = query_started.elapsed();
-        let mut candidates =
-            crate::analysis::resolve::reference_candidates(self.workspace, target_file, target);
+        let mut candidates = self.resolver().reference_candidates(target_file, target);
         let scope = self.workspace.reference_scope(file);
         candidates.retain(|(candidate, _)| scope.contains(candidate, target_file));
         crate::analysis::resolve::trace_candidates(self.workspace, "references", candidates.len());
@@ -121,13 +117,13 @@ impl<View> Context<'_, View> {
                 .imports
                 .iter()
                 .filter(|import| Some(import.path.as_str()) == target_import.as_deref())
-                .filter_map(|import| self.workspace.import_name(import))
+                .filter_map(|import| self.resolver().import_name(candidate, import))
                 .collect();
             let analysis =
                 if target.receiver.is_none() && !same_package && !qualifiers.contains(&".") {
-                    SourceAnalysis::for_qualified_name(&source, stub, &target.name, &qualifiers)?
+                    Occurrences::for_qualified_name(&source, stub, &target.name, &qualifiers)?
                 } else {
-                    SourceAnalysis::for_name(&source, stub, &target.name)?
+                    Occurrences::for_name(&source, stub, &target.name)?
                 };
             syntax_time += phase.elapsed();
             if analysis.names.is_empty() {
@@ -143,7 +139,7 @@ impl<View> Context<'_, View> {
                     && (include_declaration
                         || candidate != target_file
                         || name.span.start != target.start)
-                    && matches!(resolver.resolve(&analysis,&source,name), Some(Identity::Global(path,symbol)) if path == target_file && symbol.start == target.start)
+                    && matches!(self.resolve_identity(&mut resolver, &analysis,&source,name), Some(Identity::Global(path,symbol)) if path == target_file && symbol.start == target.start)
                 {
                     locations::push(&mut locations, candidate, &map, name.span.clone())?;
                 }
@@ -161,13 +157,17 @@ impl<View> Context<'_, View> {
     }
     pub(crate) fn member_references<'query>(
         &'query self,
-        target: MemberDeclaration<'query>,
-        index: &NameIndex<'_>,
+        target: MemberDeclId<'query>,
+        index: &NameProbe,
         include_declaration: bool,
         origin: &Path,
     ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
+        let identity = target;
+        let Some(target) = target.describe(self.workspace) else {
+            return Ok(Vec::new());
+        };
         let mut candidates = if resolve::exported(target.name) {
-            crate::analysis::resolve::dependent_candidates(self.workspace, target.file)
+            self.resolver().dependent_candidates(target.file)
         } else {
             self.workspace
                 .files
@@ -212,7 +212,7 @@ impl<View> Context<'_, View> {
             if !source.contains(target.name) {
                 continue;
             }
-            let analysis = SourceAnalysis::for_name(&source, stub, target.name)?;
+            let analysis = Occurrences::for_name(&source, stub, target.name)?;
             let map = SourceMap::new(&source);
             let mut resolver = IdentityResolver::for_name(self.workspace, file, index);
             for name in &analysis.names {
@@ -221,7 +221,7 @@ impl<View> Context<'_, View> {
                 {
                     continue;
                 }
-                if matches!(resolver.resolve(&analysis, &source, name), Some(Identity::Member(member)) if member.same(&target))
+                if matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Member(member)) if member == identity)
                 {
                     locations::push(&mut locations, file, &map, name.span.clone())?;
                 }

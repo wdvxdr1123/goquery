@@ -149,10 +149,7 @@ impl<'a> MountIndex<'a> {
                 }
                 return Some(directory);
             }
-            match import[..end].rfind('/') {
-                Some(position) => end = position,
-                None => return None,
-            }
+            end = import[..end].rfind('/')?;
         }
     }
 

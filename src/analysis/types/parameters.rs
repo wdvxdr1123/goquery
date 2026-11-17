@@ -17,11 +17,7 @@ pub(super) struct LocalParameter<'a> {
 }
 
 impl<'a> TypeArena<'a> {
-    pub(crate) fn push_symbolic_parameter(
-        &mut self,
-        origin: &'a Path,
-        name: &str,
-    ) -> Option<TypeId> {
+    pub(crate) fn push_symbolic_parameter(&mut self, origin: &Path, name: &str) -> Option<TypeId> {
         let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
         let index = self.local_parameters.len();
         if index >= 32 {
@@ -54,6 +50,7 @@ impl<'a> TypeArena<'a> {
         &mut self,
         origin: &Path,
         source: &str,
+        file_offset: Option<usize>,
         formals: &[LocalFormal<'_>],
         receiver: Option<&str>,
     ) -> Option<TypeId> {
@@ -99,7 +96,7 @@ impl<'a> TypeArena<'a> {
             .iter()
             .all(|index| self.local_parameters[*index].ready)
         {
-            return self.parse_in(origin, source, &environment);
+            return self.parse_in_internal(origin, source, file_offset, &environment);
         }
         if receiver.is_some() && formals.iter().any(|formal| formal.bound.is_some()) {
             return None;
@@ -120,7 +117,7 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
         }
-        let ty = self.parse_in(origin, source, &environment)?;
+        let ty = self.parse_in_internal(origin, source, file_offset, &environment)?;
         // Failed/recursive imports stay unready: later operands must not reuse
         // facts from a declaration whose checking never completed.
         for index in imports {

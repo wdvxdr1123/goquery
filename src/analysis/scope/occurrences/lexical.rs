@@ -1,9 +1,9 @@
 //! Lexical occurrences, skipping unrelated indexed bodies before tokenization.
-use crate::analysis::source::{Name, Role, SourceAnalysis};
+use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::index::IndexedFile;
 use crate::syntax::{Lexer, TokenKind};
 
-impl SourceAnalysis {
+impl Occurrences {
     pub(super) fn collect_names(
         source: &str,
         stub: &IndexedFile,

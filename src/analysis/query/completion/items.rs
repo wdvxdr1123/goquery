@@ -1,16 +1,27 @@
-//! Render selected members by file/owner, without retaining closed sources.
+//! Project selected candidates by file/owner; retain no closed source.
+use super::candidates::Candidate;
+use super::comments::{self, Target};
+use super::{Context, Item, Presentation};
 use crate::analysis::query::completion::SignatureSource;
-use crate::features::completion::collect::Candidate;
-use crate::features::completion::render::EditContext;
-use crate::features::document::{self, Target};
+use crate::analysis::scope::Locals;
 use crate::syntax::TokenKind;
 use crate::text::SourceMap;
-use serde_json::{Value, json};
+use std::path::Path;
 
-pub(super) fn render_completion_candidates<'a>(
+pub(super) struct PresentationContext<'a, 'workspace> {
+    pub(super) query: &'a Context<'workspace>,
+    pub(super) file: &'a Path,
+    pub(super) source: &'a str,
+    pub(super) locals: &'a Locals,
+    pub(super) map: &'a SourceMap<'a>,
+    pub(super) calls: bool,
+}
+
+pub(super) fn project<'a>(
     candidates: impl Iterator<Item = (&'a str, Candidate<'a>)>,
-    context: &EditContext<'_, '_>,
-) -> Vec<Value> {
+    context: &PresentationContext<'_, '_>,
+    mut render_documentation: Option<&mut dyn FnMut(&str) -> String>,
+) -> Vec<Item> {
     let mut ranked: Vec<_> = candidates.enumerate().collect();
     ranked.sort_by(|(_, (_, a)), (_, (_, b))| {
         a.origin()
@@ -24,15 +35,11 @@ pub(super) fn render_completion_candidates<'a>(
         let origin = group[0].1.1.origin();
         let has_members = group
             .iter()
-            .any(|(_, (_, item))| matches!(item, Candidate::Member(_)));
+            .any(|(_, (_, item))| matches!(item, Candidate::Member(..)));
         let needs_signatures = group.iter().any(
             |(_, (_, item))| matches!(item, Candidate::Symbol(_, symbol) if symbol.is_callable()),
         );
-        let has_types = group.iter().any(
-                |(_, (_, item))| matches!(item, Candidate::Symbol(_, symbol) if symbol.is_type() && symbol.type_info.as_ref().is_none_or(|info| info.target.is_some())),
-            );
-        let needs_source =
-            has_members || needs_signatures || has_types || context.config.documentation;
+        let needs_source = has_members || needs_signatures || render_documentation.is_some();
         let storage = needs_source
             .then(|| {
                 origin
@@ -56,31 +63,33 @@ pub(super) fn render_completion_candidates<'a>(
         let mut owner = None;
         let mut declaration = "";
         let mut entries = Vec::new();
-        let mut types = None;
-        let mut methods = None;
         let mut targets = Vec::new();
         let mut documented = Vec::new();
         for (rank, (label, candidate)) in group {
-            let presentation = if let Candidate::Member(member) = candidate {
-                if owner != Some(member.owner.start) {
-                    entries.clear();
+            let presentation = if let Candidate::Member(member, view) = candidate {
+                if let Some(description) = member.declaration
+                    && owner != Some(description.owner.start)
+                {
                     declaration = source
                         .zip(map.as_ref())
                         .and_then(|(source, map)| {
-                            source.get(member.owner.end..map.offset(member.owner.range.end)?)
+                            source.get(
+                                description.owner.end..map.offset(description.owner.range.end)?,
+                            )
                         })
+                        .filter(|declaration| declaration.len() <= 16 * 1024)
                         .unwrap_or("");
                     entries = context.query.aggregate_members(declaration);
-                    types = context.receiver.and_then(|(scope, receiver)| {
-                        context
-                            .query
-                            .completion_member_types(scope, receiver, *member, declaration)
-                    });
-                    owner = Some(member.owner.start);
+                    owner = Some(description.owner.start);
                 }
-                context
-                    .query
-                    .member_presentation(types.as_ref(), member, declaration, &entries)
+                context.query.member_presentation(
+                    member,
+                    view.as_ref(),
+                    source,
+                    map,
+                    declaration,
+                    &entries,
+                )
             } else if let Candidate::Symbol(origin, symbol) = candidate {
                 let location = source.zip(map).map(|(source, map)| SignatureSource {
                     file: context.file,
@@ -88,21 +97,16 @@ pub(super) fn render_completion_candidates<'a>(
                     source,
                     map,
                 });
-                context.query.symbol_completion(
-                    symbol,
-                    location.as_ref(),
-                    context.receiver,
-                    &mut methods,
-                )
+                context
+                    .query
+                    .symbol_completion(origin, symbol, location.as_ref())
             } else if let Candidate::Local(binding) = candidate {
                 context.query.local_completion_type(context.locals, binding)
             } else {
                 None
             };
-            if let Some(item) =
-                super::render::completion_item(label, candidate, context, presentation)
-            {
-                if context.config.documentation
+            if let Some(item) = candidate_item(label, candidate, context, presentation) {
+                if render_documentation.is_some()
                     && let Some(map) = map
                 {
                     let target = match candidate {
@@ -114,7 +118,18 @@ pub(super) fn render_completion_candidates<'a>(
                                 end,
                                 trailing: !symbol.is_callable(),
                             }),
-                        Candidate::Member(member) => {
+                        Candidate::Member(member, _) if member.method.is_some() => {
+                            member.method.and_then(|(_, symbol)| {
+                                map.offset(symbol.range.start)
+                                    .zip(map.offset(symbol.range.end))
+                                    .map(|(start, end)| Target {
+                                        start,
+                                        end,
+                                        trailing: false,
+                                    })
+                            })
+                        }
+                        Candidate::Member(member, _) => member.declaration.and_then(|member| {
                             member.entry(declaration, &entries).map(|entry| {
                                 let start = entries
                                     .iter()
@@ -139,7 +154,7 @@ pub(super) fn render_completion_candidates<'a>(
                                     trailing: true,
                                 }
                             })
-                        }
+                        }),
                         _ => None,
                     };
                     if let Some(target) = target {
@@ -152,48 +167,86 @@ pub(super) fn render_completion_candidates<'a>(
         }
         if !targets.is_empty()
             && let Some(source) = source
+            && let Some(render_documentation) = render_documentation.as_deref_mut()
         {
-            for (index, comment) in documented.into_iter().zip(document::comments(
+            for (index, comment) in documented.into_iter().zip(comments::comments(
                 source,
                 &targets,
                 (256 * 1024 - documentation_bytes) / 2,
             )) {
                 if let Some(comment) = comment {
-                    let value = if context.config.markdown {
-                        document::markdown(&comment, &[])
-                    } else {
-                        comment
-                    };
+                    let value = render_documentation(&comment);
                     if documentation_bytes + value.len() > 256 * 1024 {
                         continue;
                     }
                     documentation_bytes += value.len();
-                    results[index].1["documentation"] = if context.config.markdown {
-                        json!({"kind":"markdown", "value":value})
-                    } else {
-                        value.into()
-                    };
+                    results[index].1.documentation = Some(value);
                 }
             }
         }
     }
     results.sort_by_key(|(rank, _)| *rank);
-    results
-        .into_iter()
-        .enumerate()
-        .map(|(rank, (_, mut item))| {
-            item["sortText"] = format!("{rank:05}").into();
-            if rank == 0 {
-                item["preselect"] = true.into();
-            }
-            item
-        })
-        .collect()
+    results.into_iter().map(|(_, item)| item).collect()
 }
 
 fn method_receiver<'a>(candidate: &Candidate<'a>) -> Option<&'a str> {
     match candidate {
         Candidate::Symbol(_, symbol) => symbol.receiver.as_deref(),
+        Candidate::Member(member, _) => member
+            .method
+            .and_then(|(_, symbol)| symbol.receiver.as_deref()),
         _ => None,
     }
+}
+
+fn candidate_item(
+    label: &str,
+    candidate: &Candidate<'_>,
+    context: &PresentationContext<'_, '_>,
+    presentation: Option<Presentation>,
+) -> Option<Item> {
+    let kind = candidate.kind()?;
+    let (detail, signature, type_parameters, kind) =
+        presentation.map_or((None, None, None, kind), |presentation| {
+            (
+                presentation.detail,
+                presentation.signature,
+                presentation.type_parameters,
+                presentation.kind.unwrap_or(kind),
+            )
+        });
+    let signature = match candidate {
+        Candidate::Symbol(_, symbol) if symbol.is_callable() => signature,
+        Candidate::Local(binding) => context.query.binding_signature(context.locals, binding),
+        Candidate::Member(..) => signature,
+        _ => None,
+    }
+    .map(|(signature, _)| signature);
+    let detail = signature
+        .as_ref()
+        .and_then(|signature| {
+            signature
+                .label
+                .find('(')
+                .map(|opening| format!("func{}", &signature.label[opening..]))
+        })
+        .or(detail)
+        .or_else(|| match candidate {
+            Candidate::Local(binding) => context.query.binding_detail(context.locals, binding),
+            _ => None,
+        });
+    Some(Item {
+        label: label.to_owned(),
+        kind,
+        detail,
+        signature: signature.filter(|_| {
+            context.calls && matches!(kind, super::Kind::Function | super::Kind::Method)
+        }),
+        type_parameters,
+        documentation: None,
+        field_key: match candidate {
+            Candidate::Member(member, _) => member.field_key,
+            _ => None,
+        },
+    })
 }

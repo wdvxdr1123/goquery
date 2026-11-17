@@ -1,9 +1,7 @@
 //! Bounded outer-form projection from native type identities; no wire categories.
-use super::lookup::TypeTree;
 use super::{BasicKind, MAX_BYTES, MAX_DEPTH, Ty, TypeArena, TypeId, unparenthesized_type};
 use crate::analysis::scope as locals;
 use crate::syntax::{Lexer, TokenKind};
-use crate::workspace::Workspace;
 use std::path::Path;
 
 /// The outer constructor only, never a proof of identity or assignability.
@@ -20,10 +18,6 @@ pub(crate) enum TypeForm {
     Slice,
     Map,
     Chan,
-}
-pub(crate) struct TypePresentation {
-    pub form: TypeForm,
-    pub text: String,
 }
 impl TypeForm {
     pub(crate) fn basic(kind: BasicKind) -> Option<Self> {
@@ -82,6 +76,56 @@ impl TypeForm {
     }
 }
 impl TypeArena<'_> {
+    /// Follow the native declaration chain without expanding a large aggregate
+    /// just to display its outer constructor. The returned source node is only
+    /// used to attach names to an already checked function signature.
+    pub(crate) fn presentation_type(
+        &mut self,
+        mut input: TypeId,
+    ) -> Option<(TypeForm, TypeId, TypeId)> {
+        let mut source = input;
+        for _ in 0..MAX_DEPTH {
+            self.step()?;
+            match self.nodes.get(usize::from(input.0))?.clone() {
+                Ty::Named { declaration, .. } | Ty::Alias { declaration, .. } => {
+                    self.check_named_arguments(input)?;
+                    if let Some(info) = declaration
+                        .symbol
+                        .type_info
+                        .as_ref()
+                        .filter(|info| info.target.is_none())
+                    {
+                        return Some((
+                            if info.is_interface() {
+                                TypeForm::Interface
+                            } else {
+                                TypeForm::Struct
+                            },
+                            input,
+                            source,
+                        ));
+                    }
+                    source = input;
+                    input = self.expand(input)?;
+                }
+                Ty::LocalDeclaration {
+                    origin,
+                    selection,
+                    formal: false,
+                } => {
+                    let index = self.local_type_index(origin, &selection)?;
+                    source = input;
+                    input = match self.local_types[index].state {
+                        super::declaration::LocalTypeState::Ready(ty) => ty,
+                        _ => return None,
+                    };
+                }
+                _ => return Some((self.form(input)?, input, source)),
+            }
+        }
+        None
+    }
+
     pub(crate) fn is_untyped_bool_or_string(&self, input: TypeId) -> bool {
         let Some(ty) = self.nodes.get(usize::from(input.0)) else {
             return false;
@@ -107,6 +151,7 @@ impl TypeArena<'_> {
     pub(crate) fn form(&mut self, input: TypeId) -> Option<TypeForm> {
         let input = self.underlying(input)?;
         Some(match self.nodes.get(usize::from(input.0))? {
+            Ty::Invalid => return None,
             Ty::Basic(kind) => return TypeForm::basic(*kind),
             Ty::Interface { .. } => TypeForm::Interface,
             Ty::Struct { .. } => TypeForm::Struct,
@@ -129,7 +174,19 @@ impl TypeArena<'_> {
 }
 
 pub(crate) fn type_form_in_scope(
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
+    file: &Path,
+    text: &str,
+    locals: &locals::Locals,
+    offset: usize,
+) -> Option<TypeForm> {
+    arena.with_projection(false, |arena| {
+        type_form_inner(arena, file, text, locals, offset)
+    })
+}
+
+fn type_form_inner(
+    arena: &mut TypeArena<'_>,
     file: &Path,
     text: &str,
     locals: &locals::Locals,
@@ -163,9 +220,20 @@ pub(crate) fn type_form_in_scope(
         locals.resolve_at(offset, &text[span.clone()]).is_some()
     });
     if !shadowed {
-        let mut arena = TypeArena::new(workspace);
+        if let Some(name) = locals::named_type(root).filter(|name| name == locals::named_root(name))
+            && let Some((origin, symbol)) = arena.resolver().resolve_type_declaration(file, &name)
+            && symbol.generic
+        {
+            return arena.with_projection(true, |arena| {
+                let ty = arena.declaration_type(crate::analysis::obj::DeclId {
+                    file: origin,
+                    symbol,
+                })?;
+                arena.presentation_type(ty).map(|(form, _, _)| form)
+            });
+        }
         if let Some(input) = arena.parse(file, text)
-            && let Some(form) = arena.form(input)
+            && let Some((form, _, _)) = arena.presentation_type(input)
         {
             return Some(form);
         }
@@ -173,83 +241,7 @@ pub(crate) fn type_form_in_scope(
             return None;
         }
     }
-    let mut tree = TypeTree::new(workspace);
-    let file = workspace.files.get_key_value(file)?.0;
-    let input = tree.push(file, text, None)?;
-    let form = tree.form(input, 0)?;
-    if tree
-        .argument_roots
-        .iter()
-        .any(|(origin, root)| *origin == file && locals.resolve_at(offset, root).is_some())
-    {
-        return None;
-    }
-    Some(form)
-}
-
-pub(crate) fn declared_type_presentation(
-    workspace: &Workspace,
-    file: &Path,
-    origin: &Path,
-    declaration: &str,
-) -> Option<TypePresentation> {
-    if declaration.len() > MAX_BYTES {
-        return None;
-    }
-    let origin = workspace.files.get_key_value(origin)?.0;
-    TypeTree::new(workspace).declaration_presentation(origin, declaration, file)
-}
-
-pub(crate) fn local_type_presentation(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    locals: &locals::Locals,
-    binding: &locals::Binding,
-) -> Option<TypePresentation> {
-    if binding.declaration == locals::DeclarationKind::TypeParameter {
-        return Some(TypePresentation {
-            form: TypeForm::Interface,
-            text: "interface{...}".to_owned(),
-        });
-    }
-    if binding.declaration != locals::DeclarationKind::Type {
-        return None;
-    }
-    let mut span = binding.annotation()?.clone();
-    for _ in 0..MAX_DEPTH {
-        let annotation = source.get(span.clone())?;
-        if annotation.len() > MAX_BYTES {
-            return None;
-        }
-        let parsed = crate::syntax::parse_type(annotation);
-        if !parsed.diagnostics.is_empty() {
-            return None;
-        }
-        let root = unparenthesized_type(annotation)?;
-        if Lexer::new(root).next()?.kind == TokenKind::Ident
-            && let Some(name) = locals::named_type(root)
-            && let Some(local) =
-                locals.resolve_at(span.start, locals::named_root(&name).split('.').next()?)
-        {
-            if local.declaration != locals::DeclarationKind::Type {
-                return None;
-            }
-            span = local.annotation()?.clone();
-            continue;
-        }
-        let names: Vec<_> = locals
-            .visible_bindings(span.start)
-            .filter(|binding| {
-                binding.object_kind.is_type()
-                    && locals
-                        .resolve_at(span.start, &binding.name)
-                        .is_some_and(|actual| actual.selection == binding.selection)
-            })
-            .map(|binding| binding.name.clone())
-            .collect();
-        let file = workspace.files.get_key_value(file)?.0;
-        return TypeTree::new(workspace).local_presentation(file, annotation, &names);
-    }
-    None
+    // This is only an outer syntax category for presentation. Unavailable
+    // nominal or local types never acquire an inferred underlying declaration.
+    TypeForm::constructor(root)
 }

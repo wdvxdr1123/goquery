@@ -504,13 +504,34 @@
       "isIncomplete": true,
       "items": [
         {
+          "detail": "func() string",
+          "filterText": "Error",
+          "insertTextFormat": 1,
+          "kind": 2,
+          "label": "Error",
+          "preselect": true,
+          "sortText": "00000",
+          "textEdit": {
+            "newText": "Error",
+            "range": {
+              "end": {
+                "character": 34,
+                "line": 23
+              },
+              "start": {
+                "character": 31,
+                "line": 23
+              }
+            }
+          }
+        },
+        {
           "detail": "func()",
           "filterText": "Own",
           "insertTextFormat": 1,
           "kind": 2,
           "label": "Own",
-          "preselect": true,
-          "sortText": "00000",
+          "sortText": "00001",
           "textEdit": {
             "newText": "Own",
             "range": {
@@ -531,7 +552,7 @@
           "insertTextFormat": 1,
           "kind": 5,
           "label": "error",
-          "sortText": "00001",
+          "sortText": "00002",
           "textEdit": {
             "newText": "error",
             "range": {

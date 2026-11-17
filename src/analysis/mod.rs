@@ -7,7 +7,6 @@ pub(crate) mod query;
 mod resolve;
 mod scope;
 mod sema;
-mod source;
 #[cfg(test)]
 mod type_oracle;
 mod types;

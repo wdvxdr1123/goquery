@@ -1,4 +1,4 @@
-//! Query-local comment attachments for hover, completion and signature help.
+//! Batched completion comment attachments, retaining only selected spans.
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
 

@@ -247,11 +247,8 @@ fn list_marker(line: &str) -> Option<(String, &str)> {
     }
     let mut chars = line.char_indices();
     let (first_index, first) = chars.next()?;
-    let rest;
-    let number;
-    if matches!(first, '•' | '*' | '+' | '-') {
-        number = String::new();
-        rest = &line[first_index + first.len_utf8()..];
+    let (number, rest) = if matches!(first, '•' | '*' | '+' | '-') {
+        (String::new(), &line[first_index + first.len_utf8()..])
     } else if first.is_ascii_digit() {
         let mut end = first_index + 1;
         for (index, ch) in chars {
@@ -265,11 +262,10 @@ fn list_marker(line: &str) -> Option<(String, &str)> {
         if ch != b'.' && ch != b')' {
             return None;
         }
-        number = line[..end].to_owned();
-        rest = &line[end + 1..];
+        (line[..end].to_owned(), &line[end + 1..])
     } else {
         return None;
-    }
+    };
     if !indented(rest) || rest.trim().is_empty() {
         return None;
     }

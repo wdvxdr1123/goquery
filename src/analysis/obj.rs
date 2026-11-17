@@ -1,12 +1,8 @@
 //! Unified semantic object identities replacing ad-hoc resolution structs.
 
-use crate::analysis::budget::MAX_BYTES;
 use crate::index::IndexedSymbol;
-use crate::syntax::{AggregateMember, MemberKind, TokenKind};
-use crate::text::SourceMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use tower_lsp::lsp_types::Range;
 
 /// Compact lexical scope identifier within a `ScopeTree`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -61,149 +57,81 @@ pub(crate) struct MemberDeclId<'a> {
 }
 
 impl<'a> MemberDeclId<'a> {
-    pub(crate) fn to_member_declaration(
-        self,
-        workspace: &'a crate::workspace::Workspace,
-    ) -> Option<MemberDeclaration<'a>> {
-        let [start, end] = self.selection;
-        let (start, end) = (start as usize, end as usize);
-        if start >= end || end.saturating_sub(start) > 1024 {
+    /// Attach an indexed owner without resolving a source spelling. Anonymous
+    /// literals remain outside the indexed-member search domain.
+    pub(crate) fn indexed(self, workspace: &'a crate::workspace::Workspace) -> Option<Self> {
+        if self.builtin || self.selection[0] >= self.selection[1] {
             return None;
         }
-        let (file, stub) = workspace.files.get_key_value(self.file)?;
+        let stub = workspace.files.get(self.file)?;
         let owner = self
             .owner
-            .filter(|sym| {
-                stub.symbols.iter().any(|s| std::ptr::eq(s, *sym))
-                    && sym
-                        .declaration()
-                        .is_some_and(|decl| decl.start <= start && end <= decl.end)
+            .filter(|owner| {
+                owner.type_info.is_some()
+                    && stub
+                        .symbols
+                        .iter()
+                        .any(|symbol| std::ptr::eq(symbol, *owner))
+                    && owner.declaration().is_some_and(|span| {
+                        span.start <= self.selection[0] as usize
+                            && self.selection[1] as usize <= span.end
+                    })
             })
             .or_else(|| {
-                stub.symbols.iter().find(|sym| {
-                    sym.is_type()
-                        && sym
-                            .declaration()
-                            .is_some_and(|decl| decl.start <= start && end <= decl.end)
+                stub.symbols.iter().find(|symbol| {
+                    symbol.type_info.is_some()
+                        && symbol.declaration().is_some_and(|span| {
+                            span.start <= self.selection[0] as usize
+                                && self.selection[1] as usize <= span.end
+                        })
                 })
             })?;
-        let info = owner.type_info.as_ref()?;
-        let raw_name = workspace.source_slice(file, start..end)?;
-        let target = raw_name.as_ref();
-        let name: &'a str = if self.embedded {
-            info.embedded.iter().find_map(|entry| {
-                let head = entry.split('[').next().unwrap_or(entry.as_str());
-                let bare = head.trim_start_matches('*').rsplit('.').next()?;
-                (bare == target).then_some(bare)
-            })?
-        } else {
-            info.members
-                .iter()
-                .find(|m| m.as_str() == target)
-                .map(String::as_str)
-                .or_else(|| {
-                    info.search_members
-                        .iter()
-                        .find(|m| m.name == target)
-                        .map(|m| m.name.as_str())
-                })?
-        };
-        let kind = if info.is_interface() {
-            MemberKind::Method
-        } else {
-            MemberKind::Field
-        };
-        Some(MemberDeclaration {
-            file,
-            owner,
-            name,
-            kind,
-            embedded: self.embedded,
+        Some(Self {
+            owner: Some(owner),
+            ..self
         })
     }
 }
 
+/// A lookup label paired with its canonical object. The label is metadata, not
+/// an alternative declaration identity or a proof of a member's type.
 #[derive(Clone, Copy)]
-pub(crate) struct MemberDeclaration<'a> {
-    pub file: &'a PathBuf,
-    pub owner: &'a IndexedSymbol,
-    pub name: &'a str,
-    pub kind: MemberKind,
-    pub embedded: bool,
+pub(crate) struct NamedObject<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) object: ObjectRef<'a>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum ReceiverMember<'a> {
-    Method(&'a PathBuf, &'a IndexedSymbol),
-    Declaration(MemberDeclaration<'a>),
-}
-
-pub(crate) struct MemberData {
-    pub selection: Range,
-    pub annotation: Option<String>,
-}
-
-impl MemberDeclaration<'_> {
-    pub(crate) fn selection(
-        &self,
-        declaration: &str,
-        entry: &AggregateMember,
-    ) -> Option<std::ops::Range<usize>> {
-        if !self.embedded {
-            return Some(entry.selection.clone());
+impl<'a> NamedObject<'a> {
+    pub(crate) fn member_id(self) -> Option<MemberDeclId<'a>> {
+        match self.object {
+            ObjectRef::Field(identity) | ObjectRef::Method(MethodOrigin::Interface(identity)) => {
+                Some(identity)
+            }
+            _ => None,
         }
-        let annotation = declaration.get(entry.annotation.clone())?;
-        let token = crate::syntax::Lexer::new(annotation)
-            .take_while(|token| token.kind != TokenKind::LBrack)
-            .filter(|token| token.kind == TokenKind::Ident)
-            .last()?;
-        Some(entry.annotation.start + token.span.start..entry.annotation.start + token.span.end)
     }
 
-    pub(crate) fn same(&self, other: &Self) -> bool {
-        self.file == other.file && self.owner.start == other.owner.start && self.name == other.name
+    pub(crate) fn file(self) -> Option<&'a Path> {
+        match self.object {
+            ObjectRef::Method(MethodOrigin::Concrete(decl)) => Some(decl.file),
+            _ => self.member_id().map(|identity| identity.file),
+        }
     }
 
-    pub(crate) fn entry<'a>(
-        &self,
-        declaration: &str,
-        entries: &'a [AggregateMember],
-    ) -> Option<&'a AggregateMember> {
-        let root = crate::syntax::aggregate_offset(declaration)?;
-        entries.iter().find(|entry| {
-            entry.container == root
-                && if self.embedded {
-                    entry.selection.start == entry.annotation.start
-                        && crate::analysis::scope::named_root(
-                            entry.symbol.name.trim_start_matches('*'),
-                        )
-                        .rsplit('.')
-                        .next()
-                            == Some(self.name)
-                } else {
-                    entry.symbol.name == self.name
-                }
-        })
+    pub(crate) fn method(self) -> Option<DeclId<'a>> {
+        match self.object {
+            ObjectRef::Method(MethodOrigin::Concrete(declaration)) => Some(declaration),
+            _ => None,
+        }
     }
 
-    pub(crate) fn data(self, workspace: &crate::workspace::Workspace) -> Option<MemberData> {
-        let source = workspace.source(self.file)?;
-        let map = SourceMap::new(&source);
-        self.data_in_source(&source, &map)
-    }
-
-    pub(crate) fn data_in_source(self, source: &str, map: &SourceMap<'_>) -> Option<MemberData> {
-        let base = self.owner.end;
-        let declaration = source.get(base..map.offset(self.owner.range.end)?)?;
-        let entries = crate::syntax::aggregate_members(declaration);
-        let entry = self.entry(declaration, &entries)?;
-        let selection = self.selection(declaration, entry)?;
-        Some(MemberData {
-            selection: map.range(base + selection.start, base + selection.end),
-            annotation: (entry.annotation.len() <= MAX_BYTES)
-                .then(|| declaration.get(entry.annotation.clone()).map(str::to_owned))
-                .flatten(),
-        })
+    pub(crate) fn method_source<'workspace>(
+        self,
+        workspace: &'workspace crate::workspace::Workspace,
+    ) -> Option<(&'workspace PathBuf, &'a IndexedSymbol)> {
+        let declaration = self.method()?;
+        let (file, _) = workspace.files.get_key_value(declaration.file)?;
+        Some((file, declaration.symbol))
     }
 }
 
@@ -212,7 +140,6 @@ impl PartialEq for MemberDeclId<'_> {
         self.file == other.file
             && self.selection == other.selection
             && self.builtin == other.builtin
-            && self.owner.map(|s| s.start) == other.owner.map(|s| s.start)
     }
 }
 
@@ -223,7 +150,6 @@ impl Hash for MemberDeclId<'_> {
         self.file.hash(state);
         self.selection.hash(state);
         self.builtin.hash(state);
-        self.owner.map(|s| s.start).hash(state);
     }
 }
 

@@ -70,15 +70,14 @@ impl TypeArena<'_> {
     ) -> Option<bool> {
         Some(
             !environment.iter().any(|(parameter, _)| *parameter == name)
-                && crate::analysis::resolve::unqualified_symbol(self.workspace, origin, name)
-                    .is_none()
+                && self.resolver().unqualified_symbol(origin, name).is_none()
                 && !self
                     .workspace
                     .files
                     .get(origin)?
                     .imports
                     .iter()
-                    .any(|import| self.workspace.import_name(import) == Some(name)),
+                    .any(|import| self.resolver().import_name(origin, import) == Some(name)),
         )
     }
 

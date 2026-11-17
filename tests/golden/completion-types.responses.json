@@ -627,7 +627,7 @@
       "isIncomplete": true,
       "items": [
         {
-          "detail": "[1 + 2]T",
+          "detail": "[3]T",
           "filterText": "ConstantArray",
           "insertTextFormat": 1,
           "kind": 7,
@@ -1126,7 +1126,7 @@
           }
         },
         {
-          "detail": "[1 + 2]T",
+          "detail": "[3]T",
           "filterText": "ConstantArray",
           "insertTextFormat": 1,
           "kind": 7,
@@ -1577,7 +1577,7 @@
           }
         },
         {
-          "detail": "[1 + 2]T",
+          "detail": "[3]T",
           "filterText": "ConstantArray",
           "insertTextFormat": 1,
           "kind": 7,
@@ -2028,7 +2028,7 @@
           }
         },
         {
-          "detail": "[1 + 2]T",
+          "detail": "[3]T",
           "filterText": "ConstantArray",
           "insertTextFormat": 1,
           "kind": 7,
@@ -2479,7 +2479,7 @@
           }
         },
         {
-          "detail": "[1 + 2]T",
+          "detail": "[3]T",
           "filterText": "ConstantArray",
           "insertTextFormat": 1,
           "kind": 7,

@@ -9,10 +9,10 @@
 mod format;
 use super::navigation::anonymous;
 use super::{Context, SourceRange};
-use crate::analysis::obj::{MemberDeclaration, ReceiverMember};
+use crate::analysis::obj::MemberDeclId;
+use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::{self, DeclarationKind, Locals};
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::{Name, Role, SourceAnalysis};
 use crate::analysis::types::TypeForm;
 use crate::index::{IndexedSymbol as Symbol, SymbolKind};
 use crate::syntax::{BlockTree, Expr, ExprId, ExprKind, Lexer, StmtKind, TokenKind};
@@ -62,7 +62,7 @@ enum Canonical<'a> {
         scope_start: usize,
     },
     Global(&'a Path, usize),
-    Member(&'a Path, usize, &'a str),
+    Member(MemberDeclId<'a>),
     /// A field/method whose declaration is only reachable through the native
     /// selector-chain fallback: identity is the declaration site itself, so two
     /// structurally identical anonymous literals never merge.
@@ -101,7 +101,8 @@ impl<'a> Context<'a> {
         offset: usize,
     ) -> Result<Option<Vec<HighlightRow>>, (i32, String)> {
         let source = self.source();
-        let Some(selection) = crate::analysis::source::identifier_at(source, offset) else {
+        let Some(selection) = crate::analysis::scope::occurrences::identifier_at(source, offset)
+        else {
             return Ok(self.format_highlights(offset));
         };
         let file = self.file();
@@ -111,7 +112,7 @@ impl<'a> Context<'a> {
         };
         let trace = workspace.trace.queries.then(std::time::Instant::now);
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let Ok(analysis) = SourceAnalysis::new(source, stub) else {
+        let Ok(analysis) = Occurrences::new(source, stub) else {
             return Ok(None);
         };
         let analysis_time = phase.map(|phase| phase.elapsed());
@@ -120,15 +121,15 @@ impl<'a> Context<'a> {
         };
         let map = SourceMap::new(source);
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let mut scanner = Scanner::new(workspace, file, source);
+        let mut scanner = Scanner::new(self, source);
         scanner.collect(stub);
         let collect_time = phase.map(|phase| phase.elapsed());
         if scanner.exhausted {
             return Ok(None);
         }
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let inline_index = anonymous::InlineIndex::new(source);
         let cursor = cursor(
+            self,
             workspace,
             file,
             source,
@@ -137,7 +138,6 @@ impl<'a> Context<'a> {
             cursor_name,
             &scanner.declarations,
             scanner.package_name.as_ref(),
-            &inline_index,
         );
         let cursor_time = phase.map(|phase| phase.elapsed());
         let loop_phase = workspace.trace.queries.then(std::time::Instant::now);
@@ -150,7 +150,7 @@ impl<'a> Context<'a> {
             );
         }
         let mut rows: Vec<(Range<usize>, HighlightKind)> = Vec::new();
-        let printf_calls = format::calls_at(workspace, file, source, offset);
+        let printf_calls = format::calls_at(self, file, source, offset);
         printf_rows(&printf_calls, source, offset, &mut rows);
         control_flow_rows(&scanner.functions, offset, &mut rows);
         if let Canonical::Package(alias) = &cursor.canonical
@@ -177,23 +177,14 @@ impl<'a> Context<'a> {
             let phase = workspace.trace.queries.then(std::time::Instant::now);
             let declaration_decision = cursor.declaration.as_ref().and_then(|target| {
                 if matches!(cursor.canonical, Canonical::Declaration { .. }) {
-                    Some(inline_declaration_matches(
-                        workspace,
-                        file,
-                        source,
-                        name,
-                        &inline_index,
-                        target,
-                    ))
+                    Some(inline_declaration_matches(self, file, source, name, target))
                 } else if matches!(
                     cursor.canonical,
-                    Canonical::Member(_, _, _) | Canonical::Global(_, _)
+                    Canonical::Member(_) | Canonical::Global(_, _)
                 ) && matches!(name.role, Role::Member(_) | Role::ExpressionMember(_))
                 {
-                    anonymous::chain_location(workspace, file, source, &name.span, name.span.start)
-                        .map(|(decl_file, selection)| {
-                            decl_file == target.0 && selection.start == target.1
-                        })
+                    anonymous::field_at(self, file, source, &name.span)
+                        .map(|field| field.file == target.0 && field.selection.start == target.1)
                 } else {
                     None
                 }
@@ -201,6 +192,7 @@ impl<'a> Context<'a> {
             let matched = match declaration_decision {
                 Some(decision) => decision,
                 None => occurrence_matches(
+                    self,
                     workspace,
                     file,
                     source,
@@ -227,37 +219,22 @@ impl<'a> Context<'a> {
             if !matched {
                 let matches_builtin = match &cursor.canonical {
                     Canonical::BuiltinMethod(method) => {
-                        builtin_interface_method(workspace, file, source, &analysis, name)
+                        builtin_interface_method(self, workspace, file, source, &analysis, name)
                             == Some(*method)
                     }
                     _ => false,
                 };
                 let matches_declaration = cursor.declaration.as_ref().is_some_and(|target| {
-                    if matches!(cursor.canonical, Canonical::Member(_, _, _)) {
+                    if matches!(cursor.canonical, Canonical::Member(_)) {
                         // Named member identity already compares the complete
                         // declaration; only anonymous/interface declarations
                         // need the fallback declaration walk.
                         false
                     } else if matches!(cursor.canonical, Canonical::Declaration { .. }) {
-                        inline_declaration_matches(
-                            workspace,
-                            file,
-                            source,
-                            name,
-                            &inline_index,
-                            target,
-                        )
+                        inline_declaration_matches(self, file, source, name, target)
                     } else {
-                        occurrence_declaration(
-                            workspace,
-                            file,
-                            source,
-                            &analysis,
-                            &mut resolver,
-                            name,
-                            &inline_index,
-                        )
-                        .as_ref()
+                        occurrence_declaration(self, file, source, &analysis, &mut resolver, name)
+                            .as_ref()
                             == Some(target)
                     }
                 });
@@ -266,9 +243,9 @@ impl<'a> Context<'a> {
                         cursor.canonical,
                         Canonical::Global(_, _)
                             | Canonical::Declaration { .. }
-                            | Canonical::Member(_, _, _)
+                            | Canonical::Member(_)
                     )
-                    && fallback_member(workspace, file, source, &analysis, name, &inline_index)
+                    && fallback_member(self, workspace, file, source, &analysis, name)
                         .is_some_and(|(canonical, _, _)| canonical == cursor.canonical);
                 if !(matches_builtin || matches_declaration || matches_fallback) {
                     if let Some(phase) = phase {
@@ -294,7 +271,7 @@ impl<'a> Context<'a> {
                 && matches!(name.role, Role::LiteralKey(_) | Role::LiteralElementKey(_))
                 && matches!(
                     cursor.canonical,
-                    Canonical::Member(_, _, _)
+                    Canonical::Member(_)
                         | Canonical::Declaration { .. }
                         | Canonical::BuiltinMethod(_)
                 ) {
@@ -330,7 +307,7 @@ impl<'a> Context<'a> {
     /// format associations still come from the same bounded signature scan.
     fn format_highlights(&self, offset: usize) -> Option<Vec<HighlightRow>> {
         let source = self.source();
-        let calls = format::calls_at(self.workspace, self.file(), source, offset);
+        let calls = format::calls_at(self, self.file(), source, offset);
         let mut rows = Vec::new();
         printf_rows(&calls, source, offset, &mut rows);
         finish_rows(&SourceMap::new(source), rows)
@@ -364,16 +341,16 @@ fn finish_rows(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn cursor<'a>(
+fn cursor<'a, 'workspace: 'a>(
+    context: &Context<'workspace>,
     workspace: &'a Workspace,
     file: &'a Path,
     source: &'a str,
     map: &SourceMap<'_>,
-    analysis: &SourceAnalysis,
+    analysis: &Occurrences,
     name: &Name,
     declarations: &[Range<usize>],
     package_name: Option<&Range<usize>>,
-    inline: &anonymous::InlineIndex,
 ) -> Cursor<'a> {
     let spelling = &source[name.span.clone()];
     // The guard identifier has no go/types object; each clause declares its
@@ -381,10 +358,16 @@ fn cursor<'a>(
     let identity = if type_switch_guard_declaration(analysis, source, name) {
         None
     } else {
-        IdentityResolver::new(workspace, file).resolve(analysis, source, name)
+        context.resolve_identity(
+            &mut IdentityResolver::new(workspace, file),
+            analysis,
+            source,
+            name,
+        )
     };
     let member =
-        super::navigation::member_declaration_target(workspace, file, source, &name.span, map);
+        super::navigation::member_declaration_target(workspace, file, source, &name.span, map)
+            .and_then(|member| member.identity_in_source(source));
     let imported = scope::universe::imported_name(workspace, file, spelling);
     // Embedded struct fields resolve to their implicit field variable, while an
     // embedded interface member is a type reference. The member inventory
@@ -395,10 +378,7 @@ fn cursor<'a>(
         _ => None,
     };
     let (canonical, class) = match (identity, member) {
-        (_, Some(member)) if embedded_member => (
-            Canonical::Member(member.file, member.owner.start, member.name),
-            member_class(member),
-        ),
+        (_, Some(member)) if embedded_member => (Canonical::Member(member), member_class(member)),
         (Some(Identity::Global(path, symbol)), _) => (
             Canonical::Global(path, symbol.start),
             if symbol.is_var() {
@@ -407,10 +387,7 @@ fn cursor<'a>(
                 Class::Text
             },
         ),
-        (Some(Identity::Member(member)), _) => (
-            Canonical::Member(member.file, member.owner.start, member.name),
-            member_class(member),
-        ),
+        (Some(Identity::Member(member)), _) => (Canonical::Member(member), member_class(member)),
         (Some(Identity::Local(selection)), _) => {
             if name.span != selection
                 && let Some(binding) = analysis.locals.resolve_at(name.span.start, spelling)
@@ -438,10 +415,7 @@ fn cursor<'a>(
                 (Canonical::Local(selection), class)
             }
         }
-        (None, Some(member)) => (
-            Canonical::Member(member.file, member.owner.start, member.name),
-            member_class(member),
-        ),
+        (None, Some(member)) => (Canonical::Member(member), member_class(member)),
         (None, None) => {
             let package_clause = package_name == Some(&name.span);
             if imported && !package_clause {
@@ -460,7 +434,7 @@ fn cursor<'a>(
     let mut fallback = false;
     if matches!(canonical, Canonical::Unresolved(_))
         && let Some((fallback_canonical, fallback_class, fallback_declaration)) =
-            fallback_member(workspace, file, source, analysis, name, inline)
+            fallback_member(context, workspace, file, source, analysis, name)
     {
         canonical = fallback_canonical;
         class = fallback_class;
@@ -500,7 +474,7 @@ fn canonical_tag(canonical: &Canonical<'_>) -> &'static str {
         Canonical::Local(_) => "local",
         Canonical::Case { .. } => "case",
         Canonical::Global(_, _) => "global",
-        Canonical::Member(_, _, _) => "member",
+        Canonical::Member(_) => "member",
         Canonical::Declaration { .. } => "declaration",
         Canonical::BuiltinMethod(_) => "builtin-method",
         Canonical::Package(_) => "package",
@@ -544,213 +518,73 @@ fn candidate_role_plausible(cursor: &Cursor<'_>, name: &Name) -> bool {
                 || cursor.global_kind == Some(SymbolKind::Method)
                 || matches!(name.role, Role::Member(Some(_)))
         }
-        Canonical::Member(_, _, _)
-        | Canonical::Declaration { .. }
-        | Canonical::BuiltinMethod(_) => matches!(
-            name.role,
-            Role::Member(_)
-                | Role::ExpressionMember(_)
-                | Role::LiteralKey(_)
-                | Role::LiteralElementKey(_)
-                | Role::Field
-                | Role::EmbeddedType(_)
-                | Role::FieldDeclaration(_)
-        ),
+        Canonical::Member(_) | Canonical::Declaration { .. } | Canonical::BuiltinMethod(_) => {
+            matches!(
+                name.role,
+                Role::Member(_)
+                    | Role::ExpressionMember(_)
+                    | Role::LiteralKey(_)
+                    | Role::LiteralElementKey(_)
+                    | Role::Field
+                    | Role::EmbeddedType(_)
+                    | Role::FieldDeclaration(_)
+            )
+        }
         Canonical::Package(_) | Canonical::Unresolved(_) | Canonical::Singleton => true,
     }
 }
 
-/// Inline-struct field declaration matching without the general resolver: the
-/// field's identity is the written declaration site, so literal keys and plain
-/// selector chains are checked directly and unrelated selectors are rejected
-/// before any type inference runs.
+/// Compare only declaration identities established by the native checker.
 fn inline_declaration_matches(
-    workspace: &Workspace,
+    context: &Context<'_>,
     file: &Path,
     source: &str,
     name: &Name,
-    inline: &anonymous::InlineIndex,
     target: &(PathBuf, usize),
 ) -> bool {
-    if let Some(selection) = anonymous::field_target_in(source, inline, &name.span) {
-        return target.0 == file && target.1 == selection.start;
-    }
-    if !plain_selector_chain(&source[name.span.clone()]) {
-        return false;
-    }
-    match anonymous::field_declaration_in(
-        workspace,
-        file,
-        source,
-        &name.span,
-        name.span.start,
-        inline,
-    ) {
-        Some(field) => field.file == target.0 && field.selection.start == target.1,
-        None => false,
-    }
-}
-
-/// True for `a.b.c`-shaped selectors (identifiers separated by dots), the only
-/// chains that can resolve through the plain binding/field walk.
-fn plain_selector_chain(text: &str) -> bool {
-    let mut tokens = crate::syntax::Lexer::new(text);
-    let Some(first) = tokens.next() else {
-        return false;
-    };
-    if first.kind != crate::syntax::TokenKind::Ident {
-        return false;
-    }
-    let mut expect_ident = false;
-    for token in tokens {
-        match (expect_ident, token.kind) {
-            (false, crate::syntax::TokenKind::Period) => expect_ident = true,
-            (true, crate::syntax::TokenKind::Ident) => expect_ident = false,
-            _ => return false,
-        }
-    }
-    !expect_ident
+    anonymous::field_at(context, file, source, &name.span)
+        .is_some_and(|field| field.file == target.0 && field.selection.start == target.1)
 }
 
 /// Declaration site (file and byte offset of the name) of a resolved member.
-fn member_offset(workspace: &Workspace, member: MemberDeclaration<'_>) -> Option<(PathBuf, usize)> {
-    let data = member.data(workspace)?;
-    let source = workspace.source(member.file)?;
-    let map = SourceMap::new(&source);
-    Some((member.file.to_path_buf(), map.offset(data.selection.start)?))
+fn member_offset(_workspace: &Workspace, member: MemberDeclId<'_>) -> Option<(PathBuf, usize)> {
+    (member.selection[0] < member.selection[1])
+        .then(|| (member.file.to_path_buf(), member.selection[0] as usize))
 }
 
-/// Field or method identity for occurrences that the spelling resolver cannot
-/// key: anonymous struct type literals, comma-ok assertion bindings and nested
-/// selector chains. Identity is the declaration site, never a type shape.
+/// Anonymous fields and universe methods retain their checked declaration identity.
 #[allow(clippy::type_complexity)]
-fn fallback_member<'a>(
+fn fallback_member<'a, 'workspace: 'a>(
+    context: &Context<'workspace>,
     workspace: &'a Workspace,
     file: &'a Path,
     source: &'a str,
-    analysis: &SourceAnalysis,
+    analysis: &Occurrences,
     name: &Name,
-    inline: &anonymous::InlineIndex,
 ) -> Option<(Canonical<'a>, Class, Option<(PathBuf, usize)>)> {
-    if let Some(builtin) = builtin_interface_method(workspace, file, source, analysis, name) {
+    if let Some(builtin) =
+        builtin_interface_method(context, workspace, file, source, analysis, name)
+    {
         return Some((Canonical::BuiltinMethod(builtin), Class::Text, None));
     }
-    if let Some(receiver) = assertion_receiver_type(workspace, file, source, analysis, name)
-        && let Some(member) = crate::analysis::types::lookup::receiver_member(
-            workspace,
-            file,
-            &receiver,
-            &source[name.span.clone()],
-        )
-    {
-        return match member {
-            ReceiverMember::Method(member_file, symbol) => Some((
-                Canonical::Global(member_file.as_path(), symbol.start),
-                Class::Text,
-                None,
-            )),
-            ReceiverMember::Declaration(declaration) => Some((
-                Canonical::Member(declaration.file, declaration.owner.start, declaration.name),
-                member_class(declaration),
-                member_offset(workspace, declaration),
-            )),
-        };
-    }
-    if let Some(field) = anonymous::field_declaration_in(
-        workspace,
-        file,
-        source,
-        &name.span,
-        name.span.start,
-        inline,
-    ) {
-        return Some((
-            Canonical::Declaration {
-                file: field.file,
-                start: field.selection.start,
-            },
-            Class::Variable,
-            None,
-        ));
-    }
-    let (decl_file, selection) =
-        anonymous::chain_location(workspace, file, source, &name.span, name.span.start)?;
-    let decl_source = workspace.source(&decl_file)?;
-    let map = SourceMap::new(&decl_source);
-    let class = super::navigation::member_declaration_target(
-        workspace,
-        &decl_file,
-        &decl_source,
-        &selection,
-        &map,
-    )
-    .map_or(Class::Variable, member_class);
+    let field = anonymous::occurrence_field(context, file, source, analysis, name)?;
     Some((
         Canonical::Declaration {
-            file: decl_file,
-            start: selection.start,
+            file: field.file,
+            start: field.selection.start,
         },
-        class,
+        Class::Variable,
         None,
     ))
 }
 
-/// Receiver type of a selector whose base is a comma-ok type-assertion binding:
-/// `cp, ok := x.(T)` binds the value slot to `T`, which legacy binding inference
-/// projects as a sequence and rejects.
-fn assertion_receiver_type(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    analysis: &SourceAnalysis,
-    name: &Name,
-) -> Option<String> {
-    let _ = (workspace, file);
-    let span = match &name.role {
-        Role::Member(Some(qualifier)) => qualifier.start..name.span.end,
-        Role::ExpressionMember(operand) => operand.start..name.span.end,
-        _ => return None,
-    };
-    let parsed = crate::syntax::parse_expression(source.get(span.clone())?);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let ExprKind::Selector { operand, .. } = &parsed.nodes[parsed.root.0].kind else {
-        return None;
-    };
-    let expression = &parsed.nodes[operand.0];
-    if !matches!(expression.kind, ExprKind::Name) {
-        return None;
-    }
-    let base = span.start + expression.span.start;
-    let spelling = source.get(base..span.start + expression.span.end)?;
-    let binding = analysis.locals.resolve_at(base, spelling)?;
-    let (initializer_span, result, count) = binding.initializer()?;
-    if result != 0 || count != 2 {
-        return None;
-    }
-    let initializer = crate::syntax::parse_expression(source.get(initializer_span.clone())?);
-    if !initializer.diagnostics.is_empty() {
-        return None;
-    }
-    let ExprKind::TypeAssertion { asserted_type, .. } = &initializer.nodes[initializer.root.0].kind
-    else {
-        return None;
-    };
-    source
-        .get(
-            initializer_span.start + asserted_type.start
-                ..initializer_span.start + asserted_type.end,
-        )
-        .map(str::to_owned)
-}
-
 /// The universe `error` interface method behind an interface-valued selector.
 fn builtin_interface_method<'a>(
-    workspace: &Workspace,
+    context: &Context<'_>,
+    _workspace: &Workspace,
     file: &Path,
     source: &'a str,
-    _analysis: &SourceAnalysis,
+    _analysis: &Occurrences,
     name: &Name,
 ) -> Option<&'a str> {
     let spelling = source.get(name.span.clone())?;
@@ -765,33 +599,30 @@ fn builtin_interface_method<'a>(
     }
     let s = u32::try_from(name.span.start).ok()?;
     let e = u32::try_from(name.span.end).ok()?;
-    let mut sema = crate::analysis::sema::Semantics::new(workspace);
-    let (region, arena) = sema.region_and_arena_at(file, source, s, None)?;
-    let sel = region.selection_by_span([s, e])?;
-    let crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(m)) =
-        sel.obj
-    else {
-        return None;
-    };
-    (m.builtin
-        && arena
-            .format_type(sel.recv, crate::analysis::types::Qualifier::Unqualified)
-            .as_deref()
-            == Some("error"))
-    .then_some(spelling)
+    context.with_sema(|sema| {
+        let (region, _) = sema.region_and_arena_at(file, source, s, None)?;
+        let sel = region.selection_by_span([s, e])?;
+        let crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(
+            m,
+        )) = sel.obj
+        else {
+            return None;
+        };
+        m.builtin.then_some(spelling)
+    })
 }
 
 /// Declaration site of any occurrence, including the native fallbacks.
-fn occurrence_declaration(
-    workspace: &Workspace,
+fn occurrence_declaration<'identity, 'workspace: 'identity>(
+    context: &Context<'workspace>,
     file: &Path,
     source: &str,
-    analysis: &SourceAnalysis,
-    resolver: &mut IdentityResolver<'_>,
+    analysis: &Occurrences,
+    resolver: &mut IdentityResolver<'identity>,
     name: &Name,
-    inline: &anonymous::InlineIndex,
 ) -> Option<(PathBuf, usize)> {
-    match resolver.resolve(analysis, source, name) {
+    let workspace = context.workspace();
+    match context.resolve_identity(resolver, analysis, source, name) {
         Some(Identity::Member(member)) => return member_offset(workspace, member),
         // Non-member identities can never equal a field/method declaration
         // identity, so the expensive declaration lookup is unnecessary.
@@ -805,19 +636,24 @@ fn occurrence_declaration(
         let map = SourceMap::new(source);
         if let Some(member) =
             super::navigation::member_declaration_target(workspace, file, source, &name.span, &map)
+                .and_then(|member| member.identity_in_source(source))
         {
             return member_offset(workspace, member);
         }
     }
-    match fallback_member(workspace, file, source, analysis, name, inline) {
+    match fallback_member(context, workspace, file, source, analysis, name) {
         Some((_, _, Some(declaration))) => Some(declaration),
         Some((Canonical::Declaration { file, start }, _, _)) => Some((file, start)),
         _ => None,
     }
 }
 
-fn member_class(member: MemberDeclaration<'_>) -> Class {
-    if member.kind == crate::syntax::MemberKind::Method {
+fn member_class(member: MemberDeclId<'_>) -> Class {
+    if member
+        .owner
+        .and_then(|owner| owner.type_info.as_ref())
+        .is_some_and(|info| info.is_interface())
+    {
         Class::Text
     } else {
         Class::Variable
@@ -876,13 +712,14 @@ fn import_spec_span(
 
 /// A candidate occurrence matches when its resolved identity is the cursor's.
 #[allow(clippy::too_many_arguments)]
-fn occurrence_matches(
+fn occurrence_matches<'identity, 'workspace: 'identity>(
+    context: &Context<'workspace>,
     workspace: &Workspace,
     file: &Path,
     source: &str,
     map: &SourceMap<'_>,
-    analysis: &SourceAnalysis,
-    resolver: &mut IdentityResolver<'_>,
+    analysis: &Occurrences,
+    resolver: &mut IdentityResolver<'identity>,
     name: &Name,
     cursor: &Cursor<'_>,
     package_name: Option<&Range<usize>>,
@@ -897,7 +734,9 @@ fn occurrence_matches(
             }
             match name.role {
                 Role::Namespace => package_name != Some(&name.span),
-                Role::Name => resolver.resolve(analysis, source, name).is_none(),
+                Role::Name => context
+                    .resolve_identity(resolver, analysis, source, name)
+                    .is_none(),
                 _ => false,
             }
         }
@@ -923,7 +762,9 @@ fn occurrence_matches(
             ) {
                 return false;
             }
-            resolver.resolve(analysis, source, name).is_none()
+            context
+                .resolve_identity(resolver, analysis, source, name)
+                .is_none()
                 || type_switch_guard_declaration(analysis, source, name)
         }
         Canonical::Global(path, start) => {
@@ -938,29 +779,29 @@ fn occurrence_matches(
                 return false;
             }
             matches!(
-                resolver.resolve(analysis, source, name),
+                context.resolve_identity(resolver, analysis, source, name),
                 Some(Identity::Global(other, symbol)) if other == *path && symbol.start == *start
             )
         }
-        Canonical::Member(target_file, owner_start, target_name) => {
-            if let Some(Identity::Member(member)) = resolver.resolve(analysis, source, name) {
-                return member.file == *target_file
-                    && member.owner.start == *owner_start
-                    && member.name == *target_name;
+        Canonical::Member(target) => {
+            if let Some(Identity::Member(member)) =
+                context.resolve_identity(resolver, analysis, source, name)
+            {
+                return member == *target;
             }
             if matches!(name.role, Role::Field | Role::EmbeddedType(_))
                 && let Some(member) = super::navigation::member_declaration_target(
                     workspace, file, source, &name.span, map,
                 )
             {
-                return member.file == *target_file
-                    && member.owner.start == *owner_start
-                    && member.name == *target_name;
+                return member
+                    .identity_in_source(source)
+                    .is_some_and(|member| member == *target);
             }
             false
         }
         Canonical::Local(selection) => matches!(
-            resolver.resolve(analysis, source, name),
+            context.resolve_identity(resolver, analysis, source, name),
             Some(Identity::Local(other)) if other == *selection
         ),
         Canonical::Declaration { .. } | Canonical::BuiltinMethod(_) => {
@@ -975,7 +816,7 @@ fn occurrence_matches(
             // selection span; the containing clause scope separates them. Only
             // clause-body uses resolve, so the shared declaration itself stays
             // out of the highlighted set, matching the reference server.
-            matches!(resolver.resolve(analysis, source, name),
+            matches!(context.resolve_identity(resolver, analysis, source, name),
                 Some(Identity::Local(other)) if other.start == *selection)
                 && analysis
                     .locals
@@ -988,7 +829,7 @@ fn occurrence_matches(
     }
 }
 
-fn type_switch_guard_declaration(analysis: &SourceAnalysis, source: &str, name: &Name) -> bool {
+fn type_switch_guard_declaration(analysis: &Occurrences, source: &str, name: &Name) -> bool {
     analysis
         .locals
         .definition_at(&name.span, &source[name.span.clone()])
@@ -1015,7 +856,7 @@ fn occurrence_kind(name: &Name, cursor: &Cursor<'_>, writes: &[Range<usize>]) ->
         | Role::FieldDeclaration(_)
         | Role::Namespace => HighlightKind::Text,
         Role::EmbeddedType(_) => match cursor.canonical {
-            Canonical::Member(_, _, _) => HighlightKind::Read,
+            Canonical::Member(_) => HighlightKind::Read,
             _ => HighlightKind::Text,
         },
         _ => match cursor.class {
@@ -1035,6 +876,7 @@ fn contains(spans: &[Range<usize>], span: &Range<usize>) -> bool {
 /// Bounded query-local scan: declaration/assignment write positions and the
 /// return/result metadata needed for control-flow highlights.
 struct Scanner<'a, 'q> {
+    context: &'q Context<'a>,
     workspace: &'a Workspace,
     file: &'a Path,
     source: &'q str,
@@ -1100,10 +942,11 @@ enum Shape {
 }
 
 impl<'a, 'q> Scanner<'a, 'q> {
-    fn new(workspace: &'a Workspace, file: &'a Path, source: &'q str) -> Self {
+    fn new(context: &'q Context<'a>, source: &'q str) -> Self {
         Self {
-            workspace,
-            file,
+            context,
+            workspace: context.workspace,
+            file: context.file(),
             source,
             writes: Vec::new(),
             declarations: Vec::new(),
@@ -1183,6 +1026,10 @@ impl<'a, 'q> Scanner<'a, 'q> {
     }
 
     fn function(&mut self, header: Range<usize>, body: Range<usize>) {
+        if body.len() > crate::analysis::budget::MAX_BODY_BYTES {
+            self.exhausted = true;
+            return;
+        }
         if !self.enter_function() {
             return;
         }
@@ -1211,6 +1058,10 @@ impl<'a, 'q> Scanner<'a, 'q> {
     }
 
     fn literal(&mut self, signature: Range<usize>, body: Range<usize>) {
+        if body.len() > crate::analysis::budget::MAX_BODY_BYTES {
+            self.exhausted = true;
+            return;
+        }
         if !self.enter_function() {
             self.exhausted = self.functions.len() >= MAX_FUNCTIONS;
             return;
@@ -1613,13 +1464,15 @@ impl<'a, 'q> Scanner<'a, 'q> {
 
     #[allow(clippy::only_used_in_recursion)]
     fn shape_uncached(&mut self, annotation: &str, depth: usize) -> Option<Shape> {
-        let form = crate::analysis::types::type_form_in_scope(
-            self.workspace,
-            self.file,
-            annotation,
-            &Locals::empty(),
-            0,
-        );
+        let form = self.context.with_sema(|sema| {
+            crate::analysis::types::type_form_in_scope(
+                sema.arena_mut(),
+                self.file,
+                annotation,
+                &Locals::empty(),
+                0,
+            )
+        });
         match form {
             Some(TypeForm::Struct) => Some(Shape::Struct),
             Some(TypeForm::Slice) | Some(TypeForm::Array) => match array_element(annotation) {

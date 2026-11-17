@@ -16,6 +16,36 @@ pub struct Constraint {
 }
 
 impl Constraint {
+    /// Minimum release implied by the expression, using Go's structural
+    /// version analysis (including De Morgan rules for negated groups).
+    pub(crate) fn minimum_go_version(&self) -> Option<u16> {
+        let mut values: Vec<(Option<u16>, Option<u16>)> = Vec::with_capacity(self.nodes.len());
+        for node in &self.nodes {
+            let value = match node {
+                Node::Tag(name) => {
+                    let version = if name == "go1" {
+                        Some(0)
+                    } else {
+                        name.strip_prefix("go1.")
+                            .and_then(|minor| minor.parse().ok())
+                    };
+                    (version, None)
+                }
+                Node::Not(id) => (values[*id].1, values[*id].0),
+                Node::And(a, b) => (
+                    values[*a].0.max(values[*b].0),
+                    values[*a].1.min(values[*b].1),
+                ),
+                Node::Or(a, b) => (
+                    values[*a].0.min(values[*b].0),
+                    values[*a].1.max(values[*b].1),
+                ),
+            };
+            values.push(value);
+        }
+        values[self.root].0
+    }
+
     /// Evaluates tags supplied by a target/build context. No host assumptions.
     pub fn matches(&self, mut tag: impl FnMut(&str) -> bool) -> bool {
         let mut values: Vec<bool> = Vec::with_capacity(self.nodes.len());

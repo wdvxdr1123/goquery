@@ -45,6 +45,27 @@ impl Parser<'_> {
                 break;
             }
         }
+        // A missing final comma inserts a semicolon before the literal's own
+        // closing brace. Keep the syntax error, but consume that brace here so
+        // it cannot truncate the enclosing function and hide later statements.
+        if self
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::Semicolon)
+        {
+            let mut following = self.tokens.clone();
+            let separator = following.next().expect("peeked separator");
+            if following
+                .peek()
+                .is_some_and(|token| token.kind == TokenKind::RBrace)
+            {
+                self.tokens.next();
+                self.error(
+                    separator.span,
+                    "expected ',' before '}' in composite literal",
+                );
+            }
+        }
         let end = self.close(TokenKind::RBrace, "expected '}' in composite literal", end);
         self.add(
             ExprKind::Composite {

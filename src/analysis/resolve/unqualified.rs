@@ -7,6 +7,14 @@ pub(crate) fn file_symbol_iter<'a>(
     workspace: &'a Workspace,
     file: &Path,
 ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+    super::View::for_file(workspace, file).file_symbol_iter(file)
+}
+
+pub(super) fn file_symbol_iter_in_view<'a>(
+    view: super::View<'a>,
+    file: &Path,
+) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
+    let workspace = view.workspace;
     let file = workspace
         .files
         .get_key_value(file)
@@ -18,7 +26,7 @@ pub(crate) fn file_symbol_iter<'a>(
     let aliases: Vec<_> = imports
         .iter()
         .filter(|import| !import.is_dot() && !import.is_blank())
-        .filter_map(|import| workspace.import_name(import))
+        .filter_map(|import| view.import_name(file, import))
         .collect();
     let dotted = imports
         .iter()
@@ -30,10 +38,11 @@ pub(crate) fn file_symbol_iter<'a>(
                     .any(|other| other.is_dot() && other.path == import.path)
         })
         .flat_map(move |(_, import)| {
-            super::symbols_for_import(workspace, file, &import.path, None)
+            super::symbols_for_import(workspace, file, &import.path, None, view.build)
         });
     workspace
-        .package_symbols(file)
+        .package_files_in_view(file, view.build)
+        .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
         .filter(|(_, symbol)| symbol.receiver.is_none())
         .chain(dotted)
         // Named imports also occupy the file block. Invalid collisions must
@@ -53,18 +62,29 @@ pub(crate) fn unqualified_lookup<'a>(
     file: &Path,
     name: &str,
 ) -> UnqualifiedLookup<'a> {
+    super::View::for_file(workspace, file).unqualified_lookup(file, name)
+}
+
+pub(super) fn unqualified_lookup_in_view<'a>(
+    view: super::View<'a>,
+    file: &Path,
+    name: &str,
+) -> UnqualifiedLookup<'a> {
+    let workspace = view.workspace;
     let imports = workspace
         .files
         .get(file)
         .map_or(&[][..], |stub| stub.imports.as_slice());
     if imports.iter().any(|import| {
-        !import.is_dot() && !import.is_blank() && workspace.import_name(import) == Some(name)
+        !import.is_dot() && !import.is_blank() && view.import_name(file, import) == Some(name)
     }) {
         return UnqualifiedLookup::NotFound;
     }
     let probe = crate::bloom::Fingerprint::new(name.as_bytes());
     let package = workspace
-        .package_symbol_candidates(file, probe)
+        .package_files_in_view(file, view.build)
+        .filter(move |(_, stub)| stub.declarations.may_contain_fingerprint(probe))
+        .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
         .filter(|(_, symbol)| symbol.receiver.is_none());
     let dotted = imports
         .iter()
@@ -76,7 +96,7 @@ pub(crate) fn unqualified_lookup<'a>(
                     .any(|other| other.is_dot() && other.path == import.path)
         })
         .flat_map(|(_, import)| {
-            super::symbols_for_import(workspace, file, &import.path, Some(probe))
+            super::symbols_for_import(workspace, file, &import.path, Some(probe), view.build)
         });
     let mut matches = package
         .chain(dotted)

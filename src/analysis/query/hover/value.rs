@@ -1,6 +1,130 @@
 //! Small Go constant and untyped-literal projections used by hover descriptions.
 use crate::syntax::{ExprKind, TokenKind};
 
+/// Source-only display attachment for one checked package declaration slot.
+pub(super) struct Declaration<'s> {
+    pub(super) value: Option<&'s str>,
+    pub(super) iota: usize,
+    pub(super) own: bool,
+}
+
+pub(super) fn declaration<'s>(
+    context: &crate::analysis::query::Context<'_>,
+    origin: &std::path::Path,
+    source: &'s str,
+    symbol: &crate::index::IndexedSymbol,
+) -> Option<Declaration<'s>> {
+    declaration_in(context, origin, source, 0, symbol)
+}
+
+pub(super) fn declaration_span(
+    context: &crate::analysis::query::Context<'_>,
+    origin: &std::path::Path,
+    symbol: &crate::index::IndexedSymbol,
+) -> Option<std::ops::Range<usize>> {
+    let group = symbol
+        .is_const()
+        .then(|| {
+            context
+                .workspace()
+                .files
+                .get(origin)?
+                .constant_groups
+                .iter()
+                .find(|span| span[0] as usize <= symbol.start && symbol.start < span[1] as usize)
+        })
+        .flatten();
+    let span = group
+        .map(|span| span[0] as usize..span[1] as usize)
+        .or_else(|| symbol.declaration())?;
+    (span.len() <= crate::analysis::budget::MAX_BYTES).then_some(span)
+}
+
+pub(super) fn declaration_in<'s>(
+    context: &crate::analysis::query::Context<'_>,
+    origin: &std::path::Path,
+    source: &'s str,
+    source_base: usize,
+    symbol: &crate::index::IndexedSymbol,
+) -> Option<Declaration<'s>> {
+    use crate::syntax::{DeclSpecKind, StmtKind};
+    let group = symbol
+        .is_const()
+        .then(|| {
+            context
+                .workspace()
+                .files
+                .get(origin)?
+                .constant_groups
+                .iter()
+                .find(|span| span[0] as usize <= symbol.start && symbol.start < span[1] as usize)
+        })
+        .flatten();
+    let span = group
+        .map(|span| span[0] as usize..span[1] as usize)
+        .or_else(|| symbol.declaration())?;
+    if span.len() > crate::analysis::budget::MAX_BYTES {
+        return None;
+    }
+    let text =
+        source.get(span.start.checked_sub(source_base)?..span.end.checked_sub(source_base)?)?;
+    let parsed = if group.is_some() {
+        crate::syntax::parse_declaration(text)
+    } else {
+        crate::syntax::parse_decl_spec(
+            text,
+            if symbol.is_const() {
+                DeclSpecKind::Const
+            } else {
+                DeclSpecKind::Var
+            },
+        )
+    };
+    if !parsed.diagnostics.is_empty() {
+        return None;
+    }
+    let declarations = match &parsed.statement(parsed.root())?.kind {
+        StmtKind::DeclarationGroup { declarations } => declarations.as_slice(),
+        StmtKind::Declaration { .. } => std::slice::from_ref(&parsed.root),
+        _ => return None,
+    };
+    let mut previous = None;
+    for (iota, declaration) in declarations.iter().enumerate() {
+        let StmtKind::Declaration {
+            names,
+            annotation,
+            values,
+            ..
+        } = &parsed.statement(*declaration)?.kind
+        else {
+            return None;
+        };
+        let own = !values.is_empty();
+        let effective = if symbol.is_const() && !own {
+            previous?
+        } else {
+            (annotation, values)
+        };
+        if own {
+            previous = Some(effective);
+        }
+        let Some(slot) = names
+            .iter()
+            .position(|name| span.start + name.start == symbol.start)
+        else {
+            continue;
+        };
+        let (_, values) = effective;
+        let value = if values.len() == names.len() {
+            Some(text.get(parsed.expression(*values.get(slot)?)?.span.clone())?)
+        } else {
+            None
+        };
+        return Some(Declaration { value, iota, own });
+    }
+    None
+}
+
 /// Source text and evaluated value of a constant literal initializer.
 pub(super) struct Literal {
     /// Canonical `go/constant` value rendering.
@@ -103,20 +227,40 @@ pub(super) fn literal(text: &str) -> Option<Literal> {
     }
 }
 
-/// Evaluate a constant string expression.
-///
-/// Handles string literals, parenthesized expressions and `+` concatenation;
-/// named constants (including package-qualified ones) are delegated to
-/// `lookup`, which resolves their declaration and recursively evaluates it.
-/// Returns the operand type spelling when one operand is typed, plus the
-/// decoded byte string. Concatenation keeps Go's byte semantics; the caller
-/// quotes the result with [`quote_bytes`].
+/// Display-only constant expansion shares bounded source and evaluation work.
+pub(super) struct TextBudget {
+    steps: usize,
+    bytes: usize,
+}
+
+impl TextBudget {
+    pub(super) fn new() -> Self {
+        Self {
+            steps: crate::analysis::budget::RELATION_STEPS,
+            bytes: 64 * 1024,
+        }
+    }
+    pub(super) fn step(&mut self) -> Option<()> {
+        self.steps = self.steps.checked_sub(1)?;
+        Some(())
+    }
+    pub(super) fn read(&mut self, bytes: usize) -> Option<()> {
+        self.bytes = self.bytes.checked_sub(bytes)?;
+        Some(())
+    }
+}
+
+/// Decode string display bytes after the declaration operand proves its type.
+/// This projection never supplies a type or a declaration identity.
 pub(super) fn string_expression(
     text: &str,
     depth: usize,
-    lookup: &mut impl FnMut(&str, usize) -> Option<(Option<String>, Vec<u8>)>,
-) -> Option<(Option<String>, Vec<u8>)> {
-    if depth >= 16 || text.len() > 16 * 1024 {
+    budget: &mut TextBudget,
+    lookup: &mut impl FnMut(&str, usize, &mut TextBudget) -> Option<Vec<u8>>,
+) -> Option<Vec<u8>> {
+    const MAX_STRING_BYTES: usize = 16 * 1024;
+    budget.step()?;
+    if depth >= 16 || text.len() > MAX_STRING_BYTES {
         return None;
     }
     let parsed = crate::syntax::parse_expression(text);
@@ -126,18 +270,13 @@ pub(super) fn string_expression(
     let expression = parsed.nodes.get(parsed.root.0)?;
     match &expression.kind {
         ExprKind::Literal => {
-            let token = crate::syntax::Lexer::new(&text[expression.span.clone()]).next()?;
-            if token.kind != TokenKind::String {
-                return None;
-            }
-            Some((
-                None,
-                crate::syntax::decode_string_literal(&text[token.span])?,
-            ))
+            let token = crate::syntax::Lexer::new(text).next()?;
+            (token.kind == TokenKind::String).then_some(())?;
+            crate::syntax::decode_string_literal(text.get(token.span)?)
         }
         ExprKind::Parenthesized { expression: inner } => {
             let inner = parsed.nodes.get(inner.0)?;
-            string_expression(text.get(inner.span.clone())?, depth + 1, lookup)
+            string_expression(text.get(inner.span.clone())?, depth + 1, budget, lookup)
         }
         ExprKind::Binary {
             left,
@@ -149,14 +288,15 @@ pub(super) fn string_expression(
             }
             let left = parsed.nodes.get(left.0)?;
             let right = parsed.nodes.get(right.0)?;
-            let (left_type, mut bytes) =
-                string_expression(text.get(left.span.clone())?, depth + 1, lookup)?;
-            let (right_type, right_bytes) =
-                string_expression(text.get(right.span.clone())?, depth + 1, lookup)?;
-            bytes.extend_from_slice(&right_bytes);
-            Some((left_type.or(right_type), bytes))
+            let mut bytes =
+                string_expression(text.get(left.span.clone())?, depth + 1, budget, lookup)?;
+            let right =
+                string_expression(text.get(right.span.clone())?, depth + 1, budget, lookup)?;
+            (bytes.len().checked_add(right.len())? <= MAX_STRING_BYTES).then_some(())?;
+            bytes.extend_from_slice(&right);
+            Some(bytes)
         }
-        ExprKind::Name => lookup(text.get(expression.span.clone())?, depth + 1),
+        ExprKind::Name => lookup(text.get(expression.span.clone())?, depth + 1, budget),
         ExprKind::Selector { operand, field } => {
             let operand = parsed.nodes.get(operand.0)?;
             if !matches!(operand.kind, ExprKind::Name) {
@@ -167,47 +307,7 @@ pub(super) fn string_expression(
                 text.get(operand.span.clone())?,
                 text.get(field.clone())?
             );
-            lookup(&name, depth + 1)
-        }
-        _ => None,
-    }
-}
-
-/// Default type of a single non-constant expression, using only syntax.
-pub(super) fn default_type(text: &str) -> Option<String> {
-    let parsed = crate::syntax::parse_expression(text);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let expression = parsed.nodes.get(parsed.root.0)?;
-    match &expression.kind {
-        ExprKind::Literal => {
-            let token = crate::syntax::Lexer::new(&text[expression.span.clone()]).next()?;
-            Some(
-                match token.kind {
-                    TokenKind::Int => "int",
-                    TokenKind::Char => "rune",
-                    TokenKind::Float => "float64",
-                    TokenKind::Imag => "complex128",
-                    TokenKind::String => "string",
-                    _ => return None,
-                }
-                .to_owned(),
-            )
-        }
-        ExprKind::Name if matches!(text[expression.span.clone()].trim(), "true" | "false") => {
-            Some("bool".to_owned())
-        }
-        ExprKind::Composite {
-            literal_type: Some(literal_type),
-            ..
-        } => {
-            let span = &parsed.nodes.get(literal_type.0)?.span;
-            let annotation = text.get(span.clone())?.trim();
-            // Extents require semantic constant/index checks, not a spelling.
-            inferred_array_header(annotation)
-                .is_none()
-                .then(|| annotation.to_owned())
+            lookup(&name, depth + 1, budget)
         }
         _ => None,
     }
@@ -493,97 +593,4 @@ fn sub_second(mut value: u128, unit: u128, suffix: &str, sign: &str) -> String {
 /// Go `strconv.Quote` rendering of a decoded string constant.
 pub(super) fn quote_bytes(value: &[u8]) -> String {
     crate::syntax::quote_bytes(value)
-}
-
-pub(super) struct InferredArray {
-    pub(super) length: u64,
-    pub(super) text: String,
-}
-
-pub(super) fn inferred_array_header(text: &str) -> Option<usize> {
-    let mut tokens = crate::syntax::Lexer::new(text);
-    let mut first = tokens.next()?;
-    for _ in 0..crate::analysis::budget::MAX_DEPTH {
-        if first.kind != TokenKind::LParen {
-            break;
-        }
-        first = tokens.next()?;
-    }
-    (first.kind == TokenKind::LBrack).then_some(())?;
-    (tokens.next()?.kind == TokenKind::Ellipsis).then_some(())?;
-    let end = tokens.next()?;
-    (end.kind == TokenKind::RBrack).then_some(end.span.end)
-}
-
-/// Package initializer entry point.
-/// Outer None is another expression; Some(None) must not fall back to `[...]`.
-pub(super) fn inferred_array_literal(
-    workspace: &crate::workspace::Workspace,
-    file: &std::path::Path,
-    text: &str,
-) -> Option<Option<InferredArray>> {
-    inferred_array_header(text)?;
-    Some((|| {
-        if text.len() > crate::analysis::budget::MAX_BYTES {
-            return None;
-        }
-        let file = workspace.files.get_key_value(file)?.0.as_path();
-        let prefix = "_ = ";
-        let wrapped = format!("{prefix}{text}");
-        let tree = crate::syntax::parse_decl_spec(&wrapped, crate::syntax::DeclSpecKind::Var);
-        if !tree.diagnostics().is_empty() {
-            return None;
-        }
-        let crate::syntax::StmtKind::Declaration { values, .. } =
-            &tree.statement(tree.root())?.kind
-        else {
-            return None;
-        };
-        let mut expr_id = *values.first()?;
-        for _ in 0..crate::analysis::budget::MAX_DEPTH {
-            let expr = tree.expression(expr_id)?;
-            match &expr.kind {
-                crate::syntax::ExprKind::Parenthesized { expression } => expr_id = *expression,
-                crate::syntax::ExprKind::Composite { elements, .. } => {
-                    if elements.len() > crate::analysis::budget::MAX_NODES {
-                        return None;
-                    }
-                    break;
-                }
-                _ => break,
-            }
-        }
-        let wrapped_end = u32::try_from(wrapped.len()).ok()?;
-        let scopes =
-            crate::analysis::scope::tree::ScopeTree::from_top_level_decl(&wrapped, 0, &tree, None);
-        let mut region =
-            crate::analysis::check::region::RegionInfo::new(None, [0, wrapped_end], scopes);
-        let mut arena = crate::analysis::types::TypeArena::with_shared_budget(workspace);
-        let mut decls = crate::analysis::check::decls::DeclCache::new();
-        {
-            let mut checker = crate::analysis::check::RegionChecker::new(
-                &mut arena,
-                &mut decls,
-                file,
-                &wrapped,
-                0,
-                &tree,
-                &mut region,
-                None,
-                None,
-            );
-            checker.check_decl_spec(false);
-        }
-        region.finalize();
-        let rhs_span = [u32::try_from(prefix.len()).ok()?, wrapped_end];
-        let op = region.expr_type(rhs_span)?;
-        let length = arena.array_length(op.ty)?;
-        let formatted =
-            arena.format_type(op.ty, crate::analysis::types::Qualifier::RelativeTo(file))?;
-        let rendered = crate::analysis::query::signatures::label::function_types(&formatted)?;
-        Some(InferredArray {
-            length,
-            text: rendered,
-        })
-    })())
 }

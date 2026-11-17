@@ -3,15 +3,6 @@ use super::{Workspace, dependencies, goenv, path, sdk};
 use serde_json::Value;
 
 impl Workspace {
-    pub(crate) fn integer_bits(&self) -> Option<u32> {
-        match self.build_target.goarch() {
-            "386" | "arm" | "mips" | "mipsle" | "wasm" => Some(32),
-            "amd64" | "arm64" | "loong64" | "mips64" | "mips64le" | "ppc64" | "ppc64le"
-            | "riscv64" | "s390x" => Some(64),
-            _ => None,
-        }
-    }
-
     /// A view target for an orphaned file: same compiler/release tags and cgo
     /// policy as the workspace, with the port chosen from gopls' preferred list.
     pub(super) fn view_target(&self, goos: &str, goarch: &str) -> crate::buildconstraint::Target {
@@ -113,6 +104,7 @@ impl Workspace {
                 self.build_target.enable_tag(tag);
             }
         }
+        self.configure_view_targets();
         self.sdk_root = sdk::discover(options, &go_env)
             .map_err(|error| (crate::error::INVALID_PARAMS, error))?;
         self.started_at = Some(crate::index::DiskStamp::now_nanos());
@@ -197,4 +189,15 @@ fn watch_excludes(options: &Value) -> Result<super::file_events::WatchExcludes, 
         .build()
         .map_err(|error| invalid(error.to_string()))?;
     Ok(super::file_events::WatchExcludes(Some(compiled)))
+}
+
+/// Go gcSizes for a selected target; unavailable targets stay unknown.
+pub(super) fn gc_sizes(goarch: &str) -> Option<(i64, i64)> {
+    match goarch {
+        "386" | "arm" | "mips" | "mipsle" => Some((4, 4)),
+        "amd64p32" | "wasm32" => Some((4, 8)),
+        "amd64" | "arm64" | "loong64" | "mips64" | "mips64le" | "ppc64" | "ppc64le" | "riscv64"
+        | "s390x" | "sparc64" | "wasm" => Some((8, 8)),
+        _ => None,
+    }
 }

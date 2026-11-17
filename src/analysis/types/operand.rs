@@ -1,18 +1,27 @@
 //! Bounded operands: match untyped types before operator checks and defaulting.
 use super::{BasicKind, Ty, TypeArena, TypeId};
+use crate::analysis::obj::BuiltinFunction;
 use crate::syntax::{Lexer, TokenKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
+    Invalid,
+    NoValue,
+    Builtin(BuiltinFunction),
     TypeExpr,
     Constant,
     Variable,
     Value,
+    MapIndex,
+    CommaOk,
 }
 
 impl Mode {
     pub(crate) const fn is_value(self) -> bool {
-        matches!(self, Self::Constant | Self::Variable | Self::Value)
+        matches!(
+            self,
+            Self::Constant | Self::Variable | Self::Value | Self::MapIndex | Self::CommaOk
+        )
     }
 }
 
@@ -39,6 +48,18 @@ pub(crate) struct Operand {
     pub(crate) mode: Mode,
     pub(crate) ty: TypeId,
     pub(crate) value: Option<Constant>,
+}
+
+impl Operand {
+    /// Non-value operands carry the arena's permanent invalid type, never a
+    /// guessed value type. Only builtins carry additional mode information.
+    pub(crate) const fn non_value(mode: Mode) -> Self {
+        Self {
+            mode,
+            ty: TypeId::INVALID,
+            value: None,
+        }
+    }
 }
 
 // Package-value memo capacity is computed from its actual element size and
@@ -85,6 +106,7 @@ impl TypeArena<'_> {
     }
 
     pub(crate) fn default_operand(&mut self, operand: Operand, int_bits: u32) -> Option<TypeId> {
+        operand.mode.is_value().then_some(())?;
         let Some(kind) = self.basic_kind(operand.ty) else {
             return Some(operand.ty);
         };
@@ -107,6 +129,7 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<Operand> {
+        operand.mode.is_value().then_some(())?;
         let source = self.basic_kind(operand.ty)?;
         let target_kind = self.basic_kind(target)?;
         if target_kind == BasicKind::UnsafePointer {

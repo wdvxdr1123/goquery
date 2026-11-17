@@ -1,7 +1,7 @@
 //! Compact workspace ownership and package-directory metadata lookup.
 use super::packages::PackageNames;
 
-use crate::index::{DiskStamp, IndexedFile, IndexedSymbol as Symbol};
+use crate::index::{DiskStamp, IndexedFile};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
@@ -42,6 +42,9 @@ pub struct Workspace {
     pub(crate) trace: TraceConfig,
     pub(crate) files: BTreeMap<PathBuf, IndexedFile>,
     pub(crate) modules: HashMap<PathBuf, String>,
+    /// Event-owned language metadata; one scalar per admitted module.
+    pub(super) module_go_versions: HashMap<PathBuf, u16>,
+    pub(super) sdk_go_version: Option<u16>,
     pub(crate) package_names: PackageNames,
     pub(super) open: HashMap<PathBuf, String>,
     /// Dirty/stamp bookkeeping for event-triggered disk reconciliation.
@@ -77,6 +80,8 @@ pub struct Workspace {
     pub(super) sdk_cmd_vendor: std::collections::HashSet<String>,
     pub(super) excluded_modules: Vec<PathBuf>,
     pub(super) build_target: crate::buildconstraint::Target,
+    /// Fixed preferred-port contexts built once during initialization.
+    pub(super) view_targets: Vec<crate::buildconstraint::Target>,
     /// Sampled once from CGO_ENABLED at initialization: cgo-disabled builds
     /// exclude files importing "C", mirroring the Go build context.
     pub(super) cgo_disabled: bool,
@@ -144,49 +149,15 @@ impl Workspace {
         self.detached.contains(file)
     }
 
-    pub(crate) fn symbols(&self, file: &Path) -> Vec<(&PathBuf, &Symbol)> {
-        self.package_symbols(file).collect()
-    }
-
-    pub(crate) fn package_symbols<'a>(
+    pub(crate) fn package_files_in_view<'a>(
         &'a self,
         file: &Path,
-    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
-        self.package_files(file)
-            .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
-    }
-
-    pub(crate) fn package_symbol_candidates<'a>(
-        &'a self,
-        file: &Path,
-        probe: crate::bloom::Fingerprint,
-    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
-        self.package_files(file)
-            .filter(move |(_, stub)| stub.declarations.may_contain_fingerprint(probe))
-            .flat_map(|(path, stub)| stub.symbols.iter().map(move |symbol| (path, symbol)))
-    }
-
-    /// Method names are absent from the top-level declaration filter. The
-    /// source identifier filter can reject files without false negatives.
-    pub(crate) fn package_method_candidates<'a>(
-        &'a self,
-        file: &Path,
-        probe: crate::bloom::Fingerprint,
-    ) -> impl Iterator<Item = (&'a PathBuf, &'a Symbol)> + use<'a> {
-        self.package_files(file)
-            .filter(move |(_, stub)| stub.identifiers.may_contain_fingerprint(probe))
-            .flat_map(|(path, stub)| {
-                stub.symbols
-                    .iter()
-                    .filter(|symbol| symbol.is_method())
-                    .map(move |symbol| (path, symbol))
-            })
-    }
-
-    pub(crate) fn package_files<'a>(
-        &'a self,
-        file: &Path,
+        view: super::BuildView<'a>,
     ) -> impl Iterator<Item = (&'a PathBuf, &'a IndexedFile)> + use<'a> {
+        let file = self
+            .files
+            .get_key_value(file)
+            .map_or(Path::new(""), |(file, _)| file.as_path());
         let scope = self
             .files
             .get_key_value(file)
@@ -196,20 +167,13 @@ impl Workspace {
         let directory = scope
             .and_then(|(directory, _)| directory)
             .unwrap_or(Path::new(""));
-        // Orphaned open buffers only ever see themselves; they must not merge
-        // into the real package view of their directory.
-        let detached = self.detached.contains(file);
+        // An orphan may use compatible admitted siblings; real packages never
+        // observe declarations admitted only for an orphan view.
         self.files
             .range::<Path, _>((Bound::Included(directory), Bound::Unbounded))
             .take_while(move |(path, _)| path.starts_with(directory))
             .filter(move |(path, stub)| {
-                if detached {
-                    return self.detached.contains(*path)
-                        && scope.is_some_and(|(directory, package)| {
-                            path.parent() == directory && stub.package == package
-                        });
-                }
-                !self.detached.contains(*path)
+                view.visible(self, path)
                     && scope.is_some_and(|(directory, package)| {
                         path.parent() == directory && stub.package == package
                     })

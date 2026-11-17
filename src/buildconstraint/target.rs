@@ -5,11 +5,37 @@ use std::collections::BTreeSet;
 
 /// Explicit target context. Compiler/release/cgo/custom tags are supplied by the
 /// caller rather than inferred from the machine running the parser.
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Target {
     goos: String,
     goarch: String,
     tags: BTreeSet<String>,
+}
+
+/// Parse one header once while computing fixed-size target membership metadata.
+pub(crate) fn matching_targets<'a>(
+    name: &str,
+    source: &str,
+    targets: impl IntoIterator<Item = &'a Target>,
+) -> Result<u64, ParseError> {
+    let constraint = header::from_header(source)?;
+    let mut mask = 0;
+    for (index, target) in targets.into_iter().enumerate() {
+        if index >= u64::BITS as usize {
+            return Err(ParseError {
+                offset: 0,
+                message: "too many build targets",
+            });
+        }
+        if target.matches_filename(name)
+            && constraint
+                .as_ref()
+                .is_none_or(|constraint| constraint.matches(|tag| target.matches_tag(tag)))
+        {
+            mask |= 1 << index;
+        }
+    }
+    Ok(mask)
 }
 
 impl Target {

@@ -1,7 +1,7 @@
 //! Unified selector resolution results, mirroring `go/types.Selection`.
 
-use super::TypeId;
-use crate::analysis::obj::ObjectRef;
+use super::{Ty, TypeArena, TypeId};
+use crate::analysis::obj::{DeclId, ObjectRef};
 
 /// Kind of selector expression resolved by field/method lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -45,6 +45,11 @@ impl PromotionIndices {
             &self.inline[..usize::from(self.len)]
         }
     }
+
+    pub(crate) fn conflicts(&self, other: &Self) -> bool {
+        self.as_slice().starts_with(other.as_slice())
+            || other.as_slice().starts_with(self.as_slice())
+    }
 }
 
 /// Complete resolved selection information from `lookup_field_or_method` or `lookup_method_expr`.
@@ -56,4 +61,52 @@ pub(crate) struct Selection<'a> {
     pub(crate) ty: TypeId,
     pub(crate) indices: PromotionIndices,
     pub(crate) indirect: bool,
+}
+
+impl<'a> TypeArena<'a> {
+    pub(crate) fn receiver_declaration(&mut self, input: TypeId) -> Option<DeclId<'a>> {
+        let root = self.receiver_base(input)?;
+        self.named_declaration(root)
+            .map(|(declaration, _, _)| declaration)
+    }
+
+    pub(crate) fn receiver_base(&mut self, input: TypeId) -> Option<TypeId> {
+        let mut root = self.unalias(input)?;
+        if let Ty::Pointer(element) = self.nodes.get(usize::from(root.0))? {
+            root = self.unalias(*element)?;
+        }
+        Some(root)
+    }
+
+    /// Project a proven selection path through the same instantiated fields.
+    /// This does not search for a member or resolve any source spelling.
+    pub(crate) fn embedded_field_path(
+        &mut self,
+        mut input: TypeId,
+        indices: &[u16],
+    ) -> Option<Vec<(String, TypeId)>> {
+        let mut path = Vec::new();
+        for index in indices {
+            self.step()?;
+            let mut root = self.unalias(input)?;
+            if let Ty::Pointer(element) = self.nodes.get(usize::from(root.0))? {
+                root = self.unalias(*element)?;
+            }
+            let root = self.underlying(root)?;
+            let Ty::Struct { fields, .. } = self.nodes.get(usize::from(root.0))? else {
+                return None;
+            };
+            let field_index = fields.start.checked_add(usize::from(*index))?;
+            let field = self
+                .fields
+                .get(field_index)
+                .filter(|_| field_index < fields.end)?;
+            if !field.embedded {
+                return None;
+            }
+            input = field.ty;
+            path.push((field.name.clone(), input));
+        }
+        Some(path)
+    }
 }

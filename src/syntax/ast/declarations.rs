@@ -72,6 +72,9 @@ impl<Span, Body> Symbol<Span, Body> {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct TypeInfo {
+    /// End of the declaration parameter list relative to its name end.
+    /// u16::MAX means unavailable within the 16 KiB header budget.
+    pub parameter_end: u16,
     pub constructor: TypeConstructor,
     /// Conservative proof for metadata-only negative embedding searches.
     /// False means the inventory may omit opaque or bounded member syntax.
@@ -96,11 +99,17 @@ impl TypeInfo {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct TypeTarget {
+    /// RHS token offset relative to the declaration name's end. Trivia is not
+    /// retained, and this offset asserts no semantic target relationship.
+    pub body_start: u32,
     /// Target spelling, bounded to 16 KiB.
     pub name: String,
     pub alias: bool,
     pub generic: bool,
 }
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<TypeTarget>() <= 32);
 
 /// Aggregate member categories, independent of protocol numeric values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

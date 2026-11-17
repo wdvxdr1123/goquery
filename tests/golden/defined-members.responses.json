@@ -143,21 +143,7 @@
   {
     "id": 3,
     "jsonrpc": "2.0",
-    "result": [
-      {
-        "range": {
-          "end": {
-            "character": 50,
-            "line": 4
-          },
-          "start": {
-            "character": 44,
-            "line": 4
-          }
-        },
-        "uri": "$LIB_URI"
-      }
-    ]
+    "result": null
   },
   {
     "id": 4,
@@ -1054,21 +1040,7 @@
   {
     "id": 39,
     "jsonrpc": "2.0",
-    "result": [
-      {
-        "range": {
-          "end": {
-            "character": 21,
-            "line": 50
-          },
-          "start": {
-            "character": 16,
-            "line": 50
-          }
-        },
-        "uri": "$FILE_URI"
-      }
-    ]
+    "result": null
   },
   {
     "id": 40,

@@ -120,6 +120,10 @@ impl DiskStamp {
 
 #[derive(Default)]
 pub struct IndexedFile {
+    /// Workspace-selected host/preferred-port memberships; no source is retained.
+    pub(crate) build_targets: u64,
+    /// Minimum release implied by the leading build expression, without text.
+    pub(crate) build_go_version: Option<u16>,
     pub(crate) identifiers: IdentifierFilter,
     pub(crate) import_paths: BloomFilter<1>,
     pub(crate) declarations: BloomFilter<4>,
@@ -171,6 +175,8 @@ pub fn index_source(source: &str) -> IndexedFile {
         import_paths.insert(import.path.as_bytes());
     }
     IndexedFile {
+        build_targets: 0,
+        build_go_version: crate::buildconstraint::minimum_go_version(source),
         identifiers: IdentifierFilter::new(source),
         import_paths,
         declarations,

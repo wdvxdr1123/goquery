@@ -1,5 +1,5 @@
-//! Generated from the pinned Go toolchain's net/url/encoding_table.go by
-//! scripts/generate_document_link_tables.py; do not edit.
+//! Generated from the pinned Go toolchain's net/url/encoding_table.go.
+//! Do not edit the generated table.
 
 pub(super) const ESCAPE: [u8; 256] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

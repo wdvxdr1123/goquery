@@ -7,9 +7,9 @@ use crate::analysis::check::decls::DeclCache;
 use crate::analysis::check::region::RegionInfo;
 use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef, SymbolOrigin, VarKind};
 use crate::analysis::query::Context;
+use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::universe::{builtin, builtin_function, builtin_type, imported_name};
 use crate::analysis::scope::{Binding, DeclarationKind, Locals, ObjectKind};
-use crate::analysis::source::{Name, Role, SourceAnalysis};
 use crate::analysis::types::{TypeArena, TypeForm, TypeId};
 use crate::index::IndexedSymbol;
 use crate::syntax::{Lexer, TokenKind};
@@ -244,7 +244,15 @@ impl<'a> Context<'a> {
             }
 
             for (span, kind) in raw_lexical {
-                emit_raw_lexical_token(&state, &formatting, window_bounds, span, kind, &mut tokens);
+                emit_raw_lexical_token(
+                    &state,
+                    &formatting,
+                    window_bounds,
+                    span,
+                    kind,
+                    &mut tokens,
+                    arena,
+                );
             }
         });
 
@@ -260,6 +268,7 @@ fn emit_raw_lexical_token(
     span: Range<usize>,
     kind: SemanticTokenKind,
     tokens: &mut Vec<SemanticToken>,
+    arena: &mut TypeArena<'_>,
 ) {
     let in_window =
         |s: &Range<usize>| window_bounds.is_none_or(|(start, end)| s.start < end && s.end > start);
@@ -278,7 +287,7 @@ fn emit_raw_lexical_token(
         };
     match kind {
         SemanticTokenKind::Comment => {
-            for (s, k, m) in comments::split(state.workspace, state.file, state.source, &span) {
+            for (s, k, m) in comments::split(arena, state.file, state.source, &span) {
                 push_if_valid(s, k, m, tokens);
             }
         }
@@ -316,7 +325,7 @@ fn push_window_name<'a, 'q>(
         .is_some_and(|(span, _)| span.start < name.span.start)
     {
         let (span, kind) = lexical.next().expect("peeked lexical token");
-        emit_raw_lexical_token(state, formatting, window_bounds, span, kind, tokens);
+        emit_raw_lexical_token(state, formatting, window_bounds, span, kind, tokens, arena);
     }
 
     if matches!(name.role, Role::Ignored)
@@ -346,7 +355,7 @@ struct ClassifyEnv<'a, 'q> {
     workspace: &'a Workspace,
     file: &'a Path,
     source: &'q str,
-    analysis: &'q SourceAnalysis,
+    analysis: &'q Occurrences,
     builtin_file: Option<&'q Path>,
     exact_symbols: &'q HashMap<[u32; 2], (&'a Path, &'a IndexedSymbol)>,
     outer_package: &'q HashMap<&'a str, Option<(&'a PathBuf, &'a IndexedSymbol)>>,
@@ -461,7 +470,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                 )
                 .and_then(|(decl_file, sym)| {
                     crate::analysis::types::type_form_in_scope(
-                        self.workspace,
+                        arena,
                         decl_file,
                         &sym.name,
                         &Locals::empty(),
@@ -477,16 +486,18 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
 
         if let Some(found) = obj {
             return self.classify_object(
-                arena, decls, name, span_u32, spelling, is_def, found, local_ty, expr_ty, sel_ty,
+                region, arena, decls, name, span_u32, spelling, is_def, found, local_ty, expr_ty,
+                sel_ty,
             );
         }
 
-        self.classify_fallback(arena, decls, name, spelling, expr_ty)
+        self.classify_fallback(region, arena, decls, name, spelling, expr_ty)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn classify_object(
         &self,
+        region: Option<&RegionInfo<'a>>,
         arena: &mut TypeArena<'a>,
         decls: &mut DeclCache<'a>,
         name: &Name,
@@ -624,8 +635,18 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                             0
                         }
                     }
-                    SymbolOrigin::Local { span: def_span, .. } => {
+                    SymbolOrigin::Local {
+                        id, span: def_span, ..
+                    } => {
                         mods |= self.local_def_modifiers(is_def, def_span, span_u32, spelling);
+                        // gopls omits shadowing for parameters in a function
+                        // type: there is no function body in which to use them.
+                        if region.and_then(|region| region.scopes.bindings.get(id.0 as usize))
+                            .is_some_and(|binding| binding.init == crate::analysis::scope::tree::BindingInit::None
+                                && matches!(binding.kind, crate::analysis::scope::tree::LocalBindingKind::Param | crate::analysis::scope::tree::LocalBindingKind::NamedResult))
+                        {
+                            mods &= !modifiers::SHADOWING;
+                        }
                         if let Some(binding) = self
                             .exact_bindings
                             .get(&def_span)
@@ -696,12 +717,12 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                     shape_of_type(arena, ty, false)
                 } else {
                     member
-                        .to_member_declaration(self.workspace)
+                        .describe(self.workspace)
                         .and_then(|decl| decl.data(self.workspace))
                         .and_then(|data| data.annotation)
                         .and_then(|ann| {
                             crate::analysis::types::type_form_in_scope(
-                                self.workspace,
+                                arena,
                                 member.file,
                                 &ann,
                                 &Locals::empty(),
@@ -717,6 +738,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
 
     fn classify_fallback(
         &self,
+        region: Option<&RegionInfo<'a>>,
         arena: &mut TypeArena<'a>,
         decls: &mut DeclCache<'a>,
         name: &Name,
@@ -764,7 +786,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
             } else if let Some(ty) = expr_ty {
                 shape_of_type(arena, ty, binding.declaration == DeclarationKind::Constant)
             } else {
-                self.binding_fallback_shape(binding)
+                self.binding_fallback_shape(arena, region, binding)
             };
             return (kind, mods | shape);
         }
@@ -819,7 +841,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                             .get(span.clone())
                             .and_then(|text| {
                                 crate::analysis::types::type_form_in_scope(
-                                    self.workspace,
+                                    arena,
                                     self.file,
                                     text,
                                     &self.analysis.locals,
@@ -902,6 +924,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                         ObjectRef::Method(MethodOrigin::Concrete(decl))
                     };
                     return self.classify_object(
+                        region,
                         arena,
                         decls,
                         name,
@@ -967,14 +990,11 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                         .annotation()
                         .and_then(|span| self.source.get(span.clone()))
                         .is_some_and(|text| text == "error")
-                        || crate::analysis::query::Context::borrowed(
-                            self.workspace,
-                            self.file,
-                            self.source,
-                        )
-                        .binding_type(&self.analysis.locals, binding)
-                        .as_deref()
-                        .is_some_and(|text| text == "error"))
+                        || region
+                            .and_then(|region| self.binding_operand(region, binding))
+                            .and_then(|operand| arena.render(operand.ty, self.file))
+                            .as_deref()
+                            .is_some_and(|text| text == "error"))
                 {
                     kind = SemanticTokenKind::Method;
                     mods |= modifiers::DEFAULT_LIBRARY | modifiers::SIGNATURE;
@@ -983,8 +1003,8 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
             }
             Role::LiteralKey(_) | Role::LiteralElementKey(_) => {
                 if unresolved_imported_literal_type(
+                    arena,
                     self.analysis,
-                    self.workspace,
                     self.file,
                     self.source,
                     name,
@@ -1056,14 +1076,19 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
             .is_some_and(|token| token.kind == TokenKind::Func)
     }
 
-    fn binding_fallback_shape(&self, binding: &Binding) -> u64 {
+    fn binding_fallback_shape(
+        &self,
+        arena: &mut TypeArena<'a>,
+        region: Option<&RegionInfo<'a>>,
+        binding: &Binding,
+    ) -> u64 {
         if binding.declaration == DeclarationKind::Variadic {
             return modifiers::SLICE;
         }
         if let Some(span) = binding.annotation()
             && let Some(text) = self.source.get(span.clone())
             && let Some(form) = crate::analysis::types::type_form_in_scope(
-                self.workspace,
+                arena,
                 self.file,
                 text,
                 &self.analysis.locals,
@@ -1072,36 +1097,29 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
         {
             return shape_of_form(form);
         }
-        let Some(rendered) =
-            crate::analysis::query::Context::borrowed(self.workspace, self.file, self.source)
-                .binding_type(&self.analysis.locals, binding)
-        else {
-            return 0;
-        };
-        let Some(form) = crate::analysis::types::type_form_in_scope(
-            self.workspace,
-            self.file,
-            &rendered,
-            &self.analysis.locals,
-            binding.selection.start,
-        ) else {
-            return 0;
-        };
-        let mut bits = shape_of_form(form);
-        if binding.declaration == DeclarationKind::Constant
-            && !rendered.contains("bool")
-            && !rendered.contains("string")
-        {
-            // Keep number shape etc.; untyped string/bool constants don't have bool/string form in gopls
-            // when inferred only via legacy string rendering without concrete type.
-        }
-        if binding.declaration == DeclarationKind::Constant
-            && form == TypeForm::Bool
-            && rendered == "untyped bool"
-        {
-            bits &= !modifiers::BOOL;
-        }
-        bits
+        region
+            .and_then(|region| self.binding_operand(region, binding))
+            .map_or(0, |operand| {
+                shape_of_type(
+                    arena,
+                    operand.ty,
+                    binding.declaration == DeclarationKind::Constant,
+                )
+            })
+    }
+
+    fn binding_operand(
+        &self,
+        region: &RegionInfo<'a>,
+        binding: &Binding,
+    ) -> Option<crate::analysis::types::Operand> {
+        let selection = [
+            u32::try_from(binding.selection.start).ok()?,
+            u32::try_from(binding.selection.end).ok()?,
+        ];
+        let (id, _) =
+            super::signatures::resolve_local_binding_id(region, selection, binding.scope_start())?;
+        region.local_type(id)
     }
 
     fn local_type_shape(
@@ -1128,7 +1146,9 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
             .get(&def_span)
             .copied()
             .filter(|b| b.name == spelling)
-            .map_or(0, |binding| self.binding_fallback_shape(binding))
+            .map_or(0, |binding| {
+                self.binding_fallback_shape(arena, None, binding)
+            })
     }
 
     fn decl_type_shape(
@@ -1149,7 +1169,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
         }
         if decl.symbol.is_type() {
             return crate::analysis::types::type_form_in_scope(
-                self.workspace,
+                arena,
                 decl.file,
                 &decl.symbol.name,
                 &Locals::empty(),
@@ -1183,7 +1203,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                     && let Some(ann_text) = spec_src.get(ann.clone())
                 {
                     return crate::analysis::types::type_form_in_scope(
-                        self.workspace,
+                        arena,
                         decl.file,
                         ann_text.trim(),
                         &Locals::empty(),
@@ -1266,7 +1286,7 @@ fn unresolved_selector_token_kind(source: &str, end: usize) -> SemanticTokenKind
 }
 
 fn is_unresolved_imported_selector(
-    analysis: &SourceAnalysis,
+    analysis: &Occurrences,
     workspace: &Workspace,
     file: &Path,
     source: &str,
@@ -1295,8 +1315,8 @@ fn is_unresolved_imported_selector(
 }
 
 fn unresolved_imported_literal_type(
-    analysis: &SourceAnalysis,
-    workspace: &Workspace,
+    arena: &mut TypeArena<'_>,
+    analysis: &Occurrences,
     file: &Path,
     source: &str,
     name: &Name,
@@ -1307,7 +1327,7 @@ fn unresolved_imported_literal_type(
             None => return false,
         },
         Role::LiteralElementKey(id) => {
-            match analysis.literal_element_type(workspace, file, source, *id) {
+            match unresolved_literal_element_spelling(analysis, source, *id) {
                 Some((text, offset)) => (text, offset),
                 None => return false,
             }
@@ -1320,7 +1340,22 @@ fn unresolved_imported_literal_type(
     };
     is_simple_identifier(qualifier)
         && analysis.locals.resolve_at(offset, qualifier).is_none()
-        && imported_name(workspace, file, qualifier)
+        && arena.resolver().imported_name(file, qualifier)
+}
+
+// Presentation-only fallback for unavailable literal imports. This spelling
+// never establishes a field identity or enters reference/rename matching.
+fn unresolved_literal_element_spelling(
+    analysis: &Occurrences,
+    source: &str,
+    context: usize,
+) -> Option<(String, usize)> {
+    let (span, projections) = analysis.literal_element_projection(context)?;
+    let mut ty = source.get(span.clone())?.to_owned();
+    for key in projections.into_iter().rev() {
+        ty = lexical::container_element(&ty, key)?.to_owned();
+    }
+    Some((ty, span.start))
 }
 
 fn is_simple_identifier(text: &str) -> bool {

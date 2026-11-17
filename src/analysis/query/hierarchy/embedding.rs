@@ -1,6 +1,6 @@
 //! Explicit named-embedding extension, separate from structural implementation.
 use super::{Context, SymbolTarget};
-use crate::analysis::resolve::NameIndex;
+use crate::analysis::obj::DeclId;
 use crate::index::IndexedSymbol as Symbol;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -14,28 +14,23 @@ impl<'a, View> Context<'a, View> {
     ) -> Result<Vec<SymbolTarget<'a>>, (i32, String)> {
         let mut results = BTreeMap::new();
         if supers {
-            if let Some(info) = &target.type_info {
-                for name in &info.embedded {
-                    if let Some((path, symbol)) =
-                        crate::analysis::types::lookup::embedded_target(self.workspace, file, name)
-                    {
-                        results.insert(
-                            (path.as_path(), symbol.start),
-                            SymbolTarget { file: path, symbol },
-                        );
-                        if results.len() > 1024 {
-                            return Err((
-                                crate::error::REQUEST_FAILED,
-                                "type hierarchy exceeds 1024 results".into(),
-                            ));
-                        }
-                    }
-                }
+            let declarations = self.with_sema(|sema| {
+                sema.direct_embedding_declarations(DeclId {
+                    file,
+                    symbol: target,
+                })
+            });
+            for declaration in declarations.unwrap_or_default() {
+                results.insert(
+                    (declaration.file, declaration.symbol.start),
+                    SymbolTarget {
+                        file: declaration.file,
+                        symbol: declaration.symbol,
+                    },
+                );
             }
         } else {
-            let index = NameIndex::new(self.workspace, &target.name);
-            let candidates =
-                crate::analysis::resolve::reference_candidates(self.workspace, file, target);
+            let candidates = self.resolver().dependent_candidates(file);
             crate::analysis::resolve::trace_candidates(
                 self.workspace,
                 "subtypes",
@@ -46,19 +41,16 @@ impl<'a, View> Context<'a, View> {
                     let Some(info) = &symbol.type_info else {
                         continue;
                     };
-                    if info.embedded.iter().any(|name| {
-                        let name = crate::analysis::scope::named_root(name);
-                        let resolved = if let Some((alias, name)) = name.split_once('.') {
-                            (name == index.name())
-                                .then(|| index.imported(path, alias))
-                                .flatten()
-                        } else {
-                            (name == index.name())
-                                .then(|| index.unqualified(path))
-                                .flatten()
-                        };
-                        resolved.is_some_and(|(parent, base)| {
-                            parent == file && base.start == target.start
+                    if info.embedded.is_empty() {
+                        continue;
+                    }
+                    let declarations = self.with_sema(|sema| {
+                        sema.direct_embedding_declarations(DeclId { file: path, symbol })
+                    });
+                    if declarations.is_some_and(|declarations| {
+                        declarations.contains(&DeclId {
+                            file,
+                            symbol: target,
                         })
                     }) {
                         results.insert(

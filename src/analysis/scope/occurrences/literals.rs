@@ -1,14 +1,11 @@
 //! Expected container types for literals with elided element/key types.
 use super::build::LiteralType;
-use super::{Role, SourceAnalysis};
-use crate::analysis::types::TypeForm;
+use super::{Occurrences, Role};
 use crate::syntax::{Expr, ExprId, ExprKind};
-use crate::workspace::Workspace;
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::Path;
 
-impl SourceAnalysis {
+impl Occurrences {
     pub(super) fn literal_elements(&mut self, expressions: &[Expr], base: usize) {
         // Sibling elided literals project the same container type. Keep one
         // descriptor per projection instead of one per literal occurrence.
@@ -86,42 +83,6 @@ impl SourceAnalysis {
                 }
             }
         }
-    }
-
-    /// Projection spans stay query-local and share the existing scoped Go type
-    /// resolver. In particular, map keys are expressions, never struct labels.
-    pub(crate) fn literal_element_type(
-        &self,
-        workspace: &Workspace,
-        file: &Path,
-        source: &str,
-        context: usize,
-    ) -> Option<(String, usize)> {
-        let (span, projections) = self.literal_element_projection(context)?;
-        let mut ty = source.get(span.clone())?.to_owned();
-        for key in projections.into_iter().rev() {
-            let form = crate::analysis::types::type_form_in_scope(
-                workspace,
-                file,
-                &ty,
-                &self.locals,
-                span.start,
-            )?;
-            if !matches!(form, TypeForm::Array | TypeForm::Slice | TypeForm::Map)
-                || key && !matches!(form, TypeForm::Map)
-            {
-                return None;
-            }
-            ty = crate::analysis::types::lookup::composite_element_type(
-                workspace,
-                file,
-                &ty,
-                &self.locals,
-                span.start,
-                key,
-            )?;
-        }
-        Some((ty, span.start))
     }
 
     /// Preserve the written container origin for declaration-identity queries.

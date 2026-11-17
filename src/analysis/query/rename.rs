@@ -5,12 +5,12 @@
 //! name), and declaration doc comments/doc links are renamed with it.
 use super::locations::SourcePosition;
 use super::{Context, ReferenceTarget, SourceRange};
-use crate::analysis::obj::MemberDeclaration;
-use crate::analysis::resolve::{self, NameIndex};
+use crate::analysis::obj::MemberDeclId;
+use crate::analysis::resolve::MemberDescription;
+use crate::analysis::resolve::{self, NameProbe};
 use crate::analysis::scope;
+use crate::analysis::scope::occurrences::{Occurrences, Role};
 use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::source::{Role, SourceAnalysis};
-use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{Lexer, MemberKind, TokenKind};
 use crate::text::SourceMap;
@@ -72,34 +72,52 @@ enum Target {
     },
 }
 
-/// Stable member key: declaring file, owner declaration start and member name.
+/// Owned canonical member coordinates plus the name/kind needed to build edits.
 struct MemberKey {
     file: PathBuf,
     owner_start: usize,
     name: String,
     kind: MemberKind,
     embedded: bool,
+    selection: [u32; 2],
 }
 
 impl MemberKey {
-    fn of(member: &MemberDeclaration<'_>) -> Self {
-        Self {
+    fn of(identity: MemberDeclId<'_>, workspace: &Workspace) -> Option<Self> {
+        let member = identity.describe(workspace)?;
+        Some(Self {
             file: member.file.clone(),
             owner_start: member.owner.start,
             name: member.name.to_owned(),
             kind: member.kind,
             embedded: member.embedded,
-        }
+            selection: identity.selection,
+        })
     }
 
-    /// Rebuilds a workspace-borrowed member declaration for reference queries.
-    fn resolve<'q>(&'q self, workspace: &'q Workspace) -> Option<MemberDeclaration<'q>> {
+    fn identity<'q>(&self, workspace: &'q Workspace) -> Option<MemberDeclId<'q>> {
         let (file, stub) = workspace.files.get_key_value(&self.file)?;
         let owner = stub
             .symbols
             .iter()
             .find(|symbol| symbol.start == self.owner_start)?;
-        Some(MemberDeclaration {
+        Some(MemberDeclId {
+            file,
+            owner: Some(owner),
+            selection: self.selection,
+            embedded: self.embedded,
+            builtin: false,
+        })
+    }
+
+    /// Rebuilds a workspace-borrowed member declaration for reference queries.
+    fn resolve<'q>(&'q self, workspace: &'q Workspace) -> Option<MemberDescription<'q>> {
+        let (file, stub) = workspace.files.get_key_value(&self.file)?;
+        let owner = stub
+            .symbols
+            .iter()
+            .find(|symbol| symbol.start == self.owner_start)?;
+        Some(MemberDescription {
             file,
             owner,
             name: &self.name,
@@ -249,7 +267,7 @@ impl<'a> Context<'a> {
         if let Some(import) = self.import_object_at(source, ident) {
             return Ok(Some(Target::Import { name: import.name }));
         }
-        let Some(index) = self.reference_index(ident.start) else {
+        let Some(index) = self.reference_probe(ident.start) else {
             return self.unresolved_target(source, file, ident);
         };
         let target = self.reference_target(&index, ident.start, true)?;
@@ -258,7 +276,9 @@ impl<'a> Context<'a> {
                 file: path.clone(),
                 symbol: symbol.clone(),
             }),
-            ReferenceTarget::Member(member) => Some(Target::Member(MemberKey::of(&member))),
+            ReferenceTarget::Member(member) => {
+                MemberKey::of(member, self.workspace()).map(Target::Member)
+            }
             ReferenceTarget::Local(spans) => {
                 let selection = self
                     .local_declaration(source, ident, &spans)
@@ -288,13 +308,13 @@ impl<'a> Context<'a> {
     ) -> Option<Range<usize>> {
         let file = self.file();
         let stub = self.workspace().files.get(file)?;
-        let analysis = SourceAnalysis::new(source, stub).ok()?;
+        let analysis = Occurrences::new(source, stub).ok()?;
         let mut resolver = IdentityResolver::new(self.workspace(), file);
         for name in &analysis.names {
             if !spans.contains(&name.span) {
                 continue;
             }
-            if matches!(resolver.resolve(&analysis, source, name), Some(Identity::Local(selection)) if selection == name.span)
+            if matches!(self.resolve_identity(&mut resolver, &analysis, source, name), Some(Identity::Local(selection)) if selection == name.span)
             {
                 return Some(name.span.clone());
             }
@@ -311,7 +331,7 @@ impl<'a> Context<'a> {
     ) -> Result<Option<Target>, (i32, String)> {
         let spelling = &source[ident.clone()];
         let stub = &self.workspace().files[file];
-        let analysis = SourceAnalysis::new(source, stub)?;
+        let analysis = Occurrences::new(source, stub)?;
         let role = analysis
             .names
             .iter()
@@ -742,7 +762,7 @@ impl<'a> Context<'a> {
                 file: target_file,
                 symbol,
             } => {
-                let index = NameIndex::new(self.workspace(), &symbol.name);
+                let index = NameProbe::new(&symbol.name);
                 let started = Instant::now();
                 let locations = self.global_references(
                     file,
@@ -770,8 +790,11 @@ impl<'a> Context<'a> {
                 let Some(member) = key.resolve(self.workspace()) else {
                     return Ok(rows);
                 };
-                let index = NameIndex::new(self.workspace(), &key.name);
-                let locations = self.member_references(member, &index, true, file)?;
+                let index = NameProbe::new(&key.name);
+                let Some(identity) = key.identity(self.workspace()) else {
+                    return Ok(rows);
+                };
+                let locations = self.member_references(identity, &index, true, file)?;
                 for location in locations {
                     rows.push(RenameEdit {
                         file: location.file.to_path_buf(),
@@ -785,9 +808,6 @@ impl<'a> Context<'a> {
                         range,
                         text: RenameText::Name,
                     });
-                }
-                if member.kind == MemberKind::Field {
-                    self.field_reference_supplement(&member, file, &mut rows)?;
                 }
             }
             Target::Local { selection, spans } => {
@@ -878,106 +898,6 @@ impl<'a> Context<'a> {
         Ok(rows)
     }
 
-    /// Supplementary field-reference rows for candidates where the shared
-    /// IdentityResolver cannot project a binding's native type. Identity is proven by
-    /// the receiver/key type declaration, never by spelling alone.
-    fn field_reference_supplement(
-        &self,
-        target: &MemberDeclaration<'_>,
-        origin: &Path,
-        rows: &mut Vec<RenameEdit>,
-    ) -> Result<(), (i32, String)> {
-        let workspace = self.workspace();
-        let Some(target_stub) = workspace.files.get(target.file) else {
-            return Ok(());
-        };
-        let mut candidates = if resolve::exported(target.name) {
-            crate::analysis::resolve::dependent_candidates(workspace, target.file)
-        } else {
-            let package = target_stub.package.as_str();
-            workspace
-                .files
-                .iter()
-                .filter(|(path, stub)| {
-                    path.parent() == target.file.parent() && stub.package == package
-                })
-                .collect()
-        };
-        let scope = workspace.reference_scope(origin);
-        candidates.retain(|(file, _)| scope.contains(file, target.file));
-        let fingerprint = Fingerprint::new(target.name.as_bytes());
-        for (file, stub) in candidates {
-            if !stub.identifiers.may_contain_fingerprint(fingerprint) {
-                continue;
-            }
-            let Some(source) = workspace.source(file) else {
-                continue;
-            };
-            if !source.contains(target.name) {
-                continue;
-            }
-            let Ok(analysis) = SourceAnalysis::for_name(&source, stub, target.name) else {
-                continue;
-            };
-            let map = SourceMap::new(&source);
-            for name in &analysis.names {
-                if &source[name.span.clone()] != target.name
-                    || matches!(name.role, Role::FieldDeclaration(_))
-                {
-                    continue;
-                }
-                let matched = match &name.role {
-                    Role::Member(Some(qualifier)) => {
-                        let text = &source[qualifier.clone()];
-                        let binding = analysis.locals.resolve_at(qualifier.start, text);
-                        let ty = binding.and_then(|binding| {
-                            crate::analysis::query::Context::borrowed(workspace, file, &source)
-                                .binding_type(&analysis.locals, binding)
-                                .or_else(|| {
-                                    call_initializer_type(workspace, file, &source, binding)
-                                })
-                        });
-                        let in_scope = ty.as_ref().is_some_and(|ty| {
-                            crate::analysis::types::lookup::receiver_in_scope(
-                                workspace,
-                                file,
-                                ty,
-                                &analysis.locals,
-                                qualifier.start,
-                            )
-                        });
-                        let same = ty
-                            .as_ref()
-                            .is_some_and(|ty| same_field_owner(workspace, file, ty, target));
-                        in_scope && same
-                    }
-                    Role::LiteralKey(ty) => {
-                        same_field_owner(workspace, file, &source[ty.clone()], target)
-                    }
-                    Role::LiteralElementKey(context) => analysis
-                        .literal_element_type(workspace, file, &source, *context)
-                        .is_some_and(|(ty, _)| same_field_owner(workspace, file, &ty, target)),
-                    _ => false,
-                };
-                if !matched {
-                    continue;
-                }
-                if rows.len() == crate::analysis::budget::MAX_REFERENCES {
-                    return Err((
-                        crate::error::REQUEST_FAILED,
-                        "reference result exceeds 4096 locations".into(),
-                    ));
-                }
-                rows.push(RenameEdit {
-                    file: file.clone(),
-                    range: SourceRange::new(&map, name.span.clone()),
-                    text: RenameText::Name,
-                });
-            }
-        }
-        Ok(())
-    }
-
     /// Recognizes a receiver declaration at the selection and returns the
     /// receiver type base name.
     fn receiver_declaration(
@@ -1030,7 +950,7 @@ impl<'a> Context<'a> {
         };
         let directory = file.parent().map(Path::to_path_buf);
         let package = stub.package.clone();
-        let index = NameIndex::new(workspace, old_name);
+        let index = NameProbe::new(old_name);
         let methods: Vec<(&PathBuf, &Symbol)> = workspace
             .files
             .iter()
@@ -1062,7 +982,7 @@ impl<'a> Context<'a> {
             let Some(candidate_stub) = workspace.files.get(method_file) else {
                 continue;
             };
-            let analysis = SourceAnalysis::for_name(&source, candidate_stub, old_name)?;
+            let analysis = Occurrences::for_name(&source, candidate_stub, old_name)?;
             if analysis.names.is_empty() {
                 continue;
             }
@@ -1072,7 +992,7 @@ impl<'a> Context<'a> {
                 if &source[name.span.clone()] != old_name {
                     continue;
                 }
-                if matches!(resolver.resolve(&analysis, &source, name), Some(Identity::Local(binding)) if binding == span)
+                if matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Local(binding)) if binding == span)
                 {
                     rows.push(RenameEdit {
                         file: method_file.clone(),
@@ -1097,8 +1017,7 @@ impl<'a> Context<'a> {
             return Ok(());
         }
         let workspace = self.workspace();
-        let mut candidates =
-            crate::analysis::resolve::reference_candidates(workspace, target_file, symbol);
+        let mut candidates = self.resolver().reference_candidates(target_file, symbol);
         let scope = workspace.reference_scope(self.file());
         candidates.retain(|(candidate, _)| scope.contains(candidate, target_file));
         let target_import = workspace.import_path(target_file);
@@ -1143,7 +1062,7 @@ impl<'a> Context<'a> {
                 else {
                     continue;
                 };
-                let member = MemberDeclaration {
+                let member = MemberDescription {
                     file,
                     owner,
                     name: &symbol.name,
@@ -1158,8 +1077,11 @@ impl<'a> Context<'a> {
                     range: SourceRange::new(&map, span),
                     text: RenameText::Name,
                 });
-                let index = NameIndex::new(workspace, &symbol.name);
-                let locations = self.member_references(member, &index, true, file)?;
+                let index = NameProbe::new(&symbol.name);
+                let Some(identity) = member.identity_in_source(&source) else {
+                    continue;
+                };
+                let locations = self.member_references(identity, &index, true, file)?;
                 for location in locations {
                     rows.push(RenameEdit {
                         file: location.file.to_path_buf(),
@@ -1404,22 +1326,23 @@ impl<'a> Context<'a> {
         };
         let declaring_package = decl_stub.package.clone();
         let candidates: Vec<&PathBuf> = if mode == LinkMode::Type || receiver.is_some() {
-            crate::analysis::resolve::dependent_candidates(workspace, target_file)
+            self.resolver()
+                .dependent_candidates(target_file)
                 .into_iter()
                 .map(|(path, _)| path)
                 .collect()
         } else {
-            crate::analysis::resolve::reference_candidates(
-                workspace,
-                target_file,
-                match target {
-                    Target::Global { symbol, .. } => symbol,
-                    _ => return Ok(Vec::new()),
-                },
-            )
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect()
+            self.resolver()
+                .reference_candidates(
+                    target_file,
+                    match target {
+                        Target::Global { symbol, .. } => symbol,
+                        _ => return Ok(Vec::new()),
+                    },
+                )
+                .into_iter()
+                .map(|(path, _)| path)
+                .collect()
         };
         let import_path = workspace.import_path(target_file);
         let mut edits = Vec::new();
@@ -1676,48 +1599,6 @@ fn target_name(source: &str, target: &Target) -> String {
     }
 }
 
-fn same_field_owner(
-    workspace: &Workspace,
-    file: &Path,
-    ty: &str,
-    target: &MemberDeclaration<'_>,
-) -> bool {
-    let Some(name) = scope::named_type(ty) else {
-        return false;
-    };
-    let Some((owner_file, owner)) =
-        crate::analysis::types::lookup::underlying_target(workspace, file, &name)
-            .or_else(|| crate::analysis::resolve::resolve_type_declaration(workspace, file, &name))
-    else {
-        return false;
-    };
-    owner_file == target.file && owner.start == target.owner.start
-}
-
-/// Result slot of a direct call initializer (`x, _, err := f(...)`), resolved
-/// from the callee's declaration. The shared binding inference can fail to
-/// project this slot for some paths; the call syntax stays an exact proof.
-fn call_initializer_type(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    binding: &scope::Binding,
-) -> Option<String> {
-    let (span, slot, count) = binding.initializer()?;
-    if span.len() > 16 * 1024 {
-        return None;
-    }
-    let text = source.get(span.clone())?;
-    Context::borrowed(workspace, file, source).direct_call_result_type(
-        file,
-        text,
-        slot,
-        count,
-        false,
-        |_| false,
-    )
-}
-
 fn receiver_base(receiver: &str) -> &str {
     receiver.trim_start_matches('*')
 }
@@ -1818,7 +1699,7 @@ fn valid_identifier(name: &str) -> bool {
 }
 
 /// Byte span of a member declaration identifier in `source`.
-fn member_declaration_span(member: &MemberDeclaration<'_>, source: &str) -> Option<Range<usize>> {
+fn member_declaration_span(member: &MemberDescription<'_>, source: &str) -> Option<Range<usize>> {
     let map = SourceMap::new(source);
     let base = member.owner.end;
     let end = map.offset(member.owner.range.end)?;
@@ -1840,7 +1721,7 @@ fn member_declaration_span(member: &MemberDeclaration<'_>, source: &str) -> Opti
 
 fn member_declaration_range(
     workspace: &Workspace,
-    member: &MemberDeclaration<'_>,
+    member: &MemberDescription<'_>,
 ) -> Option<SourceRange> {
     let source = workspace.source(member.file)?;
     let span = member_declaration_span(member, &source)?;

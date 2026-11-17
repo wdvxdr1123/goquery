@@ -166,6 +166,108 @@ pub(in crate::analysis::query) fn signature_type_scoped(
     Some(output.trim().to_owned())
 }
 
+/// Attach declaration names to checked, already-instantiated signature types.
+pub(in crate::analysis::query) fn signature_from_view(
+    header: &str,
+    signature: &Signature,
+    name: &str,
+    view: &crate::analysis::sema::CallableView,
+) -> Option<(CallableSignature, bool)> {
+    if !signature.diagnostics.is_empty()
+        || signature.parameters.len() != view.parameters.len()
+        || signature.results.len() != view.results.len()
+        || signature
+            .parameters
+            .last()
+            .is_some_and(|parameter| parameter.variadic)
+            != view.variadic
+    {
+        return None;
+    }
+    let mut types = view
+        .parameters
+        .iter()
+        .enumerate()
+        .map(|(index, ty)| {
+            if view.variadic && index + 1 == view.parameters.len() {
+                ty.strip_prefix("[]").map(str::to_owned)
+            } else {
+                Some(ty.clone())
+            }
+        })
+        .chain(view.results.iter().map(|ty| Some(ty.clone())));
+    signature_label(header, signature, name, |_| types.next().flatten())
+}
+
+/// A checked signature remains usable when source parameter names are absent.
+pub(in crate::analysis::query) fn signature_from_native(
+    name: &str,
+    view: &crate::analysis::sema::CallableView,
+) -> Option<(CallableSignature, bool)> {
+    let mut header = String::new();
+    let mut parameters = Vec::new();
+    let mut results = Vec::new();
+    for (types, names, output) in [
+        (
+            &view.parameters,
+            view.names.as_ref().map(|names| &names.parameters),
+            &mut parameters,
+        ),
+        (
+            &view.results,
+            view.names.as_ref().map(|names| &names.results),
+            &mut results,
+        ),
+    ] {
+        for index in 0..types.len() {
+            let name = names
+                .and_then(|names| names.get(index))
+                .filter(|name| !name.is_empty());
+            let start = header.len();
+            if let Some(name) = name {
+                header.push_str(name);
+            }
+            let end = header.len();
+            header.push('\0');
+            output.push(Parameter {
+                name: name.map(|_| start..end),
+                annotation: 0..0,
+                variadic: false,
+            });
+        }
+    }
+    if view.variadic {
+        parameters.last_mut()?.variadic = true;
+    }
+    let signature = Signature {
+        parameters,
+        results,
+        ..Signature::default()
+    };
+    signature_from_view(&header, &signature, name, view)
+}
+
+/// A checked signature remains usable when source parameter names are absent.
+pub(in crate::analysis::query) fn unnamed_signature_view(
+    name: &str,
+    view: &crate::analysis::sema::CallableView,
+) -> Option<(CallableSignature, bool)> {
+    let parameter = || Parameter {
+        name: None,
+        annotation: 0..0,
+        variadic: false,
+    };
+    let mut signature = Signature {
+        parameters: view.parameters.iter().map(|_| parameter()).collect(),
+        results: view.results.iter().map(|_| parameter()).collect(),
+        ..Signature::default()
+    };
+    if view.variadic {
+        signature.parameters.last_mut()?.variadic = true;
+    }
+    signature_from_view("", &signature, name, view)
+}
+
 /// Keep parameter names and protocol label limits shared across declaration,
 /// member and native instantiated signatures. Only type rendering varies.
 pub(in crate::analysis::query) fn signature_label(

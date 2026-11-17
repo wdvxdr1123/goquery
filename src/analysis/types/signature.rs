@@ -7,6 +7,49 @@ use crate::syntax::{Lexer, Signature, TokenKind};
 use std::path::Path;
 
 impl TypeArena<'_> {
+    /// Declaration-only generic functions use their true formal environment;
+    /// calls use the instantiated checked signature instead.
+    pub(crate) fn formal_function_signature(
+        &mut self,
+        declaration: crate::analysis::obj::DeclId<'_>,
+    ) -> Option<TypeId> {
+        let span = declaration.symbol.declaration()?;
+        let end = declaration
+            .symbol
+            .body()
+            .map_or(span.end, |body| body.start);
+        let header = self
+            .workspace
+            .source_slice(declaration.file, span.start..end)?;
+        let signature = crate::syntax::parse_signature(&header);
+        if !signature.diagnostics.is_empty()
+            || !signature.receiver.is_empty()
+            || signature.type_parameters.len() > 32
+        {
+            return None;
+        }
+        let names = constraints::parameter_names(&header, &signature)?;
+        let mut environment = Vec::new();
+        for name in names {
+            environment.push((name, self.push_symbolic_parameter(declaration.file, name)?));
+        }
+        let bounds: Vec<_> = signature
+            .type_parameters
+            .iter()
+            .zip(&environment)
+            .map(|(parameter, (_, ty))| (*ty, &header[parameter.annotation.clone()]))
+            .collect();
+        self.import_parameter_bounds(declaration.file, &bounds, &environment)?;
+        self.signature(
+            declaration.file,
+            &header,
+            Some(span.start),
+            &signature,
+            &environment,
+            0,
+        )
+    }
+
     /// Receiver names are fresh formals; owner bounds use the declaring file's imports.
     pub(super) fn import_receiver_parameters(
         &mut self,
@@ -68,6 +111,7 @@ impl TypeArena<'_> {
         &mut self,
         origin: &Path,
         header: &str,
+        file_offset: Option<usize>,
         signature: &Signature,
         environment: &[(&str, TypeId)],
         depth: usize,
@@ -97,7 +141,14 @@ impl TypeArena<'_> {
             for item in items {
                 let source = &header[item.annotation.clone()];
                 let mut tokens = Lexer::new(source).peekable();
-                let mut ty = self.read(origin, source, &mut tokens, environment, depth + 1)?;
+                let mut ty = self.read_at(
+                    origin,
+                    source,
+                    file_offset.map(|base| base + item.annotation.start),
+                    &mut tokens,
+                    environment,
+                    depth + 1,
+                )?;
                 if !tokens.all(|token| token.kind == TokenKind::Semicolon) {
                     return None;
                 }
@@ -107,7 +158,9 @@ impl TypeArena<'_> {
                 output.push(ty);
             }
         }
-        self.store_signature(parameters, results, variadic)
+        let ty = self.store_signature(parameters, results, variadic)?;
+        self.attach_signature_names(ty, header, signature);
+        Some(ty)
     }
 
     pub(crate) fn store_signature(
@@ -134,6 +187,7 @@ impl TypeArena<'_> {
         &mut self,
         origin: &Path,
         header: &str,
+        file_offset: Option<usize>,
         signature: &Signature,
         arguments: &[TypeId],
     ) -> Option<TypeId> {
@@ -145,7 +199,7 @@ impl TypeArena<'_> {
         let constraints = self.constraints(origin, header, signature, &environment)?;
         let bindings: Vec<_> = arguments.iter().copied().map(Some).collect();
         self.prove_constraints(&constraints, &bindings)?;
-        self.signature(origin, header, signature, &environment, 0)
+        self.signature(origin, header, file_offset, signature, &environment, 0)
     }
 
     pub(crate) fn is_callable(&mut self, input: TypeId) -> Option<bool> {
@@ -239,6 +293,9 @@ impl TypeArena<'_> {
         int_bits: u32,
     ) -> Option<bool> {
         self.step()?;
+        if !source.mode.is_value() {
+            return Some(false);
+        }
         // Nominal equality does not require expanding a possibly large body.
         // Interface constructors still need their complete basic method set.
         if !self.interface_constructor(target)? && self.identical(source.ty, target)? {

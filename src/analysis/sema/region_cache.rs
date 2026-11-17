@@ -22,14 +22,34 @@ pub(super) struct CachedRegion<'a> {
 }
 
 impl<'a> Semantics<'a> {
-    fn prepare_for_new_region(&mut self) {
+    pub(super) fn prepare_for_new_region(&mut self) {
+        let declarations = self
+            .decls
+            .temporary_declarations(self.base_mark.node_count());
         self.failed = None;
-        self.arena.reset_steps();
+        self.cached = None;
+        self.arena.rewind(self.base_mark);
+        self.decls.rewind_above(self.arena.node_count());
+        // Evict the declaration prefix when it would crowd the next body.
+        // A cache miss is preferable to exhausting another function's locals.
         if self.arena.needs_rewind() {
-            self.arena.rewind(self.base_mark);
+            self.arena.rewind(self.root_mark);
             self.decls.rewind_above(self.arena.node_count());
-            self.cached = None;
         }
+        self.arena.reset_steps();
+        for declaration in declarations {
+            let _ = self.decls.operand_of(&mut self.arena, declaration);
+            if self.arena.needs_rewind() {
+                break;
+            }
+        }
+        if self.arena.needs_rewind() {
+            self.arena.rewind(self.root_mark);
+            self.decls.rewind_above(self.arena.node_count());
+        }
+        self.decls.rewind_above(self.arena.node_count());
+        self.base_mark = self.arena.mark();
+        self.arena.reset_steps();
     }
 
     pub(super) fn ensure_region(
@@ -210,14 +230,9 @@ impl<'a> Semantics<'a> {
             if let Some(region) = region {
                 visit(&region, &mut self.arena, &mut self.decls);
             }
-            if self.arena.needs_rewind() {
-                self.arena.rewind(self.base_mark);
-                self.decls.rewind_above(self.arena.node_count());
-            }
+            self.parsed_body = None;
         }
-        self.arena.rewind(self.base_mark);
-        self.decls.rewind_above(self.arena.node_count());
-        self.cached = None;
+        self.prepare_for_new_region();
     }
 
     pub(super) fn build_function_region(
@@ -257,17 +272,13 @@ impl<'a> Semantics<'a> {
         }
         let header_slice = source.get(decl.start..header_end)?;
         let body_range = sym.body();
-        let body_slice = match body_range {
-            Some(ref r) => Some(source.get(r.clone())?),
-            None => None,
-        };
         let sig = syntax::parse_signature(header_slice);
         self.prepare_for_new_region();
 
         let owner = DeclId { file, symbol: sym };
         let span = [decl.start as u32, decl.end as u32];
-        if let (Some(body_range), Some(body_slice)) = (body_range, body_slice) {
-            let body_tree = syntax::parse_block(body_slice);
+        if let Some(body_range) = body_range {
+            let body_tree = self.shared_body(file, source, body_range.clone())?;
             let scopes = ScopeTree::from_function(
                 source,
                 decl.start,
@@ -296,6 +307,7 @@ impl<'a> Semantics<'a> {
                 checker.populate_signature(header_slice, decl.start, &sig);
                 checker.check_body();
             }
+            region.finish_local_diagnostics(source);
             region.finalize();
             Some(region)
         } else {
@@ -327,6 +339,7 @@ impl<'a> Semantics<'a> {
                 checker.set_type_param_owner(owner);
                 checker.populate_signature(header_slice, decl.start, &sig);
             }
+            region.finish_local_diagnostics(source);
             region.finalize();
             Some(region)
         }
@@ -395,6 +408,7 @@ impl<'a> Semantics<'a> {
             );
             checker.check_body();
         }
+        region.finish_local_diagnostics(source);
         region.finalize();
         Some(region)
     }
@@ -468,6 +482,7 @@ impl<'a> Semantics<'a> {
             );
             checker.check_decl_spec(sym.is_const());
         }
+        region.finish_local_diagnostics(source);
         region.finalize();
         Some(region)
     }
@@ -528,6 +543,7 @@ impl<'a> Semantics<'a> {
             );
             checker.check_top_level_type_spec(sym);
         }
+        region.finish_local_diagnostics(source);
         region.finalize();
         Some(region)
     }

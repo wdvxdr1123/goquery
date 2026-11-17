@@ -1,22 +1,38 @@
 //! Read-only semantic operations over the admitted request source and metadata.
-use super::completion::CompletionReceiver;
-use super::{Context, cursor_scope};
+use super::Context;
 use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::obj::{
-    DeclId, LocalId, MethodOrigin, ObjectRef, ReceiverMember, SymbolOrigin,
-};
+use crate::analysis::obj::{DeclId, LocalId, MethodOrigin, ObjectRef, SymbolOrigin};
+use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::tree::LocalBindingKind;
-use crate::analysis::scope::{Binding, CursorScope, Locals, named_type};
-use crate::analysis::source::{Name, Role, SourceAnalysis};
-use crate::analysis::types::{Mode, Qualifier, TypeDeclaration};
-use crate::syntax::{self, ExprKind, Lexer, TokenKind};
+use crate::analysis::scope::{Binding, CursorScope, Locals};
+use crate::analysis::types::{Qualifier, TypeDeclaration};
+use crate::syntax::{self, Lexer, TokenKind};
 
 impl<'a> Context<'a> {
-    pub(crate) fn cursor_scope(&self, offset: usize) -> Result<CursorScope, (i32, String)> {
-        cursor_scope(self.workspace, self.view.file, self.source(), offset)
+    pub(in crate::analysis::query) fn cursor_scope(
+        &self,
+        offset: usize,
+    ) -> Result<CursorScope, (i32, String)> {
+        self.cursor_scope_with_hint(offset, None)
     }
 
-    pub(crate) fn type_position(&self, offset: usize, scope: &CursorScope) -> bool {
+    pub(in crate::analysis::query) fn cursor_scope_with_hint(
+        &self,
+        offset: usize,
+        cursor: Option<usize>,
+    ) -> Result<CursorScope, (i32, String)> {
+        let function =
+            super::cursor_function(self.workspace, self.view.file, self.source(), offset);
+        self.with_sema(|sema| {
+            sema.cursor_scope(self.file(), self.source(), offset, function, cursor)
+        })
+    }
+
+    pub(in crate::analysis::query) fn type_position(
+        &self,
+        offset: usize,
+        scope: &CursorScope,
+    ) -> bool {
         super::completion::type_position(
             self.workspace,
             self.view.file,
@@ -27,28 +43,19 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn binding_type(&self, _locals: &Locals, binding: &Binding) -> Option<String> {
-        let s0 = u32::try_from(binding.selection.start).ok()?;
-        let s1 = u32::try_from(binding.selection.end).ok()?;
-        let file = self.view.file;
-        let source = self.source();
-        self.with_sema(|sema| {
-            let (region, arena) = sema.region_and_arena_at(file, source, s0, None)?;
-            let (id, _) = super::signatures::resolve_local_binding_id(
-                region,
-                [s0, s1],
-                binding.scope_start(),
-            )?;
-            let op = region.local_type(id)?;
-            let rendered = arena
-                .format_type(op.ty, Qualifier::RelativeTo(file))
-                .or_else(|| {
-                    arena
-                        .has_local_declaration(op.ty)
-                        .filter(|has| *has)
-                        .and_then(|_| arena.format_type(op.ty, Qualifier::Presentation(file)))
-                })?;
-            super::signatures::label::function_types(&rendered).or(Some(rendered))
-        })
+        self.binding_type_in(self.file(), self.source(), binding)
+    }
+
+    pub(in crate::analysis::query) fn binding_presentation(
+        &self,
+        binding: &Binding,
+    ) -> Option<String> {
+        self.binding_type_formatted(
+            self.file(),
+            self.source(),
+            binding,
+            Qualifier::Presentation(self.file()),
+        )
     }
 
     pub(crate) fn type_declarations(
@@ -294,96 +301,9 @@ impl<'a> Context<'a> {
         })
     }
 
-    pub(crate) fn sema_local_var_type(&self, cursor_offset: usize) -> Option<String> {
-        let off = u32::try_from(cursor_offset).ok()?;
-        let file = self.view.file;
-        let source = self.source();
-        self.with_sema(|sema| {
-            let (region, arena) = sema.region_and_arena_at(file, source, off, None)?;
-            let (_, obj) = region.object_at(off)?;
-            let id = match obj {
-                ObjectRef::Var {
-                    origin: SymbolOrigin::Local { id, .. },
-                    ..
-                } => id,
-                _ => return None,
-            };
-            let op = region.local_type(id)?;
-            arena.render_presentation(op.ty, file)
-        })
-    }
-
-    pub(crate) fn completion_selector_members(
-        &self,
-        scope: &CursorScope,
-        offset: usize,
-    ) -> Option<(Vec<ReceiverMember<'a>>, Option<CompletionReceiver<'a>>)> {
-        let body = scope.body.as_ref()?;
-        let operand = body.tree.expressions.iter().find_map(|expression| {
-            matches!(&expression.kind, ExprKind::Selector { field, .. }
-                if (body.base + field.start..=body.base + field.end).contains(&offset))
-            .then(|| match &expression.kind {
-                ExprKind::Selector { operand, .. } => *operand,
-                _ => unreachable!(),
-            })
-        })?;
-        let op_expr = body.tree.expressions.get(operand.0)?;
-        let op_span = [
-            u32::try_from(body.base + op_expr.span.start).ok()?,
-            u32::try_from(body.base + op_expr.span.end).ok()?,
-        ];
-        let off = u32::try_from(offset).ok()?;
-        let file = self.view.file;
-        let source = self.source();
-        let workspace = self.workspace;
-
-        self.with_sema(|sema| {
-            let (region, arena) = sema.region_and_arena_at(file, source, off, Some(offset))?;
-            let recv_op = region.expr_type(op_span)?;
-            if recv_op.mode == Mode::TypeExpr {
-                return None;
-            }
-            let raw = arena.accessible_members(recv_op.ty, true, file)?;
-            let mut mapped = Vec::with_capacity(raw.len());
-            for (_, sel) in &raw {
-                match sel.obj {
-                    ObjectRef::Method(MethodOrigin::Concrete(decl)) => {
-                        let (path_buf, _) = workspace.files.get_key_value(decl.file)?;
-                        mapped.push(ReceiverMember::Method(path_buf, decl.symbol));
-                    }
-                    ObjectRef::Field(member)
-                    | ObjectRef::Method(MethodOrigin::Interface(member)) => {
-                        if let Some(decl) = member.to_member_declaration(workspace) {
-                            mapped.push(ReceiverMember::Declaration(decl));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            if !raw.is_empty() && mapped.is_empty() {
-                return None;
-            }
-            let scoped =
-                if let Some(text) = arena.render(recv_op.ty, file).and_then(|t| named_type(&t)) {
-                    Some(CompletionReceiver { scope: file, text })
-                } else if let Some((decl, _, _)) = arena.named_declaration(recv_op.ty)
-                    && let Some(text) = arena
-                        .render(recv_op.ty, decl.file)
-                        .and_then(|t| named_type(&t))
-                {
-                    Some(CompletionReceiver {
-                        scope: decl.file,
-                        text,
-                    })
-                } else {
-                    None
-                };
-            Some((mapped, scoped))
-        })
-    }
-    pub(crate) fn semantic_analysis(&self) -> Result<SourceAnalysis, (i32, String)> {
+    pub(crate) fn semantic_analysis(&self) -> Result<Occurrences, (i32, String)> {
         let mut analysis =
-            SourceAnalysis::for_semantic(self.source(), &self.workspace.files[self.view.file])?;
+            Occurrences::for_semantic(self.source(), &self.workspace.files[self.view.file])?;
         // Aggregate members written in anonymous type literals are declarations:
         // semantic tokens report them as property/definition like gopls. The
         // anonymous owner has no package-level symbol, so a sentinel owner is
@@ -461,5 +381,43 @@ impl<'a> Context<'a> {
             }
         }
         names
+    }
+}
+
+impl<View> Context<'_, View> {
+    pub(in crate::analysis::query) fn binding_type_in(
+        &self,
+        file: &std::path::Path,
+        source: &str,
+        binding: &Binding,
+    ) -> Option<String> {
+        self.binding_type_formatted(file, source, binding, Qualifier::RelativeTo(file))
+    }
+
+    fn binding_type_formatted(
+        &self,
+        file: &std::path::Path,
+        source: &str,
+        binding: &Binding,
+        qualifier: Qualifier<'_>,
+    ) -> Option<String> {
+        let s0 = u32::try_from(binding.selection.start).ok()?;
+        let s1 = u32::try_from(binding.selection.end).ok()?;
+        self.with_sema(|sema| {
+            let (region, arena) = sema.region_and_arena_at(file, source, s0, None)?;
+            let (id, _) = super::signatures::resolve_local_binding_id(
+                region,
+                [s0, s1],
+                binding.scope_start(),
+            )?;
+            let op = region.local_type(id)?;
+            let rendered = arena.format_type(op.ty, qualifier).or_else(|| {
+                arena
+                    .has_local_declaration(op.ty)
+                    .filter(|has| *has)
+                    .and_then(|_| arena.format_type(op.ty, Qualifier::Presentation(file)))
+            })?;
+            super::signatures::label::function_types(&rendered).or(Some(rendered))
+        })
     }
 }

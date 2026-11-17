@@ -3,13 +3,15 @@ use crate::analysis::scope::Locals;
 use crate::syntax::{BlockTree, Expr, ExprKind, TokenKind};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub(crate) struct CursorBody {
     pub base: usize,
-    pub tree: BlockTree,
+    pub tree: Arc<BlockTree>,
 }
 
 pub(crate) struct CursorScope {
+    pub available: bool,
     pub locals: Locals,
     pub body: Option<CursorBody>,
 }
@@ -20,6 +22,23 @@ impl Locals {
         offset: usize,
         function: Option<(usize, Range<usize>)>,
     ) -> Result<CursorScope, (i32, String)> {
+        Self::scope_at_cursor_with_parser(source, offset, function, |body| {
+            (body.len() <= crate::analysis::budget::MAX_BODY_BYTES)
+                .then(|| {
+                    source
+                        .get(body)
+                        .map(|text| Arc::new(crate::syntax::parse_block(text)))
+                })
+                .flatten()
+        })
+    }
+
+    pub(crate) fn scope_at_cursor_with_parser(
+        source: &str,
+        offset: usize,
+        function: Option<(usize, Range<usize>)>,
+        mut parse: impl FnMut(Range<usize>) -> Option<Arc<BlockTree>>,
+    ) -> Result<CursorScope, (i32, String)> {
         let mut active_body = None;
         let mut locals = Self::empty();
         let mut literal = if let Some((start, body)) =
@@ -29,10 +48,23 @@ impl Locals {
                 crate::error::INVALID_PARAMS,
                 "stale function boundary".into(),
             ))?;
+            if body_offset > crate::analysis::budget::MAX_BYTES {
+                return Ok(CursorScope {
+                    available: false,
+                    locals: Self::empty(),
+                    body: None,
+                });
+            }
             let text = source
                 .get(start..body.end)
                 .ok_or((crate::error::INVALID_PARAMS, "stale function range".into()))?;
-            let parsed = crate::syntax::parse_block(&source[body.clone()]);
+            let Some(parsed) = parse(body.clone()) else {
+                return Ok(CursorScope {
+                    available: false,
+                    locals: Self::empty(),
+                    body: None,
+                });
+            };
             locals = Self::from_body(text, body_offset, &parsed);
             locals.rebase(start);
             let literal = enclosing_literal(source, &parsed.expressions, body.start, offset);
@@ -79,6 +111,7 @@ impl Locals {
                     locals.extend_open_scopes(source);
                 }
                 return Ok(CursorScope {
+                    available: true,
                     locals,
                     body: active_body,
                 });
@@ -86,6 +119,13 @@ impl Locals {
             drop(active_body.take());
             let text = &source[signature.start..body.end];
             let body_offset = body.start - signature.start;
+            if body_offset > crate::analysis::budget::MAX_BYTES {
+                return Ok(CursorScope {
+                    available: false,
+                    locals: Self::empty(),
+                    body: None,
+                });
+            }
             let parsed_signature = crate::syntax::parse_literal_signature(&text[..body_offset]);
             let mut parameters = Self::from_parsed_signature(text, body_offset, &parsed_signature);
             parameters.rebase(signature.start);
@@ -99,7 +139,13 @@ impl Locals {
                 }
             }
             locals.bindings.extend(parameters.bindings);
-            let parsed = crate::syntax::parse_block(&source[body.clone()]);
+            let Some(parsed) = parse(body.clone()) else {
+                return Ok(CursorScope {
+                    available: false,
+                    locals: Self::empty(),
+                    body: None,
+                });
+            };
             locals.append_body(source, body.start, &parsed);
             literal = enclosing_literal(source, &parsed.expressions, body.start, offset);
             active_body = Some(CursorBody {
@@ -112,6 +158,7 @@ impl Locals {
                 locals.extend_open_scopes(source);
             }
             Ok(CursorScope {
+                available: true,
                 locals,
                 body: active_body,
             })
