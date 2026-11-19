@@ -2,18 +2,29 @@
 use crate::features::SemanticConfig;
 use tower_lsp::lsp_types as lsp;
 
-pub(super) fn initialize_result(semantic: &SemanticConfig) -> lsp::InitializeResult {
-    let legend = semantic.legend();
+pub(super) fn initialize_result(
+    semantic: &SemanticConfig,
+    document_highlight_enabled: bool,
+    diagnostics_on_save: bool,
+) -> lsp::InitializeResult {
     lsp::InitializeResult {
         capabilities: lsp::ServerCapabilities {
             position_encoding: Some(lsp::PositionEncodingKind::UTF16),
-            text_document_sync: Some(lsp::TextDocumentSyncCapability::Kind(
-                lsp::TextDocumentSyncKind::FULL,
-            )),
+            text_document_sync: Some(if diagnostics_on_save {
+                lsp::TextDocumentSyncCapability::Options(lsp::TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(lsp::TextDocumentSyncKind::FULL),
+                    save: Some(lsp::TextDocumentSyncSaveOptions::Supported(true)),
+                    ..Default::default()
+                })
+            } else {
+                lsp::TextDocumentSyncCapability::Kind(lsp::TextDocumentSyncKind::FULL)
+            }),
             type_definition_provider: Some(lsp::TypeDefinitionProviderCapability::Simple(true)),
             hover_provider: Some(lsp::HoverProviderCapability::Simple(true)),
             implementation_provider: Some(lsp::ImplementationProviderCapability::Simple(true)),
-            document_highlight_provider: Some(lsp::OneOf::Left(true)),
+            document_highlight_provider: document_highlight_enabled
+                .then_some(lsp::OneOf::Left(true)),
             document_link_provider: Some(lsp::DocumentLinkOptions {
                 resolve_provider: Some(false),
                 work_done_progress_options: lsp::WorkDoneProgressOptions::default(),
@@ -56,7 +67,8 @@ pub(super) fn initialize_result(semantic: &SemanticConfig) -> lsp::InitializeRes
                 retrigger_characters: Some(vec![")".into()]),
                 ..Default::default()
             }),
-            semantic_tokens_provider: Some(
+            semantic_tokens_provider: semantic.enabled.then(|| {
+                let legend = semantic.legend();
                 lsp::SemanticTokensServerCapabilities::SemanticTokensOptions(
                     lsp::SemanticTokensOptions {
                         legend: lsp::SemanticTokensLegend {
@@ -67,8 +79,8 @@ pub(super) fn initialize_result(semantic: &SemanticConfig) -> lsp::InitializeRes
                         range: Some(true),
                         work_done_progress_options: lsp::WorkDoneProgressOptions::default(),
                     },
-                ),
-            ),
+                )
+            }),
             ..Default::default()
         },
         server_info: Some(lsp::ServerInfo {

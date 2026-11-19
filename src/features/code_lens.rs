@@ -4,7 +4,7 @@
 //! test/benchmark lenses stay disabled until a client opts in. The lens set is
 //! derived from the same read-only syntax index as folding.
 use crate::analysis::query::Context;
-use crate::syntax::view::SyntaxIndex;
+use crate::syntax::view::{SyntaxIndex, has_cgo_path_literal};
 use crate::text::SourceMap;
 use crate::workspace;
 use serde_json::{Value, json};
@@ -15,6 +15,9 @@ const COMMAND_METADATA: &str = "codelens";
 
 pub(super) fn execute(context: &Context<'_>) -> Result<Value, (i32, String)> {
     let source = context.source();
+    if !source.contains(GENERATE_DIRECTIVE) && !has_cgo_path_literal(source) {
+        return Ok(Value::Null);
+    }
     let Some(index) = SyntaxIndex::parse(source) else {
         return Ok(Value::Null);
     };

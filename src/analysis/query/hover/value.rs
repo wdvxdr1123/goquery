@@ -175,7 +175,7 @@ pub(super) fn literal(text: &str) -> Option<Literal> {
     }
     let token = crate::syntax::Lexer::new(text).next()?;
     match expression.kind {
-        ExprKind::Literal => {}
+        ExprKind::Literal(_) => {}
         ExprKind::Name => {
             return matches!(text.trim(), "true" | "false").then(|| Literal {
                 value: text.trim().to_owned(),
@@ -269,10 +269,8 @@ pub(super) fn string_expression(
     }
     let expression = parsed.nodes.get(parsed.root.0)?;
     match &expression.kind {
-        ExprKind::Literal => {
-            let token = crate::syntax::Lexer::new(text).next()?;
-            (token.kind == TokenKind::String).then_some(())?;
-            crate::syntax::decode_string_literal(text.get(token.span)?)
+        ExprKind::Literal(TokenKind::String) => {
+            crate::syntax::decode_string_literal(text.get(expression.span.clone())?)
         }
         ExprKind::Parenthesized { expression: inner } => {
             let inner = parsed.nodes.get(inner.0)?;

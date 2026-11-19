@@ -1,4 +1,6 @@
 use crate::syntax::ast::types::TypeReference;
+use crate::syntax::token::{Token, TokenKind};
+use std::num::NonZeroU32;
 use std::ops::Range;
 
 /// An index into `ExpressionTree::nodes`; nodes are stored children-first.
@@ -16,7 +18,7 @@ impl ExprId {
 /// Expression shape. Text (including operator spelling) remains in the source.
 pub enum ExprKind {
     Name,
-    Literal,
+    Literal(TokenKind),
     Missing,
     /// A type used in expression syntax; semantic checks decide its valid use.
     Type,
@@ -53,6 +55,8 @@ pub enum ExprKind {
         function: ExprId,
         arguments: Vec<ExprId>,
         variadic: bool,
+        /// Byte offset of the spread token. A spread follows an argument.
+        ellipsis: Option<NonZeroU32>,
     },
     /// Syntax alone does not distinguish indexing from generic instantiation.
     Index {
@@ -85,14 +89,58 @@ pub struct Expr {
     pub span: Range<usize>,
 }
 
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<Expr>() <= 80);
+
 #[derive(Debug)]
 #[non_exhaustive]
 /// A recoverable parser error referring to the same source snapshot as the tree.
 pub struct Diagnostic {
     pub span: Range<usize>,
     pub message: &'static str,
+    pub(crate) expected: Option<Expected>,
 }
 
+#[derive(Debug)]
+pub(crate) struct Expected {
+    pub(crate) description: &'static str,
+    pub(crate) found: Option<Token>,
+}
+
+impl Diagnostic {
+    /// Format an expectation using the token already observed by the parser.
+    pub(crate) fn display_message(&self, source: &str) -> String {
+        let Some(expected) = &self.expected else {
+            return self.message.to_owned();
+        };
+        let found = match &expected.found {
+            None => "'EOF'".to_owned(),
+            Some(token) if token.inserted => "newline".to_owned(),
+            Some(token)
+                if matches!(
+                    token.kind,
+                    TokenKind::Ident
+                        | TokenKind::Int
+                        | TokenKind::Float
+                        | TokenKind::Imag
+                        | TokenKind::Char
+                        | TokenKind::String
+                ) =>
+            {
+                source[token.span.clone()].to_owned()
+            }
+            Some(token) => format!("'{}'", &source[token.span.clone()]),
+        };
+        format!("{}, found {found}", expected.description)
+    }
+
+    pub(crate) fn rebase(&mut self, base: usize) {
+        self.span = base + self.span.start..base + self.span.end;
+        if let Some(token) = self.expected.as_mut().and_then(|e| e.found.as_mut()) {
+            token.span = base + token.span.start..base + token.span.end;
+        }
+    }
+}
 #[derive(Debug)]
 #[non_exhaustive]
 /// Owns flat nodes without owning source text or recursively boxed subtrees.

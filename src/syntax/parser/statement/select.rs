@@ -52,26 +52,14 @@ impl BodyParser<'_> {
                 }
                 Some(statement)
             };
-            if !self.eat(TokenKind::Colon) {
-                self.parser
-                    .error(token.span.clone(), "expected ':' after communication case");
-            }
-            let (statements, end) = self.case_body(depth + 1, token.span.end);
-            // The clause span covers the whole clause region up to the next
-            // clause keyword or the select closing brace; the query scope layer
-            // uses it to keep clause locals visible in trailing trivia.
-            let end = self
-                .parser
-                .tokens
-                .peek()
-                .map_or(self.parser.source.len(), |token| token.span.start)
-                .max(end);
-            cases.push(self.add(
+            let (statements, colon, end) = self.clause_body(depth + 1, token.span.end);
+            cases.push(self.add_delimited(
                 StmtKind::CommunicationCase {
                     communication,
                     statements,
                 },
                 token.span.start..end,
+                colon,
             ));
         }
         let end = self.parser.close(

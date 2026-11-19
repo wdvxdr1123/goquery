@@ -14,16 +14,8 @@ impl TypeArena<'_> {
         }
     }
 
-    pub(crate) fn receive_slot(
-        &mut self,
-        input: Operand,
-        result: usize,
-        count: usize,
-    ) -> Option<Operand> {
+    pub(crate) fn receive(&mut self, input: Operand) -> Option<Operand> {
         self.step()?;
-        if !matches!(count, 1 | 2) || result >= count {
-            return None;
-        }
         let root = self.common_under(input.ty)?;
         let Ty::Chan {
             direction: Direction::Both | Direction::Receive,
@@ -33,16 +25,8 @@ impl TypeArena<'_> {
             return None;
         };
         Some(Operand {
-            mode: if count == 1 {
-                Mode::CommaOk
-            } else {
-                Mode::Value
-            },
-            ty: if result == 0 {
-                element
-            } else {
-                self.basic(BasicKind::Bool)?
-            },
+            mode: Mode::CommaOk,
+            ty: element,
             value: None,
         })
     }

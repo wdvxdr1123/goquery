@@ -1468,3 +1468,285 @@ recorded in [the validation report](typecheck-validation-20261117.md). Full
 compiler diagnostic coverage, arbitrary-precision constant evaluation and some
 budget-limited semantic results remain incomplete; the architecture migration
 does not establish full gopls parity.
+
+## Parser and checker boundary (2026-11-18)
+
+- The local Go plugin’s `GoFileElementType`, `GoCodeBlockElementType` and
+  `GoAnnotator` illustrate shallow indexing, demand-parsed bodies and checks
+  over parsed nodes. goquery uses declaration stubs and flat, request-local
+  body trees for the same division of work. The plugin’s select and for
+  checkers validate their already-parsed clause and post-statement nodes.
+- rust-analyzer’s `ItemTree` and body lowering illustrate declaration and body
+  interfaces with different lifetimes. Its IDE API also exposes separate
+  syntax and semantic diagnostics. goquery keeps the compact workspace index
+  separate from diagnostics and uses parser offsets through scopes and folding.
+- gopls's `checkPackage` and `parseErrorDiagnostics` report the first parse
+  error and suppress compiler errors in that file. goquery's parser records
+  the found token at the error site, including inserted semicolons. The query
+  selects the first error and formats it against the admitted source snapshot.
+  Full-file validation shares import-spec grammar with the stub and function
+  header grammar with signature parsing. It visits at most 4,096 retained
+  import specs per query and releases declaration-local syntax as it advances.
+- The checker borrows statement and expression nodes during dispatch. Scope
+  construction uses parser-recorded declaration `=` and clause `:` offsets
+  for alias identity and the start of case scopes. Folding and body semantic
+  tokens use the same offsets. A shared receive-expression predicate feeds
+  checking and scope construction. The checker and diagnostic query consume
+  syntax through parser and view APIs. The syntax layer also exposes
+  a streamed qualifier probe and conservative variable-removal ranges.
+- Go's parser supplies the diagnostic vocabulary for malformed import paths,
+  missing clause colons, missing argument commas before a newline, newlines
+  before a function body, and malformed `go` and `defer` calls. The Go
+  `go/types` statement checker supplies `InvalidSelectCase`,
+  `InvalidPostDecl` and `InvalidCond`. The condition rule reports resolved
+  basic types; broader non-boolean types and generic type sets remain pending.
+
+Whole-file syntax validation and native region checking still parse separately.
+Closure and type annotations still enter through bounded parser APIs on demand.
+`BlockTree::declaration_equals` and `BlockTree::clause_body_start` expose
+offsets through a sparse, body-local table. The parser checks the existing
+4,096 pending-body limit before enqueueing a function literal.
+Unused import detection uses the absence of a qualified spelling as evidence.
+A shadowing local can hide an unused import from this check. Dot imports and cgo
+files remain outside its coverage. The organize-import action handles a single
+removal. The remaining compiler diagnostics and optional gopls analyses are
+open compatibility work.
+
+The initial Windows checkpoint used Go 1.27.3 and gopls v0.24.0 with offline
+module resolution and cgo disabled for the LSP comparisons. The table counts
+complete compiler and syntax diagnostic arrays after sorting and compares
+complete folding replies.
+
+| Corpus | Diagnostic arrays, all reported URIs | Opened files | Folding replies |
+| --- | ---: | ---: | ---: |
+| Standard library | 23/23 | 10/10 | 10/10 |
+| Tile38 | 30/30 | 10/10 | 10/10 |
+| Ollama | 14/219 | 9/10 | 10/10 |
+| typescript-go | 11/11 | 10/10 | 10/10 |
+| Prometheus | 10/10 | 10/10 | 10/10 |
+| Existing diagnostic fixture | 13/13 | 13/13 | — |
+| Targeted diagnostic cases | 13/13 | 13/13 | — |
+
+The Ollama open-file difference is `mlxrunner/model/laguna/laguna.go`,
+with 197 compiler diagnostics from goquery and 199 from gopls in the
+cgo-disabled build. The complete URI union also includes gopls diagnostics
+on unopened files. The code-action fixture matched 24/26 complete replies.
+The differences cover the undeclared-variable quick fix and the edit
+decomposition for a lone import deletion. Both reproduced at baseline commit
+`9acf521`. The longest external folding request was 4.8 ms.
+Standard-library semantic tokens matched 8/8 complete replies and signature
+help matched 40/40.
+
+The pinned AST shape and syntax acceptance comparisons passed on 4,636
+standard-library Go files, and the negative-syntax oracle passed its mutation
+sweeps. Deleting a selector name in `crypto/cipher/io.go` yields an extra
+expression statement in the recovered body. The recovered-structure oracle
+found the same mismatch at `9acf521`. The `go/types` binding
+oracle matched 1,162 of 1,163 body bindings. One body binding and six
+declaration-only parameter bindings were unknown. Formatting, all-target
+Clippy, and 19 real stdio end-to-end tests passed.
+
+The initial checker checkpoint passed the Windows memory gate over 1,068
+Ollama files and 12,073,161 source bytes, with three open/edit/restore/close
+cycles and 15,456 request barriers. Complete feature replies were stable after
+restoration. The Rust binary SHA-256 was
+`50404716d08934cb5ed170d8a2faf17a7ab7131dc474a06f4595c4939db89962`.
+
+| Process | OS peak working set, bytes | Sampled private bytes |
+| --- | ---: | ---: |
+| Rust server root | 60,411,904 | 50,737,152 |
+| `go env` child, separate initialization sample | 9,125,888 | 47,120,384 |
+| `gofmt` child, separate formatting samples | 9,826,304 | 14,422,016 |
+
+The root stayed below 100,000,000 bytes on both metrics across 25,411 samples.
+The Ollama replay and external comparisons for the later sparse delimiter
+change were deferred at the user's request.
+
+After the delimiter change, both diagnostic fixtures matched all 26 complete
+arrays. The standard-library comparison matched all eight semantic-token
+replies and ten folding replies. The `go/types` package's 111 source files
+passed the parser AST and syntax-view differentials.
+
+## Ollama invalid imported call recovery (2026-11-18)
+
+In the cgo-disabled Ollama build, `mlx.SwiGLU` exists as an imported variable.
+Its initializer calls `Compile2`, which is in a file excluded by that build.
+Go's `go/types` visits arguments when the callee is missing. It stops at
+signature selection when the callee is an imported variable with an invalid
+type. That distinction makes `gate` and `up` unused in
+`mlxrunner/model/laguna/laguna.go`.
+
+The declaration cache records this proven invalidity for inferred variables
+with a missing initializer name or callee. The existing request-local cache
+limit covers these entries. An unavailable type remains unknown. Single-result
+and multi-result calls share argument recovery and use the same region facts.
+Read completeness tracks whether checking could omit a read. A failed type
+inference alone leaves the read inventory usable. Local type checking also
+uses the parser's alias delimiter and parameter records. Like rust-analyzer's
+body inference diagnostics, this keeps resolution and recovery at the check
+layer and leaves publication to the diagnostic adapter.
+
+Go 1.27.3 and gopls v0.24.0 matched all 199 compiler diagnostics in the opened
+`laguna.go`, up from 197. The ten opened Ollama samples matched 10/10 complete
+diagnostic arrays. The publication union matched 15/219 arrays. The 204 other
+URIs have gopls diagnostics in unopened files. The standard-library sample
+matched 23/23 diagnostic arrays and 40/40 signature-help replies. The focused
+stdio test covers single-result, multi-result and nested calls, as well as
+continued argument checking for a missing callee.
+
+The checker still omits the primary `InvalidCall` diagnostic for an invalid
+imported variable when Go has no earlier package error. It also omits an
+unused-variable claim when recovery may have skipped local bindings or reads.
+The full-project memory replay was deferred for this change.
+
+## Go 1.27.3 operand-count diagnostics (2026-11-18)
+
+Assignments, initializers, returns and calls use the actual checked operand
+count. A sole call can contribute all of its results. A map index, receive or
+type assertion contributes a comma-ok result only in a two-variable
+assignment. Named results permit a bare return. Call result projection
+checks argument assignability once and borrows the result range from the
+request-local type arena.
+
+The checker now reports wrong assignment, result and argument counts,
+multi-valued compound assignments, calls without a value in value context,
+and spread calls to non-variadic signatures. Short declarations use
+parsed expressions and scope identities to report non-name operands, repeated names,
+assignments to non-variables and declarations with no new variable. Count
+messages use bounded rendering. Missing operand facts suppress dependent
+count diagnostics. No persistent syntax or type cache was added.
+
+The stdio E2E replays reduced cases from `stmt0.go`, `decls0.go`,
+`expr3.go` and `conversions0.go` in Go's
+`src/internal/types/testdata/check` directory. It checks error codes,
+messages and highlighted text, plus valid tuple and comma-ok forms,
+named returns, and recovery around an undefined initializer.
+
+An offline comparison covered nine opened fixtures. It included the
+unaltered `stmt0.go` function `assignments0` and the argument-count block
+from `conversions0.go`. All 35 diagnostic messages matched Go 1.27.3
+`go/types`, with multiplicity. Seven of nine complete diagnostic arrays
+matched gopls v0.24.0. In the other two fixtures goquery and `go/types`
+both diagnose returning a tuple from a single-result function. gopls
+did not publish that diagnostic in those fixtures.
+
+The standard-library sample matched 23/23 complete diagnostic arrays and
+40/40 signature-help replies. Ollama's opened `laguna.go` still matched
+all 199 compiler diagnostics.
+
+This batch covers the operand-list rules exercised above. Builtin-specific
+signatures, invalid generic arguments, index and constant errors, termination
+and labels, and additional assignment relations still need coverage in the
+full Go corpus. The full-project memory replay remains deferred.
+
+## Builtin, index and constant diagnostics (2026-11-18)
+
+Builtin calls share argument evaluation, including a sole call that supplies
+multiple results. The checker reuses signature arity for spread calls to
+`append` and assignment rules for append elements, map indices and delete
+keys. `make` checks each size independently using the same integer and
+representability rules as indexing. The size operands and slice bounds use
+fixed-size arrays. Map comma-ok assignments expand the result of one index
+check.
+
+The type arena distinguishes established violations from unavailable facts.
+The checker renders the diagnostics at parsed expression ranges. Literal
+nodes carry their parsed token kind as `ExprKind::Literal(TokenKind)`, and
+call nodes expose the parsed spread offset through `ellipsis`. The checker
+and constant evaluator consume these facts without lexing the expressions
+again. Type and expression size bounds hold at compile time. Diagnostic
+storage remains subject to the existing per-region and per-file budgets.
+
+Verification ran on `k6` over SSH with Go 1.27.3 and gopls v0.24.0. The new
+stdio E2E exercises five buffer versions and checks exact codes, messages
+and highlighted text. All 57 messages matched the Go oracle, with
+multiplicity. Four of five complete diagnostic arrays matched gopls. The
+remaining array differs only in the codes and documentation URLs for
+`InvalidClear` and `InvalidMinMaxOperand`. gopls publishes them as
+`ErrorCode(148)` and `ErrorCode(150)`. The standard-library sample matched
+all 23 opened files and all 219 diagnostic arrays in the final publication
+union.
+
+The untrimmed upstream comparison still differs in all four diagnostic
+arrays. Against Go's direct oracle, the matched message totals were 213 of
+365 for `builtins0.go`, 53 of 112 for `const0.go` and 21 of 171 for
+`shifts.go`. The oracle stops at the intentional parser errors in
+`expr3.go`. Remaining gaps include unsafe and generic builtin operands,
+contextual shift typing, constant precision, and expression formatting in
+messages on sources with inline comments. The reduced cases and full
+responses are recorded in `operand-diff.json`, `upstream-diff.json` and
+`stdlib-diff.json` under `~/work/goquery-operand-checks.ogv1SH` on `k6`.
+The Ollama memory replay remains deferred.
+
+### Shared call and comma-ok results
+
+Go's `multiExpr` expands an already checked operand according to its mode.
+The region checker now uses the same approach for map indices, channel
+receives and type assertions. A sole RHS is checked once and the assignment
+context determines whether it supplies the second, boolean value. A
+two-result tuple uses a fixed array of type IDs.
+
+Ordinary and instantiated generic calls share one signature completion
+path. The type arena's argument checks also handle signatures with zero
+results. This removes the second implementation of variadic assignment
+and keeps syntax, result projection and diagnostic placement in the
+region checker. Like rust-analyzer's body inference, the checker consumes
+typed facts from the parsed body. The project's type and region storage
+remain request-local.
+
+The existing stdio E2E also exercises parenthesized comma-ok expressions,
+generic and non-generic variadic calls, and use of a no-result variadic
+call as a value. On `k6`, formatting, the default test suite and Clippy
+passed. All five focused diagnostic arrays matched before and after the
+refactor. The 23 opened standard-library files matched gopls v0.24.0,
+and all 57 focused messages matched the Go 1.27.3 oracle.
+
+### Assignment relation API
+
+`types::assignment` owns assignability for all operands. The diagnostic path
+receives a structured result that distinguishes a proved failure from
+unavailable facts. The boolean query projects the same result for callers
+such as completion ranking. Initializers, map indices, and append arguments
+forward the relation's failure reason to the operand diagnostics, where
+source spans and wording are added. The `Context::with_sema` callback is
+scoped to the query module, while feature adapters use specific queries.
+
+The stdio E2E now checks append truncation and map key overflow. On `k6`,
+formatting, the default test suite, and Clippy passed. All 59 focused
+messages matched the Go 1.27.3 oracle. Four of five complete diagnostic
+arrays matched gopls v0.24.0 with the two previously recorded code and
+documentation URL differences. The standard-library sample matched all
+23 opened files.
+
+### Type definition locations
+
+`Context::type_definition_locations` projects named, local and SDK
+declarations into source locations before protocol encoding. The query
+shares the indexed selection conversion with implementation navigation,
+the cross-file range conversion with definition navigation and the builtin
+lookup with other SDK navigation. Type definitions and references use the
+same LSP location encoder. Named and local paths borrow from the workspace,
+and only SDK builtin paths require ownership in the result. The current
+buffer's line map is lazy and shared across local results in the request.
+
+The stdio E2E checks a closed dependency, an SDK builtin, an unsaved UTF-16
+range and ordered repeated results. On `k6`, formatting, the default test
+suite and Clippy passed. Complete type-definition replies matched gopls
+v0.24.0 under Go 1.27.3 for all 34 core, 14 SDK and 3 compiler-source
+requests. The Ollama peak-memory replay remains deferred.
+
+### Shared source locations for definition and declaration
+
+Ordinary definition and declaration now share `Context::definition_location`.
+The same source location type, range conversions and location-list encoder
+also serve type definition. The query resolves builtins through the SDK and
+checks for an assembler `TEXT` symbol for body-less Go functions. The Go
+declaration supplies the location when the assembler symbol is unavailable.
+Indexed and cross-file paths borrow workspace metadata. The UTF-16 line map
+is built only for the source that supplies a byte-range result.
+
+The stdio E2E checks matching definition and declaration replies for the SDK
+builtin, assembler target, Go fallback and unresolved identifier. Formatting,
+the default test suite and Clippy passed on `k6`. All 18 sampled SDK
+definition replies matched both the preceding binary and gopls v0.24.0
+with Go 1.27.3. The 51 type-definition comparisons also matched gopls.

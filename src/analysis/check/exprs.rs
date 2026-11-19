@@ -1,26 +1,22 @@
 //! Expression checking for [`RegionChecker`].
 
 use std::collections::BTreeSet;
+use std::num::NonZeroU32;
 use std::ops::Range;
 
+use crate::analysis::check::diagnostics::Code;
 use crate::analysis::check::region::{CallSiteInfo, InstanceInfo};
 use crate::analysis::check::{
     ExprOutcome, FileSymbolLookup, RegionChecker, builtin_type_static_name, decl_object,
 };
 use crate::analysis::obj::{BuiltinFunction, DeclId, ObjectRef};
-use crate::analysis::scope::tree::LocalBindingKind;
-use crate::analysis::types::{BasicKind, Constant, Mode, Operand, TypeId};
+use crate::analysis::scope::tree::{LocalBindingKind, ScopeKind};
+use crate::analysis::types::{BasicKind, CheckError, Constant, Mode, Operand, SliceError, TypeId};
 use crate::syntax::{self, ExprId, ExprKind, Signature, SymbolKind};
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
     pub(crate) fn check_expr(&mut self, id: ExprId, expected: Option<TypeId>) -> Option<Operand> {
-        match self.check_expr_outcome(id, expected) {
-            ExprOutcome::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => Some(op),
-            ExprOutcome::Value(_)
-            | ExprOutcome::Package { .. }
-            | ExprOutcome::PartialGenericFunc { .. }
-            | ExprOutcome::GenericType(_) => None,
-        }
+        self.check_expr_outcome(id, expected).operand()
     }
 
     pub(crate) fn check_multi_expr(
@@ -28,135 +24,101 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         id: ExprId,
         expected_count: usize,
     ) -> Option<Vec<Operand>> {
-        let int_bits = self.int_bits()?;
-
         if expected_count <= 1 {
             return self.check_expr(id, None).map(|op| vec![op]);
         }
+        self.check_value_pack(id, expected_count == 2, None)
+            .filter(|values| values.len() == expected_count)
+    }
+
+    /// Evaluate a sole RHS once and retain the actual arity for diagnostics.
+    /// Comma-ok forms only expand in an assignment to exactly two variables.
+    pub(super) fn check_value_pack(
+        &mut self,
+        id: ExprId,
+        comma_ok: bool,
+        expected: Option<TypeId>,
+    ) -> Option<Vec<Operand>> {
+        self.int_bits()?;
         let target_id = self.unwrap_parens(id);
-        enum MultiAction {
-            Index {
-                operand: ExprId,
-                arguments: Vec<ExprId>,
-            },
-            TypeAssertion {
-                operand: ExprId,
-                asserted_type: Range<usize>,
-            },
-            Receive {
-                operand: ExprId,
-            },
-            Call {
-                function: ExprId,
-                arguments: Vec<ExprId>,
-                variadic: bool,
-            },
-            Other,
-        }
-        let outer_expr = self.body.expression(id)?;
-        let outer_span = outer_expr.span.clone();
-        let target_expr = self.body.expression(target_id)?;
-        let target_span = target_expr.span.clone();
-        let action = match &target_expr.kind {
-            ExprKind::Index { operand, arguments } => MultiAction::Index {
-                operand: *operand,
-                arguments: arguments.clone(),
-            },
-            ExprKind::TypeAssertion {
-                operand,
-                asserted_type,
-            } => MultiAction::TypeAssertion {
-                operand: *operand,
-                asserted_type: asserted_type.clone(),
-            },
-            ExprKind::Unary { operator, operand } if self.text(operator) == "<-" => {
-                MultiAction::Receive { operand: *operand }
-            }
+        let tree = self.body;
+        let outer_span = &tree.expression(id)?.span;
+        let target_expr = tree.expression(target_id)?;
+        let target_span = &target_expr.span;
+
+        let (ops, recorded) = match &target_expr.kind {
             ExprKind::Call {
                 function,
                 arguments,
-                variadic,
-            } => MultiAction::Call {
-                function: *function,
-                arguments: arguments.clone(),
-                variadic: *variadic,
-            },
-            _ => MultiAction::Other,
-        };
-
-        let ops = match action {
-            MultiAction::Index { operand, arguments } if expected_count == 2 => {
-                let recv = self.check_expr(operand, None)?;
-                if arguments.len() != 1 {
-                    return None;
-                }
-                let key = self.check_expr(arguments[0], None)?;
-                let mut out = Vec::with_capacity(2);
-                for result in 0..2 {
-                    out.push(self.arena.index(recv, key, result, 2, int_bits)?);
-                }
-                Some(out)
-            }
-            MultiAction::TypeAssertion {
-                operand,
-                asserted_type,
-            } if expected_count == 2 => {
-                let src = self.check_expr(operand, None)?;
-                let target_ty = self.resolve_type_syntax_span(&asserted_type)?;
-                let mut out = Vec::with_capacity(2);
-                for result in 0..2 {
-                    out.push(self.arena.assertion(src, target_ty, result, 2, int_bits)?);
-                }
-                Some(out)
-            }
-            MultiAction::Receive { operand } if expected_count == 2 => {
-                let ch = self.check_expr(operand, None)?;
-                let mut out = Vec::with_capacity(2);
-                for result in 0..2 {
-                    out.push(self.arena.receive_slot(ch, result, 2)?);
-                }
-                Some(out)
-            }
-            MultiAction::Call {
-                function,
-                arguments,
-                variadic,
+                ellipsis,
+                ..
             } => {
-                self.check_call_multi(function, &arguments, variadic, &target_span, expected_count)
+                self.region
+                    .record_expected(self.abs_span(outer_span), expected);
+                if target_id != id {
+                    self.region
+                        .record_expected(self.abs_span(target_span), expected);
+                }
+                (
+                    self.check_call_any_arity(*function, arguments, *ellipsis, target_span)?,
+                    true,
+                )
             }
             _ => {
-                let _ = self.check_expr_outcome(target_id, None);
-                None
+                let mut operand = self.check_expr(id, expected)?;
+                if !operand.mode.is_value() {
+                    return None;
+                }
+                if !comma_ok || !matches!(operand.mode, Mode::MapIndex | Mode::CommaOk) {
+                    return Some(vec![operand]);
+                }
+                operand.mode = Mode::Value;
+                let ok = Operand {
+                    mode: Mode::Value,
+                    ty: self.arena.basic(BasicKind::Bool)?,
+                    value: None,
+                };
+                (vec![operand, ok], false)
             }
         };
 
-        if let Some(ref ops) = ops
+        if !ops.iter().all(|operand| operand.mode.is_value()) {
+            return None;
+        }
+        if (!recorded || target_id != id)
             && let Some(first) = ops.first()
         {
             if ops.len() > 1 {
-                let tys: Vec<TypeId> = ops.iter().map(|o| o.ty).collect();
-                if let Some(tuple_ty) = self.arena.tuple(&tys) {
+                let tuple_ty = match ops.as_slice() {
+                    [first, second] => self.arena.tuple(&[first.ty, second.ty]),
+                    _ => self
+                        .arena
+                        .tuple(&ops.iter().map(|op| op.ty).collect::<Vec<_>>()),
+                };
+                if let Some(tuple_ty) = tuple_ty {
                     let tuple_op = Operand {
                         mode: Mode::Value,
                         ty: tuple_ty,
                         value: None,
                     };
-                    self.region
-                        .expr_types
-                        .push((self.abs_span(&target_span), tuple_op));
+                    if !recorded {
+                        self.region
+                            .expr_types
+                            .push((self.abs_span(target_span), tuple_op));
+                    }
                     if target_id != id {
                         self.region
                             .expr_types
-                            .push((self.abs_span(&outer_span), tuple_op));
+                            .push((self.abs_span(outer_span), tuple_op));
                     }
                 }
             } else {
                 self.region
                     .expr_types
-                    .push((self.abs_span(&target_span), *first));
+                    .push((self.abs_span(outer_span), *first));
             }
         }
-        ops
+        Some(ops)
     }
 
     pub(crate) fn check_expr_outcome(
@@ -164,155 +126,23 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         id: ExprId,
         expected: Option<TypeId>,
     ) -> ExprOutcome<'a, 'b> {
-        enum ExprAction {
-            Name(Range<usize>),
-            Literal(Range<usize>),
-            Missing,
-            Type(Range<usize>),
-            Composite {
-                span: Range<usize>,
-                literal_type: Option<ExprId>,
-                elements: Vec<ExprId>,
-            },
-            KeyValue {
-                key: ExprId,
-                value: ExprId,
-            },
-            FunctionLiteral {
-                signature: Range<usize>,
-                body: Range<usize>,
-            },
-            Unary {
-                operator: Range<usize>,
-                operand: ExprId,
-            },
-            Binary {
-                left: ExprId,
-                operator: Range<usize>,
-                right: ExprId,
-            },
-            Parenthesized(ExprId),
-            Selector {
-                operand: ExprId,
-                field: Range<usize>,
-            },
-            Call {
-                span: Range<usize>,
-                function: ExprId,
-                arguments: Vec<ExprId>,
-                variadic: bool,
-            },
-            Index {
-                span: Range<usize>,
-                operand: ExprId,
-                arguments: Vec<ExprId>,
-            },
-            Slice {
-                operand: ExprId,
-                low: Option<ExprId>,
-                high: Option<ExprId>,
-                max: Option<ExprId>,
-                full: bool,
-            },
-            TypeAssertion {
-                operand: ExprId,
-                asserted_type: Range<usize>,
-            },
-            TypeSwitchGuard(ExprId),
-        }
-
-        let Some(e) = self.body.expression(id) else {
+        let tree = self.body;
+        let Some(expr) = tree.expression(id) else {
             return ExprOutcome::invalid();
         };
-        let span = e.span.clone();
+        let span = &expr.span;
         // Unknown inner contexts are barriers: an enclosing expression's
         // expectation must not leak into unrelated operands or callee names.
-        self.region.record_expected(self.abs_span(&span), expected);
-        let action = match &e.kind {
-            ExprKind::Name => ExprAction::Name(span),
-            ExprKind::Literal => ExprAction::Literal(span),
-            ExprKind::Missing => ExprAction::Missing,
-            ExprKind::Type => ExprAction::Type(span),
-            ExprKind::Composite {
-                literal_type,
-                elements,
-            } => ExprAction::Composite {
-                span,
-                literal_type: *literal_type,
-                elements: elements.clone(),
-            },
-            ExprKind::KeyValue { key, value } => ExprAction::KeyValue {
-                key: *key,
-                value: *value,
-            },
-            ExprKind::FunctionLiteral { signature, body } => ExprAction::FunctionLiteral {
-                signature: signature.clone(),
-                body: body.clone(),
-            },
-            ExprKind::Unary { operator, operand } => ExprAction::Unary {
-                operator: operator.clone(),
-                operand: *operand,
-            },
-            ExprKind::Binary {
-                left,
-                operator,
-                right,
-            } => ExprAction::Binary {
-                left: *left,
-                operator: operator.clone(),
-                right: *right,
-            },
-            ExprKind::Parenthesized { expression } => ExprAction::Parenthesized(*expression),
-            ExprKind::Selector { operand, field } => ExprAction::Selector {
-                operand: *operand,
-                field: field.clone(),
-            },
-            ExprKind::Call {
-                function,
-                arguments,
-                variadic,
-            } => ExprAction::Call {
-                span,
-                function: *function,
-                arguments: arguments.clone(),
-                variadic: *variadic,
-            },
-            ExprKind::Index { operand, arguments } => ExprAction::Index {
-                span,
-                operand: *operand,
-                arguments: arguments.clone(),
-            },
-            ExprKind::Slice {
-                operand,
-                low,
-                high,
-                max,
-                full,
-            } => ExprAction::Slice {
-                operand: *operand,
-                low: *low,
-                high: *high,
-                max: *max,
-                full: *full,
-            },
-            ExprKind::TypeAssertion {
-                operand,
-                asserted_type,
-            } => ExprAction::TypeAssertion {
-                operand: *operand,
-                asserted_type: asserted_type.clone(),
-            },
-            ExprKind::TypeSwitchGuard { operand } => ExprAction::TypeSwitchGuard(*operand),
-        };
+        self.region.record_expected(self.abs_span(span), expected);
 
-        let outcome = match action {
-            ExprAction::Missing => ExprOutcome::invalid(),
-            ExprAction::Name(span) => self.check_name(&span),
-            ExprAction::Literal(span) => match self.arena.literal(self.text(&span)) {
+        let outcome = match &expr.kind {
+            ExprKind::Missing => ExprOutcome::invalid(),
+            ExprKind::Name => self.check_name(span),
+            ExprKind::Literal(kind) => match self.arena.literal(*kind, self.text(span)) {
                 Some(op) => ExprOutcome::Value(op),
                 None => ExprOutcome::invalid(),
             },
-            ExprAction::Type(span) => match self.resolve_type_syntax_span(&span) {
+            ExprKind::Type => match self.resolve_type_syntax_span(span) {
                 Some(ty) => ExprOutcome::Value(Operand {
                     mode: Mode::TypeExpr,
                     ty,
@@ -320,49 +150,46 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 }),
                 None => ExprOutcome::invalid(),
             },
-            ExprAction::Composite {
-                span,
+            ExprKind::Composite {
                 literal_type,
                 elements,
-            } => self.check_composite(&span, literal_type, &elements, expected),
-            ExprAction::KeyValue { key, value } => {
-                let _ = self.check_expr_outcome(key, None);
-                self.check_expr_outcome(value, expected)
+            } => self.check_composite(span, *literal_type, elements, expected),
+            ExprKind::KeyValue { key, value } => {
+                let _ = self.check_expr_outcome(*key, None);
+                self.check_expr_outcome(*value, expected)
             }
-            ExprAction::FunctionLiteral { signature, body } => {
-                self.check_func_literal(&signature, &body)
+            ExprKind::FunctionLiteral { signature, body } => {
+                self.check_func_literal(signature, body)
             }
-            ExprAction::Unary { operator, operand } => self.check_unary(&operator, operand),
-            ExprAction::Binary {
+            ExprKind::Unary { operator, operand } => self.check_unary(operator, *operand),
+            ExprKind::Binary {
                 left,
                 operator,
                 right,
-            } => self.check_binary(left, &operator, right, expected),
-            ExprAction::Parenthesized(inner) => self.check_expr_outcome(inner, expected),
-            ExprAction::Selector { operand, field } => self.check_selector(operand, &field),
-            ExprAction::Call {
-                span,
+            } => self.check_binary(span, *left, operator, *right, expected),
+            ExprKind::Parenthesized { expression } => {
+                self.check_expr_outcome(*expression, expected)
+            }
+            ExprKind::Selector { operand, field } => self.check_selector(*operand, field),
+            ExprKind::Call {
                 function,
                 arguments,
-                variadic,
-            } => self.check_call_single(function, &arguments, variadic, &span),
-            ExprAction::Index {
-                span,
-                operand,
-                arguments,
-            } => self.check_index(&span, operand, &arguments),
-            ExprAction::Slice {
+                ellipsis,
+                ..
+            } => self.check_call_single(*function, arguments, *ellipsis, span),
+            ExprKind::Index { operand, arguments } => self.check_index(span, *operand, arguments),
+            ExprKind::Slice {
                 operand,
                 low,
                 high,
                 max,
                 full,
-            } => self.check_slice(operand, low, high, max, full),
-            ExprAction::TypeAssertion {
+            } => self.check_slice(*operand, *low, *high, *max, *full),
+            ExprKind::TypeAssertion {
                 operand,
                 asserted_type,
-            } => self.check_type_assertion(operand, &asserted_type),
-            ExprAction::TypeSwitchGuard(operand) => self.check_expr_outcome(operand, None),
+            } => self.check_type_assertion(*operand, asserted_type),
+            ExprKind::TypeSwitchGuard { operand } => self.check_expr_outcome(*operand, None),
         };
 
         self.record_expr_outcome(id, &outcome);
@@ -497,8 +324,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: None,
                     })
                 } else {
-                    self.report_missing_name(name, self.abs_range(span));
-                    ExprOutcome::invalid()
+                    if self.report_missing_name(name, self.abs_range(span)) {
+                        ExprOutcome::MissingName
+                    } else {
+                        ExprOutcome::invalid()
+                    }
                 }
             }
         }
@@ -560,7 +390,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return ExprOutcome::invalid();
         };
         match op_str {
-            "<-" => match self.arena.receive_slot(op, 0, 1) {
+            "<-" => match self.arena.receive(op) {
                 Some(recv_op) => ExprOutcome::Value(recv_op),
                 None => ExprOutcome::invalid(),
             },
@@ -608,6 +438,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
 
     fn check_binary(
         &mut self,
+        span: &Range<usize>,
         left: ExprId,
         operator: &Range<usize>,
         right: ExprId,
@@ -626,8 +457,15 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         if l.mode == Mode::TypeExpr || r.mode == Mode::TypeExpr {
             return ExprOutcome::invalid();
         }
-        match self.arena.binary_expr(op_str, l, r, expected, int_bits) {
-            Some(res) => ExprOutcome::Value(res),
+        match self
+            .arena
+            .checked_binary_expr(op_str, l, r, expected, int_bits)
+        {
+            Some(Ok(res)) => ExprOutcome::Value(res),
+            Some(Err(error)) => {
+                self.binary_error(span, (left, l), (right, r), error);
+                ExprOutcome::invalid()
+            }
             None => ExprOutcome::invalid(),
         }
     }
@@ -639,7 +477,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         match self.check_expr_outcome(operand, None) {
             ExprOutcome::Package { alias, .. } => {
                 match self.resolve_imported_decl(alias, field_name) {
-                    Some(d) => self.resolve_decl_as_outcome(d, field_span),
+                    Some(d) => {
+                        let outcome = self.resolve_decl_as_outcome(d, field_span);
+                        if self.decls.invalid_var(d) {
+                            ExprOutcome::InvalidImportedVar
+                        } else {
+                            outcome
+                        }
+                    }
                     None => {
                         let qualifier_start = self
                             .body
@@ -647,13 +492,16 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                             .map_or(field_span[0] as usize, |expr| {
                                 self.body_base + expr.span.start
                             });
-                        self.report_missing_imported_name(
+                        if self.report_missing_imported_name(
                             alias,
                             field_name,
                             qualifier_start,
                             self.abs_range(field),
-                        );
-                        ExprOutcome::invalid()
+                        ) {
+                            ExprOutcome::MissingName
+                        } else {
+                            ExprOutcome::invalid()
+                        }
                     }
                 }
             }
@@ -852,7 +700,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if let Some(val_op) = self.check_expr(val_id, elem_expected.or(Some(elem_ty))) {
                     if !self
                         .arena
-                        .assign_value(val_op, elem_ty, int_bits)
+                        .assignable(val_op, elem_ty, int_bits)
                         .unwrap_or(false)
                     {
                         ok = false;
@@ -904,7 +752,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     if let Some(key_op) = self.check_expr(key_id, Some(key_ty)) {
                         if !self
                             .arena
-                            .assign_value(key_op, key_ty, int_bits)
+                            .assignable(key_op, key_ty, int_bits)
                             .unwrap_or(false)
                         {
                             ok = false;
@@ -920,7 +768,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     if let Some(val_op) = self.check_expr(val_id, Some(elem_ty)) {
                         if !self
                             .arena
-                            .assign_value(val_op, elem_ty, int_bits)
+                            .assignable(val_op, elem_ty, int_bits)
                             .unwrap_or(false)
                         {
                             ok = false;
@@ -985,7 +833,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     if let Some(val_op) = self.check_expr(val_id, Some(elem_ty)) {
                         if !self
                             .arena
-                            .assign_value(val_op, elem_ty, int_bits)
+                            .assignable(val_op, elem_ty, int_bits)
                             .unwrap_or(false)
                         {
                             ok = false;
@@ -1052,7 +900,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         if let Some(val_op) = self.check_expr(val_id, Some(fty)) {
                             if !self
                                 .arena
-                                .assign_value(val_op, fty, int_bits)
+                                .assignable(val_op, fty, int_bits)
                                 .unwrap_or(false)
                             {
                                 ok = false;
@@ -1078,7 +926,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         if let Some(fty) = expected_field
                             && !self
                                 .arena
-                                .assign_value(val_op, fty, int_bits)
+                                .assignable(val_op, fty, int_bits)
                                 .unwrap_or(false)
                         {
                             ok = false;
@@ -1116,11 +964,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         for &el_id in elements {
             let target = match self.body.expression(el_id).map(|e| &e.kind) {
                 Some(ExprKind::KeyValue { key, value }) => {
-                    if !matches!(
-                        self.body.expression(*key).map(|k| &k.kind),
-                        Some(ExprKind::Name)
-                    ) {
-                        let _ = self.check_expr_outcome(*key, None);
+                    if let Some(key_expr) = self.body.expression(*key) {
+                        if matches!(key_expr.kind, ExprKind::Name) {
+                            // Without the container type a bare key could be a
+                            // struct field or a read of a local map key.
+                            self.region.uses_complete &= self
+                                .region
+                                .scopes
+                                .resolve_at(
+                                    self.source,
+                                    self.abs_span(&key_expr.span)[0],
+                                    self.text(&key_expr.span),
+                                )
+                                .is_none();
+                        } else {
+                            let _ = self.check_expr_outcome(*key, None);
+                        }
                     }
                     *value
                 }
@@ -1151,6 +1010,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 explicit_type_args,
             } => {
                 if !explicit_type_args.is_empty() {
+                    self.check_exprs(arguments);
                     return ExprOutcome::invalid();
                 }
                 let mut type_args = Vec::with_capacity(arguments.len());
@@ -1300,20 +1160,28 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 }
                 ExprOutcome::invalid()
             }
-            ExprOutcome::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => {
+            ExprOutcome::Value(op) if op.mode.is_value() => {
                 if arguments.len() != 1 {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
+                    self.check_exprs(arguments);
+                    if let Some(extra) = arguments.get(1).and_then(|&id| self.body.expression(id)) {
+                        self.compiler_error(
+                            &extra.span,
+                            Code::InvalidIndex,
+                            "invalid operation: more than one index",
+                        );
                     }
                     return ExprOutcome::invalid();
                 }
                 let Some(idx_op) = self.check_expr(arguments[0], None) else {
                     return ExprOutcome::invalid();
                 };
-                match self.arena.index(op, idx_op, 0, 1, int_bits) {
-                    Some(res) => ExprOutcome::Value(res),
-                    None => ExprOutcome::invalid(),
-                }
+                let error = match self.arena.index(op, idx_op, int_bits) {
+                    Ok(res) => return ExprOutcome::Value(res),
+                    Err(CheckError::Invalid(error)) => error,
+                    Err(CheckError::Unknown) => return ExprOutcome::invalid(),
+                };
+                self.index_error((operand, op), (arguments[0], idx_op), error);
+                ExprOutcome::invalid()
             }
             _ => {
                 for &arg_id in arguments {
@@ -1337,18 +1205,64 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         };
 
         let op = self.check_expr(operand, None);
-        let low_op = low.and_then(|id| self.check_expr(id, None));
-        let high_op = high.and_then(|id| self.check_expr(id, None));
-        let max_op = max.and_then(|id| self.check_expr(id, None));
-        let Some(input) = op else {
+        let sites = [low, high, max];
+        let indices = sites.map(|site| {
+            site.map(|id| {
+                self.check_expr(id, None)
+                    .unwrap_or(Operand::non_value(Mode::Invalid))
+            })
+        });
+        let Some(input) = op.filter(|op| op.mode.is_value()) else {
             return ExprOutcome::invalid();
         };
-        match self
-            .arena
-            .slice(input, [low_op, high_op, max_op], full, int_bits)
-        {
-            Some(res) => ExprOutcome::Value(res),
-            None => ExprOutcome::invalid(),
+        match self.arena.slice(input, indices, full, int_bits) {
+            Ok(result) => {
+                for ((site, value), error) in sites.into_iter().zip(indices).zip(result.errors) {
+                    if let (Some(site), Some(value), Some(error)) = (site, value, error) {
+                        self.index_error((operand, input), (site, value), error);
+                    }
+                }
+                if let Some((position, low, high)) = result.swapped
+                    && let Some(expr) = sites[position].and_then(|id| self.body.expression(id))
+                {
+                    self.compiler_error(
+                        &expr.span,
+                        Code::SwappedSliceIndices,
+                        &format!("invalid slice indices: {high} < {low}"),
+                    );
+                }
+                result
+                    .operand
+                    .map_or_else(ExprOutcome::invalid, ExprOutcome::Value)
+            }
+            Err(CheckError::Invalid(SliceError::StringFull)) => {
+                if let Some(expr) = max.and_then(|id| self.body.expression(id)) {
+                    self.compiler_error(
+                        &expr.span,
+                        Code::InvalidSliceExpr,
+                        "invalid operation: 3-index slice of string",
+                    );
+                }
+                ExprOutcome::invalid()
+            }
+            Err(CheckError::Invalid(error)) => {
+                if let Some(expr) = self.body.expression(operand)
+                    && let Some(value) = self.operand_description(operand, input)
+                {
+                    let qualifier = if matches!(error, SliceError::Unaddressable) {
+                        "unaddressable value "
+                    } else {
+                        ""
+                    };
+                    self.compiler_error(
+                        &expr.span,
+                        Code::NonSliceableOperand,
+                        &format!("cannot slice {qualifier}{value}"),
+                    );
+                }
+                ExprOutcome::invalid()
+            }
+            Err(CheckError::Unknown) => ExprOutcome::invalid(),
         }
     }
 
@@ -1366,14 +1280,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         let (Some(src), Some(target)) = (src, target) else {
             return ExprOutcome::invalid();
         };
-        match self.arena.assertion(src, target, 0, 1, int_bits) {
+        match self.arena.assertion(src, target, int_bits) {
             Some(res) => ExprOutcome::Value(res),
             None => ExprOutcome::invalid(),
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn build_call_site_info(
+    pub(super) fn build_call_site_info(
         &self,
         call_span: &Range<usize>,
         function: ExprId,
@@ -1452,16 +1366,36 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         );
         self.region.calls.push(info);
         if arguments.len() != 1 || variadic {
-            for &arg_id in arguments {
-                let _ = self.check_expr_outcome(arg_id, None);
+            self.check_exprs(arguments);
+            if arguments.len() != 1
+                && let Some(ty) = self.arena.render_presentation(target_ty, self.file)
+            {
+                let (span, message) =
+                    if let Some(last) = arguments.last().and_then(|&id| self.body.expression(id)) {
+                        (
+                            &last.span,
+                            format!("too many arguments in conversion to {ty}"),
+                        )
+                    } else {
+                        (call_span, format!("missing argument in conversion to {ty}"))
+                    };
+                self.compiler_error(
+                    span,
+                    crate::analysis::check::diagnostics::Code::WrongArgCount,
+                    &message,
+                );
             }
             return ExprOutcome::invalid();
         }
         let Some(arg_op) = self.check_expr(arguments[0], None) else {
             return ExprOutcome::invalid();
         };
-        match self.arena.convert(arg_op, target_ty, int_bits) {
-            Some(res) => ExprOutcome::Value(res),
+        match self.arena.checked_conversion(arg_op, target_ty, int_bits) {
+            Some(Ok(res)) => ExprOutcome::Value(res),
+            Some(Err(error)) => {
+                self.conversion_error(arguments[0], arg_op, target_ty, error);
+                ExprOutcome::invalid()
+            }
             None => ExprOutcome::invalid(),
         }
     }
@@ -1470,18 +1404,19 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         &mut self,
         function: ExprId,
         arguments: &[ExprId],
-        variadic: bool,
+        ellipsis: Option<NonZeroU32>,
         call_span: &Range<usize>,
     ) -> ExprOutcome<'a, 'b> {
         let Some(int_bits) = self.int_bits() else {
             return ExprOutcome::invalid();
         };
 
+        let variadic = ellipsis.is_some();
         match self.check_expr_outcome(function, None) {
             ExprOutcome::Value(Operand {
                 mode: Mode::Builtin(bf),
                 ..
-            }) => self.check_builtin_call(bf, function, arguments, variadic, call_span),
+            }) => self.check_builtin_call(bf, function, arguments, ellipsis, call_span),
             ExprOutcome::Value(callee) if callee.mode == Mode::TypeExpr => self
                 .finish_conversion_call(
                     function, callee.ty, arguments, variadic, call_span, int_bits,
@@ -1529,67 +1464,79 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     self.region.calls.push(info);
                     return ExprOutcome::invalid();
                 };
-                self.finish_signature_call_with_args(
+                self.finish_signature_call(
                     function,
                     inst_ty,
                     Some(decl_object(decl)),
                     arguments,
-                    actual_ops,
+                    Some(actual_ops),
                     variadic,
                     call_span,
-                    0,
-                    1,
                 )
             }
             ExprOutcome::Value(callee) if callee.mode.is_value() => {
                 let obj = self.callee_obj_at(function);
                 self.finish_signature_call(
-                    function, callee.ty, obj, arguments, variadic, call_span, 0, 1,
+                    function, callee.ty, obj, arguments, None, variadic, call_span,
                 )
             }
-            _ => {
-                let obj = self.callee_obj_at(function);
-                for &arg_id in arguments {
-                    let _ = self.check_expr_outcome(arg_id, None);
+            other => {
+                self.recover_call(function, arguments, call_span, &other);
+                if matches!(other, ExprOutcome::MissingName) {
+                    ExprOutcome::MissingName
+                } else {
+                    ExprOutcome::invalid()
                 }
-                if obj.is_some() {
-                    let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, false, false,
-                    );
-                    self.region.calls.push(info);
-                }
-                ExprOutcome::invalid()
             }
         }
     }
 
-    fn check_call_multi(
+    pub(super) fn check_exprs(&mut self, expressions: &[ExprId]) {
+        for &id in expressions {
+            let _ = self.check_expr_outcome(id, None);
+        }
+    }
+
+    fn recover_call(
         &mut self,
         function: ExprId,
         arguments: &[ExprId],
-        variadic: bool,
         call_span: &Range<usize>,
-        expected_count: usize,
-    ) -> Option<Vec<Operand>> {
-        let int_bits = self.int_bits()?;
-
-        let (callee_ty, actual_ops) =
-            self.resolve_callable_with_info(function, arguments, variadic, call_span)?;
-        let (_, results, _) = self.arena.signature_parts(callee_ty)?;
-        if results.len() != expected_count {
-            return None;
+        callee: &ExprOutcome<'a, 'b>,
+    ) {
+        let obj = self.callee_obj_at(function);
+        if matches!(callee, ExprOutcome::InvalidImportedVar) {
+            // go/types stops at signature selection for this callee. A
+            // skipped closure can have bindings that the scope walk seeded
+            // but the checker will never activate.
+            if let Some(first) = arguments.first().and_then(|&id| self.body.expression(id))
+                && self.region.scopes.nodes.iter().any(|scope| {
+                    scope.kind == ScopeKind::FuncSignature
+                        && (self.body_base + first.span.start..self.body_base + call_span.end)
+                            .contains(&(scope.extent[0] as usize))
+                })
+            {
+                self.region.uses_complete = false;
+            }
+        } else {
+            self.check_exprs(arguments);
         }
-        self.evaluate_signature_results(callee_ty, &actual_ops, variadic, expected_count, int_bits)
+        if obj.is_some() {
+            let info =
+                self.build_call_site_info(call_span, function, arguments, obj, None, false, false);
+            self.region.calls.push(info);
+        }
     }
 
     fn resolve_callable_with_info(
         &mut self,
+        callee: ExprOutcome<'a, 'b>,
         function: ExprId,
         arguments: &[ExprId],
         variadic: bool,
         call_span: &Range<usize>,
     ) -> Option<(TypeId, Vec<Operand>)> {
-        match self.check_expr_outcome(function, None) {
+        match callee {
             ExprOutcome::Value(op) if op.mode.is_value() => {
                 let obj = self.callee_obj_at(function);
                 let info = self.build_call_site_info(
@@ -1660,17 +1607,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 self.region.calls.push(info);
                 Some((inst, ops))
             }
-            _ => {
-                let obj = self.callee_obj_at(function);
-                for &arg_id in arguments {
-                    let _ = self.check_expr_outcome(arg_id, None);
-                }
-                if obj.is_some() {
-                    let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, false, false,
-                    );
-                    self.region.calls.push(info);
-                }
+            other => {
+                self.recover_call(function, arguments, call_span, &other);
                 None
             }
         }
@@ -1684,35 +1622,37 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         count: usize,
         int_bits: u32,
     ) -> Option<Vec<Operand>> {
-        let mut out = Vec::with_capacity(count);
-        for result in 0..count {
-            let res_ty = self
-                .arena
-                .call_signature(callee_ty, actual_ops, variadic, result, count, int_bits)?;
-            out.push(Operand {
-                mode: Mode::Value,
-                ty: res_ty,
-                value: None,
-            });
-        }
-        Some(out)
+        let results = self
+            .arena
+            .call_results(callee_ty, actual_ops, variadic, count, int_bits)?;
+        Some(
+            results
+                .iter()
+                .map(|&ty| Operand {
+                    mode: Mode::Value,
+                    ty,
+                    value: None,
+                })
+                .collect(),
+        )
     }
 
     fn check_call_any_arity(
         &mut self,
         function: ExprId,
         arguments: &[ExprId],
-        variadic: bool,
+        ellipsis: Option<NonZeroU32>,
         call_span: &Range<usize>,
     ) -> Option<Vec<Operand>> {
         let int_bits = self.int_bits()?;
 
+        let variadic = ellipsis.is_some();
         let (callee_ty, actual_ops) = match self.check_expr_outcome(function, None) {
             ExprOutcome::Value(Operand {
                 mode: Mode::Builtin(bf),
                 ..
             }) => {
-                let outcome = self.check_builtin_call(bf, function, arguments, variadic, call_span);
+                let outcome = self.check_builtin_call(bf, function, arguments, ellipsis, call_span);
                 if let ExprOutcome::Value(op) = outcome {
                     self.region.expr_types.push((self.abs_span(call_span), op));
                     return Some(vec![op]);
@@ -1729,99 +1669,34 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 }
                 return None;
             }
-            ExprOutcome::PartialGenericFunc {
-                decl,
-                header,
-                parsed_sig,
-                explicit_type_args,
-            } => {
-                let Some(callee_span) = self.callee_ident_span(function) else {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    let info = self.build_call_site_info(
-                        call_span,
-                        function,
-                        arguments,
-                        Some(decl_object(decl)),
-                        None,
-                        false,
-                        false,
-                    );
-                    self.region.calls.push(info);
-                    return None;
-                };
-                let Some((inst_ty, actual_ops)) = self.instantiate_generic_call(
-                    decl,
-                    callee_span,
-                    &header,
-                    &parsed_sig,
-                    &explicit_type_args,
-                    arguments,
-                    variadic,
-                ) else {
-                    let info = self.build_call_site_info(
-                        call_span,
-                        function,
-                        arguments,
-                        Some(decl_object(decl)),
-                        None,
-                        false,
-                        false,
-                    );
-                    self.region.calls.push(info);
-                    return None;
-                };
-                let info = self.build_call_site_info(
-                    call_span,
-                    function,
-                    arguments,
-                    Some(decl_object(decl)),
-                    Some(inst_ty),
-                    false,
-                    false,
-                );
-                self.region.calls.push(info);
-                (inst_ty, actual_ops)
-            }
-            ExprOutcome::Value(callee) if callee.mode.is_value() => {
-                let obj = self.callee_obj_at(function);
-                let info = self.build_call_site_info(
-                    call_span,
-                    function,
-                    arguments,
-                    obj,
-                    Some(callee.ty),
-                    false,
-                    false,
-                );
-                self.region.calls.push(info);
-                let actual_ops = self.evaluate_call_args(callee.ty, arguments, variadic)?;
-                (callee.ty, actual_ops)
-            }
-            _ => {
-                let obj = self.callee_obj_at(function);
-                for &arg_id in arguments {
-                    let _ = self.check_expr_outcome(arg_id, None);
-                }
-                if obj.is_some() {
-                    let info = self.build_call_site_info(
-                        call_span, function, arguments, obj, None, false, false,
-                    );
-                    self.region.calls.push(info);
-                }
-                return None;
+            callee => {
+                self.resolve_callable_with_info(callee, function, arguments, variadic, call_span)?
             }
         };
 
         let (params, results, is_var) = self.arena.signature_parts(callee_ty)?;
-        if results.is_empty() {
-            let _ = self.validate_void_call(&params, is_var, &actual_ops, variadic, int_bits);
+        if !self.check_argument_count(
+            function,
+            arguments,
+            call_span,
+            &actual_ops,
+            &params,
+            variadic,
+            is_var,
+        ) {
             return None;
         }
-        let count = results.len();
-        let out =
-            self.evaluate_signature_results(callee_ty, &actual_ops, variadic, count, int_bits)?;
+        let out = self.evaluate_signature_results(
+            callee_ty,
+            &actual_ops,
+            variadic,
+            results.len(),
+            int_bits,
+        )?;
+        if out.is_empty() {
+            self.no_call_value(function, arguments, variadic, call_span);
+            return None;
+        }
         if out.len() == 1 {
             self.region
                 .expr_types
@@ -1883,24 +1758,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         Some((inst_ty, actual_ops))
     }
 
-    fn eval_call_arg_operands(
+    pub(super) fn eval_call_arg_operands(
         &mut self,
         arguments: &[ExprId],
         variadic: bool,
         param_hints: Option<&[TypeId]>,
     ) -> Option<Vec<Operand>> {
+        let body = self.body;
         if arguments.len() == 1
             && !variadic
-            && let Some(expr) = self.body.expression(arguments[0])
+            && let Some(expr) = body.expression(arguments[0])
             && let ExprKind::Call {
                 function,
                 arguments: ref inner_args,
-                variadic: inner_var,
+                ellipsis,
+                ..
             } = expr.kind
         {
-            let inner_args = inner_args.clone();
-            let call_span = expr.span.clone();
-            return self.check_call_any_arity(function, &inner_args, inner_var, &call_span);
+            return self.check_call_any_arity(function, inner_args, ellipsis, &expr.span);
         }
         let mut ops = Vec::with_capacity(arguments.len());
         let mut ok = true;
@@ -1908,8 +1783,8 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             let expected =
                 param_hints.and_then(|p| if variadic { None } else { p.get(idx).copied() });
             match self.check_expr(arg_id, expected) {
-                Some(op) => ops.push(op),
-                None => ok = false,
+                Some(op) if op.mode.is_value() => ops.push(op),
+                _ => ok = false,
             }
         }
         ok.then_some(ops)
@@ -1921,7 +1796,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         arguments: &[ExprId],
         variadic: bool,
     ) -> Option<Vec<Operand>> {
-        let (params, _, _) = self.arena.signature_parts(callee_ty)?;
+        let Some((params, _, _)) = self.arena.signature_parts(callee_ty) else {
+            self.check_exprs(arguments);
+            return None;
+        };
         self.eval_call_arg_operands(arguments, variadic, Some(&params))
     }
 
@@ -1932,10 +1810,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         callee_ty: TypeId,
         callee_obj: Option<ObjectRef<'a>>,
         arguments: &[ExprId],
+        actual_ops: Option<Vec<Operand>>,
         variadic: bool,
         call_span: &Range<usize>,
-        result: usize,
-        count: usize,
     ) -> ExprOutcome<'a, 'b> {
         let Some(int_bits) = self.int_bits() else {
             return ExprOutcome::invalid();
@@ -1953,390 +1830,44 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.region.calls.push(info);
 
         let Some((params, results, is_var)) = self.arena.signature_parts(callee_ty) else {
-            for &arg_id in arguments {
-                let _ = self.check_expr_outcome(arg_id, None);
+            if actual_ops.is_none() {
+                self.check_exprs(arguments);
             }
             return ExprOutcome::invalid();
         };
 
-        let Some(actual_ops) = self.evaluate_call_args(callee_ty, arguments, variadic) else {
+        let Some(actual_ops) =
+            actual_ops.or_else(|| self.eval_call_arg_operands(arguments, variadic, Some(&params)))
+        else {
             return ExprOutcome::invalid();
         };
 
-        if results.is_empty() {
-            if !self.validate_void_call(&params, is_var, &actual_ops, variadic, int_bits) {
-                return ExprOutcome::invalid();
-            }
-            return ExprOutcome::no_value();
-        }
-
-        match self
-            .arena
-            .call_signature(callee_ty, &actual_ops, variadic, result, count, int_bits)
-        {
-            Some(res_ty) => ExprOutcome::Value(Operand {
-                mode: Mode::Value,
-                ty: res_ty,
-                value: None,
-            }),
-            None => ExprOutcome::invalid(),
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn finish_signature_call_with_args(
-        &mut self,
-        function: ExprId,
-        callee_ty: TypeId,
-        callee_obj: Option<ObjectRef<'a>>,
-        arguments: &[ExprId],
-        actual_ops: Vec<Operand>,
-        variadic: bool,
-        call_span: &Range<usize>,
-        result: usize,
-        count: usize,
-    ) -> ExprOutcome<'a, 'b> {
-        let Some(int_bits) = self.int_bits() else {
-            return ExprOutcome::invalid();
-        };
-
-        let info = self.build_call_site_info(
-            call_span,
+        if !self.check_argument_count(
             function,
             arguments,
-            callee_obj,
-            Some(callee_ty),
-            false,
-            false,
-        );
-        self.region.calls.push(info);
-
-        let Some((params, results, is_var)) = self.arena.signature_parts(callee_ty) else {
+            call_span,
+            &actual_ops,
+            &params,
+            variadic,
+            is_var,
+        ) {
             return ExprOutcome::invalid();
-        };
-
-        if results.is_empty() {
-            if !self.validate_void_call(&params, is_var, &actual_ops, variadic, int_bits) {
-                return ExprOutcome::invalid();
-            }
-            return ExprOutcome::no_value();
         }
-
-        match self
-            .arena
-            .call_signature(callee_ty, &actual_ops, variadic, result, count, int_bits)
-        {
-            Some(res_ty) => ExprOutcome::Value(Operand {
+        match self.arena.call_results(
+            callee_ty,
+            &actual_ops,
+            variadic,
+            usize::from(!results.is_empty()),
+            int_bits,
+        ) {
+            Some([]) => ExprOutcome::no_value(),
+            Some([res_ty]) => ExprOutcome::Value(Operand {
                 mode: Mode::Value,
-                ty: res_ty,
+                ty: *res_ty,
                 value: None,
             }),
-            None => ExprOutcome::invalid(),
+            _ => ExprOutcome::invalid(),
         }
-    }
-
-    fn validate_void_call(
-        &mut self,
-        params: &[TypeId],
-        sig_variadic: bool,
-        actuals: &[Operand],
-        call_spread: bool,
-        int_bits: u32,
-    ) -> bool {
-        if sig_variadic {
-            if params.is_empty() {
-                return false;
-            }
-            let fixed = params.len() - 1;
-            if call_spread {
-                if actuals.len() != params.len() {
-                    return false;
-                }
-                for (&actual, &target) in actuals.iter().zip(params.iter()) {
-                    if !self
-                        .arena
-                        .assign_value(actual, target, int_bits)
-                        .unwrap_or(false)
-                    {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            if actuals.len() < fixed {
-                return false;
-            }
-            for (&actual, &target) in actuals[..fixed].iter().zip(params[..fixed].iter()) {
-                if !self
-                    .arena
-                    .assign_value(actual, target, int_bits)
-                    .unwrap_or(false)
-                {
-                    return false;
-                }
-            }
-            let elem_ty = self
-                .arena
-                .composite_container_types(params[fixed])
-                .map(|(_, elem)| elem)
-                .unwrap_or(params[fixed]);
-            for &actual in &actuals[fixed..] {
-                if !self
-                    .arena
-                    .assign_value(actual, elem_ty, int_bits)
-                    .unwrap_or(false)
-                {
-                    return false;
-                }
-            }
-            true
-        } else {
-            if call_spread || actuals.len() != params.len() {
-                return false;
-            }
-            actuals.iter().zip(params.iter()).all(|(&actual, &target)| {
-                self.arena
-                    .assign_value(actual, target, int_bits)
-                    .unwrap_or(false)
-            })
-        }
-    }
-
-    fn check_builtin_call(
-        &mut self,
-        bf: BuiltinFunction,
-        function: ExprId,
-        arguments: &[ExprId],
-        variadic: bool,
-        call_span: &Range<usize>,
-    ) -> ExprOutcome<'a, 'b> {
-        let Some(int_bits) = self.int_bits() else {
-            return ExprOutcome::invalid();
-        };
-
-        let outcome = match bf {
-            BuiltinFunction::Len | BuiltinFunction::Cap => {
-                if arguments.len() != 1 || variadic {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    ExprOutcome::invalid()
-                } else {
-                    let has_call = self.expr_has_call(arguments[0]);
-                    match self.check_expr(arguments[0], None) {
-                        Some(arg_op) => match self.arena.builtin_length(
-                            arg_op,
-                            bf == BuiltinFunction::Cap,
-                            has_call,
-                            int_bits,
-                        ) {
-                            Some(op) => ExprOutcome::Value(op),
-                            None => ExprOutcome::invalid(),
-                        },
-                        None => ExprOutcome::invalid(),
-                    }
-                }
-            }
-            BuiltinFunction::New => {
-                if arguments.len() != 1 || variadic {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    ExprOutcome::invalid()
-                } else {
-                    match self.check_expr_outcome(arguments[0], None) {
-                        ExprOutcome::Value(op) if op.mode == Mode::TypeExpr => {
-                            match self.arena.builtin_new(op.ty) {
-                                Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::invalid(),
-                            }
-                        }
-                        ExprOutcome::Value(op)
-                            if op.mode.is_value() || op.mode == Mode::TypeExpr =>
-                        {
-                            match self
-                                .arena
-                                .default_operand(op, int_bits)
-                                .and_then(|ty| self.arena.builtin_new(ty))
-                            {
-                                Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::invalid(),
-                            }
-                        }
-                        _ => ExprOutcome::invalid(),
-                    }
-                }
-            }
-            BuiltinFunction::Make => {
-                if arguments.is_empty() || variadic {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    ExprOutcome::invalid()
-                } else {
-                    let target_ty = match self.check_expr_outcome(arguments[0], None) {
-                        ExprOutcome::Value(op) if op.mode == Mode::TypeExpr => Some(op.ty),
-                        _ => None,
-                    };
-                    let mut sizes = Vec::with_capacity(arguments.len().saturating_sub(1));
-                    let mut sizes_ok = true;
-                    for &arg_id in &arguments[1..] {
-                        match self.check_expr(arg_id, None) {
-                            Some(op) => sizes.push(op),
-                            None => sizes_ok = false,
-                        }
-                    }
-                    if let (Some(ty), true) = (target_ty, sizes_ok) {
-                        match self.arena.builtin_make(ty, &sizes, int_bits) {
-                            Some(res) => ExprOutcome::Value(res),
-                            None => ExprOutcome::invalid(),
-                        }
-                    } else {
-                        ExprOutcome::invalid()
-                    }
-                }
-            }
-            BuiltinFunction::Append => {
-                if let Some(args) = self.eval_call_arg_operands(arguments, variadic, None) {
-                    match self.arena.builtin_append(&args, variadic, int_bits) {
-                        Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::invalid(),
-                    }
-                } else {
-                    ExprOutcome::invalid()
-                }
-            }
-            BuiltinFunction::Copy => {
-                if !variadic
-                    && let Some(args) = self.eval_call_arg_operands(arguments, false, None)
-                    && args.len() == 2
-                {
-                    match self.arena.builtin_copy(args[0], args[1], int_bits) {
-                        Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::invalid(),
-                    }
-                } else {
-                    if variadic {
-                        for &arg_id in arguments {
-                            let _ = self.check_expr_outcome(arg_id, None);
-                        }
-                    }
-                    ExprOutcome::invalid()
-                }
-            }
-            BuiltinFunction::Complex => {
-                if !variadic
-                    && let Some(args) = self.eval_call_arg_operands(arguments, false, None)
-                    && args.len() == 2
-                {
-                    match self.arena.builtin_complex(&args, int_bits) {
-                        Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::invalid(),
-                    }
-                } else {
-                    if variadic {
-                        for &arg_id in arguments {
-                            let _ = self.check_expr_outcome(arg_id, None);
-                        }
-                    }
-                    ExprOutcome::invalid()
-                }
-            }
-            BuiltinFunction::Real | BuiltinFunction::Imag => {
-                if arguments.len() != 1 || variadic {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    ExprOutcome::invalid()
-                } else {
-                    match self.check_expr(arguments[0], None) {
-                        Some(arg_op) => {
-                            match self
-                                .arena
-                                .builtin_component(arg_op, bf == BuiltinFunction::Imag)
-                            {
-                                Some(res) => ExprOutcome::Value(res),
-                                None => ExprOutcome::invalid(),
-                            }
-                        }
-                        None => ExprOutcome::invalid(),
-                    }
-                }
-            }
-            BuiltinFunction::Min | BuiltinFunction::Max => {
-                if arguments.is_empty() || variadic {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                    ExprOutcome::invalid()
-                } else if let Some(args) = self.eval_call_arg_operands(arguments, false, None)
-                    && !args.is_empty()
-                {
-                    match self
-                        .arena
-                        .builtin_minmax(&args, bf == BuiltinFunction::Max, int_bits)
-                    {
-                        Some(res) => ExprOutcome::Value(res),
-                        None => ExprOutcome::invalid(),
-                    }
-                } else {
-                    ExprOutcome::invalid()
-                }
-            }
-            BuiltinFunction::Recover => {
-                for &arg_id in arguments {
-                    let _ = self.check_expr_outcome(arg_id, None);
-                }
-                if arguments.is_empty() && !variadic {
-                    match self.arena.builtin_type(self.file, "any") {
-                        Some(ty) => ExprOutcome::Value(Operand {
-                            mode: Mode::Value,
-                            ty,
-                            value: None,
-                        }),
-                        None => ExprOutcome::invalid(),
-                    }
-                } else {
-                    ExprOutcome::invalid()
-                }
-            }
-            BuiltinFunction::Close
-            | BuiltinFunction::Delete
-            | BuiltinFunction::Clear
-            | BuiltinFunction::Panic
-            | BuiltinFunction::Print
-            | BuiltinFunction::Println => {
-                if matches!(
-                    bf,
-                    BuiltinFunction::Delete | BuiltinFunction::Print | BuiltinFunction::Println
-                ) && arguments.len() == 1
-                    && !variadic
-                {
-                    let _ = self.eval_call_arg_operands(arguments, false, None);
-                } else {
-                    for &arg_id in arguments {
-                        let _ = self.check_expr_outcome(arg_id, None);
-                    }
-                }
-                ExprOutcome::no_value()
-            }
-        };
-
-        let is_const_builtin = matches!(
-            outcome,
-            ExprOutcome::Value(op) if op.mode == Mode::Constant
-        );
-        let info = self.build_call_site_info(
-            call_span,
-            function,
-            arguments,
-            Some(ObjectRef::BuiltinFunction(bf)),
-            None,
-            false,
-            is_const_builtin,
-        );
-        self.region.calls.push(info);
-        outcome
     }
 
     fn callee_ident_span(&self, mut id: ExprId) -> Option<[u32; 2]> {
@@ -2353,14 +1884,16 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         None
     }
 
-    fn expr_has_call(&self, id: ExprId) -> bool {
+    pub(super) fn expr_has_call(&self, id: ExprId) -> bool {
         let Some(expr) = self.body.expression(id) else {
             return false;
         };
         match &expr.kind {
             ExprKind::Call { .. } => true,
             ExprKind::Parenthesized { expression } => self.expr_has_call(*expression),
-            ExprKind::Unary { operand, .. } => self.expr_has_call(*operand),
+            ExprKind::Unary { operand, operator } => {
+                self.text(operator) == "<-" || self.expr_has_call(*operand)
+            }
             ExprKind::Binary { left, right, .. } => {
                 self.expr_has_call(*left) || self.expr_has_call(*right)
             }

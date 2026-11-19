@@ -1,65 +1,26 @@
 //! Bounded compiler diagnostics. Query adapters own only syntax and import edits.
+mod arity;
 mod declarations;
 mod locals;
 mod names;
+mod operands;
 
 pub(crate) use declarations::file_diagnostics;
 
 use super::RegionChecker;
-use crate::analysis::types::{Mode, Operand, TypeId};
-use crate::syntax::ExprId;
 use std::ops::Range;
 
 impl RegionChecker<'_, '_> {
-    /// A failed or budget-limited relation is unknown. Only an explicit false
-    /// between validated, typed value operands proves an assignment error.
-    pub(super) fn check_assignment(
-        &mut self,
-        source: Operand,
-        target: TypeId,
-        expr: ExprId,
-        context: &str,
-    ) -> Option<bool> {
-        let int_bits = self.int_bits()?;
-        let result = self.arena.assign_value(source, target, int_bits);
-        if result != Some(false)
-            || !source.mode.is_value()
-            || !self.body.diagnostics().is_empty()
-            || self
-                .arena
-                .basic_kind(source.ty)
-                .is_some_and(|kind| kind.untyped())
-            || self.arena.validate_type(source.ty).is_none()
-            || self.arena.validate_type(target).is_none()
-        {
-            return result;
+    pub(super) fn compiler_error(&mut self, span: &Range<usize>, code: Code, message: &str) {
+        if self.body.diagnostics().is_empty() {
+            self.region.push_diagnostic(Diagnostic {
+                span: self.abs_range(span),
+                kind: Kind::Compiler(code),
+                message: message.to_owned(),
+                unnecessary: false,
+                related: Vec::new(),
+            });
         }
-        let Some(expression) = self.body.expression(expr) else {
-            return result;
-        };
-        let text = self.text(&expression.span);
-        if text.len() > 1024 {
-            return result;
-        }
-        let Some(from) = self.arena.render_presentation(source.ty, self.file) else {
-            return result;
-        };
-        let Some(to) = self.arena.render_presentation(target, self.file) else {
-            return result;
-        };
-        let description = if source.mode == Mode::Variable {
-            "variable of type"
-        } else {
-            "value of type"
-        };
-        self.region.push_diagnostic(Diagnostic {
-            span: self.abs_range(&expression.span),
-            kind: Kind::Compiler(Code::IncompatibleAssign),
-            message: format!("cannot use {text} ({description} {from}) as {to} value in {context}"),
-            unnecessary: false,
-            related: Vec::new(),
-        });
-        result
     }
 }
 
@@ -75,6 +36,48 @@ pub(crate) enum Code {
     DuplicateDecl,
     DuplicateMethod,
     IncompatibleAssign,
+    InvalidCond,
+    InvalidPostDecl,
+    InvalidSelectCase,
+    BadDecl,
+    RepeatedDecl,
+    UnassignableOperand,
+    NoNewVar,
+    MultiValAssignOp,
+    WrongAssignCount,
+    WrongResultCount,
+    WrongArgCount,
+    NonVariadicDotDotDot,
+    TooManyValues,
+    InvalidDotDotDot,
+    InvalidLen,
+    InvalidCap,
+    InvalidMake,
+    SwappedMakeArgs,
+    InvalidAppend,
+    InvalidCopy,
+    InvalidClear,
+    InvalidClose,
+    InvalidDelete,
+    InvalidComplex,
+    InvalidReal,
+    InvalidImag,
+    InvalidMinMaxOperand,
+    MismatchedTypes,
+    NotAType,
+    UntypedNilUse,
+    NonIndexableOperand,
+    NonSliceableOperand,
+    InvalidSliceExpr,
+    SwappedSliceIndices,
+    InvalidIndex,
+    NumericOverflow,
+    TruncatedFloat,
+    InvalidConstVal,
+    InvalidConversion,
+    DivByZero,
+    InvalidShiftOperand,
+    InvalidShiftCount,
 }
 
 impl Code {
@@ -87,6 +90,48 @@ impl Code {
             Self::DuplicateDecl => "DuplicateDecl",
             Self::DuplicateMethod => "DuplicateMethod",
             Self::IncompatibleAssign => "IncompatibleAssign",
+            Self::InvalidCond => "InvalidCond",
+            Self::InvalidPostDecl => "InvalidPostDecl",
+            Self::InvalidSelectCase => "InvalidSelectCase",
+            Self::BadDecl => "BadDecl",
+            Self::RepeatedDecl => "RepeatedDecl",
+            Self::UnassignableOperand => "UnassignableOperand",
+            Self::NoNewVar => "NoNewVar",
+            Self::MultiValAssignOp => "MultiValAssignOp",
+            Self::WrongAssignCount => "WrongAssignCount",
+            Self::WrongResultCount => "WrongResultCount",
+            Self::WrongArgCount => "WrongArgCount",
+            Self::NonVariadicDotDotDot => "NonVariadicDotDotDot",
+            Self::TooManyValues => "TooManyValues",
+            Self::InvalidDotDotDot => "InvalidDotDotDot",
+            Self::InvalidLen => "InvalidLen",
+            Self::InvalidCap => "InvalidCap",
+            Self::InvalidMake => "InvalidMake",
+            Self::SwappedMakeArgs => "SwappedMakeArgs",
+            Self::InvalidAppend => "InvalidAppend",
+            Self::InvalidCopy => "InvalidCopy",
+            Self::InvalidClear => "InvalidClear",
+            Self::InvalidClose => "InvalidClose",
+            Self::InvalidDelete => "InvalidDelete",
+            Self::InvalidComplex => "InvalidComplex",
+            Self::InvalidReal => "InvalidReal",
+            Self::InvalidImag => "InvalidImag",
+            Self::InvalidMinMaxOperand => "InvalidMinMaxOperand",
+            Self::MismatchedTypes => "MismatchedTypes",
+            Self::NotAType => "NotAType",
+            Self::UntypedNilUse => "UntypedNilUse",
+            Self::NonIndexableOperand => "NonIndexableOperand",
+            Self::NonSliceableOperand => "NonSliceableOperand",
+            Self::InvalidSliceExpr => "InvalidSliceExpr",
+            Self::SwappedSliceIndices => "SwappedSliceIndices",
+            Self::InvalidIndex => "InvalidIndex",
+            Self::NumericOverflow => "NumericOverflow",
+            Self::TruncatedFloat => "TruncatedFloat",
+            Self::InvalidConstVal => "InvalidConstVal",
+            Self::InvalidConversion => "InvalidConversion",
+            Self::DivByZero => "DivByZero",
+            Self::InvalidShiftOperand => "InvalidShiftOperand",
+            Self::InvalidShiftCount => "InvalidShiftCount",
         }
     }
 }

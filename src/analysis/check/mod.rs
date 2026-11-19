@@ -1,6 +1,7 @@
 //! Demand-driven semantic checker (`DeclCache`, `RegionInfo`, `RegionChecker`).
 //! Intra-body semantic checker for Go functions and declaration initializers.
 
+mod builtins;
 pub(crate) mod decls;
 pub(crate) mod diagnostics;
 mod exprs;
@@ -26,6 +27,10 @@ use crate::syntax::{self, BlockTree, ExprId, ExprKind, Signature, StmtId, Symbol
 /// declaration environments until they can produce a concrete operand.
 pub(crate) enum ExprOutcome<'a, 'b> {
     Value(Operand),
+    /// An exact missing-name lookup at this expression or its direct callee.
+    MissingName,
+    /// An imported variable whose declaration has a proven invalid initializer.
+    InvalidImportedVar,
     Package {
         alias: &'b str,
     },
@@ -39,6 +44,13 @@ pub(crate) enum ExprOutcome<'a, 'b> {
 }
 
 impl ExprOutcome<'_, '_> {
+    fn operand(self) -> Option<Operand> {
+        match self {
+            Self::Value(op) if op.mode.is_value() || op.mode == Mode::TypeExpr => Some(op),
+            _ => None,
+        }
+    }
+
     fn invalid() -> Self {
         Self::Value(Operand::non_value(Mode::Invalid))
     }
@@ -93,6 +105,7 @@ pub(crate) struct RegionChecker<'a, 'b> {
     recv_annotation: Option<String>,
     local_type_defs: Vec<LocalTypeDefEntry>,
     result_types: Vec<Option<TypeId>>,
+    named_results: bool,
 }
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
@@ -129,6 +142,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             recv_annotation: None,
             local_type_defs: Vec::new(),
             result_types: Vec::new(),
+            named_results: false,
         }
     }
 
@@ -512,6 +526,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         self.result_types.clear();
+        self.named_results = sig
+            .results
+            .first()
+            .is_some_and(|result| result.name.is_some());
         for res in &sig.results {
             let ann = sig_text(&res.annotation);
             let r_ty = if ann.is_empty()
@@ -629,6 +647,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         self.result_types.clear();
+        self.named_results = sig
+            .results
+            .first()
+            .is_some_and(|result| result.name.is_some());
         for (res, refs_ok) in sig.results.iter().zip(result_valid) {
             let ann = sig_text(&res.annotation);
             let r_ty = if !refs_ok {
@@ -796,6 +818,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         };
         let mut parsed = syntax::parse_type(text);
         if !parsed.diagnostics.is_empty() {
+            self.region.uses_complete = false;
             return false;
         }
         let abs_start = sig_base + ann_range.start;
@@ -821,6 +844,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
         let mut parsed = syntax::parse_type(text);
         if !parsed.diagnostics.is_empty() {
+            self.region.uses_complete = false;
             return None;
         }
 
@@ -924,7 +948,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             for expr in &exprs {
                 match &expr.kind {
                     ExprKind::Name
-                    | ExprKind::Literal
+                    | ExprKind::Literal(_)
                     | ExprKind::Missing
                     | ExprKind::Type
                     | ExprKind::FunctionLiteral { .. } => {}
@@ -997,6 +1021,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 diagnostics: Vec::new(),
                 type_references: Vec::new(),
                 type_parameters: Vec::new(),
+                delimiters: Vec::new(),
             };
             let roots: Vec<_> = is_child
                 .iter()
@@ -1236,6 +1261,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     .resolve_at(self.source, (abs_offset + qual_r.start) as u32, qual)
             && self.is_active(local_id)
         {
+            if let Some(obj) = self.local_object(local_id) {
+                let qual_span = [
+                    (abs_offset + qual_r.start) as u32,
+                    (abs_offset + qual_r.end) as u32,
+                ];
+                self.region.uses.push((qual_span, obj));
+            }
             return false;
         }
         let Some((pkg_obj, _target_dir)) = self.find_import(qual) else {
@@ -1310,7 +1342,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         }
                         return op.is_some();
                     }
-                    _ => return false,
+                    _ => {
+                        // go/types records the use of a local even when it is
+                        // rejected in type position.
+                        if let Some(obj) = self.local_object(local_id) {
+                            self.region.uses.push((name_span, obj));
+                        }
+                        return false;
+                    }
                 }
             }
         }
@@ -1443,9 +1482,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             && let Some(expr) = self.body.expression(id)
         {
             let span = self.abs_span(&expr.span);
-            if op.mode == Mode::Invalid {
-                self.region.uses_complete = false;
-            }
             self.region.expr_types.push((span, *op));
         }
     }

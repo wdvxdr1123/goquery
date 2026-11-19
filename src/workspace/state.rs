@@ -102,6 +102,8 @@ pub struct Workspace {
     /// gopls uses the hover content preference for signature documentation too.
     pub(crate) signature_plaintext: bool,
     pub(crate) semantic_config: crate::features::SemanticConfig,
+    pub(crate) document_highlight_enabled: bool,
+    pub(crate) diagnostics_on_save: bool,
     /// Client announced hierarchicalDocumentSymbolSupport at initialization.
     pub(crate) hierarchical_document_symbols: bool,
     /// Client supports dynamic registration of `workspace/didChangeWatchedFiles`.
@@ -147,6 +149,16 @@ impl Workspace {
 
     pub(crate) fn is_detached(&self, file: &Path) -> bool {
         self.detached.contains(file)
+    }
+
+    pub(super) fn is_mounted_directory(&self, directory: &Path) -> bool {
+        self.sdk_packages.contains(directory) || self.dependency_packages.contains(directory)
+    }
+
+    pub(crate) fn is_mounted_dependency_file(&self, file: &Path) -> bool {
+        file.parent()
+            .is_some_and(|directory| self.is_mounted_directory(directory))
+            && !self.roots.iter().any(|root| file.starts_with(root))
     }
 
     pub(crate) fn package_files_in_view<'a>(

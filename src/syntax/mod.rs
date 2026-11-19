@@ -33,4 +33,5 @@ pub use parser::{parse_expression, stub};
 pub use parser::{
     parse_literal_signature, parse_method_signature, parse_signature, parse_type_parameters,
 };
+pub(crate) use parser::{qualified_prefixes, validate_file_with_imports};
 pub use token::{Token, TokenKind};

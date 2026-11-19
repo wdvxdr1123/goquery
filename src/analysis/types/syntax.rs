@@ -2,8 +2,65 @@
 use super::{BasicKind, Direction, MAX_BYTES, MAX_DEPTH, Ty, TypeArena, TypeId};
 use crate::analysis::obj::DeclId;
 use crate::syntax::{Lexer, Token, TokenKind};
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::path::Path;
+
+// The outer option indicates whether universe lookup is allowed when there is
+// no declaration. Imports and non-type declarations shadow the universe.
+type TypeName<'a> = Option<Option<DeclId<'a>>>;
+
+/// Metadata-only name lookups remain valid when the arena rewinds between
+/// functions. The file key preserves imports and package scope per lookup.
+#[derive(Default)]
+pub(super) struct TypeNames<'a> {
+    files: HashMap<&'a Path, HashMap<Box<str>, TypeName<'a>>>,
+    count: usize,
+    bytes: usize,
+}
+
+impl<'a> TypeArena<'a> {
+    fn resolve_type_name(&mut self, origin: &Path, name: &str) -> TypeName<'a> {
+        if let Some(&found) = self
+            .type_names
+            .files
+            .get(origin)
+            .and_then(|names| names.get(name))
+        {
+            return found;
+        }
+        let (file, _) = self.workspace.files.get_key_value(origin)?;
+        let file = file.as_path();
+        let resolver = self.resolver();
+        let found = if name.contains('.') {
+            resolver.resolve_type_declaration(file, name)
+        } else {
+            if resolver.imported_name(file, name) {
+                return None;
+            }
+            resolver.unqualified_symbol(file, name)
+        };
+        // A non-type declaration shadows the universe too.
+        let found = match found {
+            Some((file, symbol)) if symbol.is_type() => Some(Some(DeclId { file, symbol })),
+            Some(_) => None,
+            None => Some(None),
+        };
+        let cache = &mut self.type_names;
+        if cache.count < crate::analysis::budget::MAX_DECL_CACHE
+            && cache.bytes + name.len() <= super::MAX_BYTES
+        {
+            cache
+                .files
+                .entry(file)
+                .or_default()
+                .insert(name.into(), found);
+            cache.count += 1;
+            cache.bytes += name.len();
+        }
+        found
+    }
+}
 
 impl<'a> TypeArena<'a> {
     pub(crate) fn parse(&mut self, origin: &Path, source: &str) -> Option<TypeId> {
@@ -231,20 +288,7 @@ impl<'a> TypeArena<'a> {
                 {
                     return Some(*ty);
                 }
-                let declaration = if name.contains('.') {
-                    self.resolver().resolve_type_declaration(origin, name)
-                } else {
-                    // Missing file scope cannot prove an unshadowed universe name.
-                    self.workspace.files.get(origin)?;
-                    if self.resolver().imported_name(origin, name) {
-                        return None;
-                    }
-                    let declaration = self.resolver().unqualified_symbol(origin, name);
-                    if declaration.is_some_and(|(_, symbol)| !symbol.is_type()) {
-                        return None;
-                    }
-                    declaration
-                };
+                let declaration = self.resolve_type_name(origin, name)?;
                 if declaration.is_none() && matches!(name, "any" | "error") {
                     return self.builtin_interface(origin, name == "error");
                 }
@@ -253,7 +297,7 @@ impl<'a> TypeArena<'a> {
                 {
                     Ty::Basic(kind)
                 } else {
-                    let (file, symbol) = declaration?;
+                    let DeclId { file, symbol } = declaration?;
                     // unsafe.Pointer is a compiler-defined basic type. Its SDK
                     // documentation declaration is not an ordinary pointer.
                     if symbol.name == "Pointer"

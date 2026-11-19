@@ -18,13 +18,27 @@ impl Workspace {
         target
     }
     pub fn initialize(&mut self, params: &Value) -> Result<(), (i32, String)> {
+        let options = &params["initializationOptions"];
         self.completion_config = crate::features::CompletionConfig::from_initialize(params)?;
         self.signature_plaintext = params["capabilities"]["textDocument"]["hover"]["contentFormat"]
             .as_array()
             .and_then(|formats| formats.first())
             .and_then(serde_json::Value::as_str)
             .is_some_and(|format| format != "markdown");
-        self.semantic_config = crate::features::SemanticConfig::from_initialize(params);
+        self.semantic_config = crate::features::SemanticConfig::from_initialize(
+            params,
+            bool_option(options, "semanticTokens", true)?,
+        );
+        self.document_highlight_enabled = bool_option(options, "documentHighlight", true)?;
+        let diagnostics = &options["diagnostics"];
+        if !diagnostics.is_null() && !diagnostics.is_object() {
+            return Err((
+                crate::error::INVALID_PARAMS,
+                "diagnostics must be an object".into(),
+            ));
+        }
+        self.diagnostics_on_save = bool_option(diagnostics, "onSave", true)
+            .map_err(|(code, message)| (code, format!("diagnostics.{message}")))?;
         self.hierarchical_document_symbols = params["capabilities"]["textDocument"]
             ["documentSymbol"]["hierarchicalDocumentSymbolSupport"]
             .as_bool()
@@ -33,14 +47,7 @@ impl Workspace {
             params["capabilities"]["workspace"]["didChangeWatchedFiles"]["dynamicRegistration"]
                 .as_bool()
                 .unwrap_or(false);
-        let options = &params["initializationOptions"];
-        self.file_watch_enabled = match options.get("fileWatch").filter(|value| !value.is_null()) {
-            Some(value) => value.as_bool().ok_or((
-                crate::error::INVALID_PARAMS,
-                "fileWatch must be a boolean".into(),
-            ))?,
-            None => true,
-        };
+        self.file_watch_enabled = bool_option(options, "fileWatch", true)?;
         let defaults = super::file_events::WatchLimits::default();
         self.file_watch_limits = super::file_events::WatchLimits {
             roots: watch_limit(options, "fileWatchMaxRoots", defaults.roots)?,
@@ -120,6 +127,17 @@ impl Workspace {
         self.scan_roots(roots)
             .map_err(|error| (crate::error::INVALID_PARAMS, error))?;
         Ok(())
+    }
+}
+
+fn bool_option(options: &Value, key: &str, default: bool) -> Result<bool, (i32, String)> {
+    match &options[key] {
+        Value::Null => Ok(default),
+        Value::Bool(enabled) => Ok(*enabled),
+        _ => Err((
+            crate::error::INVALID_PARAMS,
+            format!("{key} must be a boolean"),
+        )),
     }
 }
 

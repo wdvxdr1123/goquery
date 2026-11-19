@@ -15,12 +15,7 @@ pub enum DeclSpecKind {
 
 /// Parses a single standalone `var`, `const`, or `type` declaration (single or grouped).
 pub fn parse_declaration(source: &str) -> BlockTree {
-    let mut body = BodyParser {
-        parser: Parser::new(source),
-        statements: Vec::new(),
-        type_parameters: Vec::new(),
-        range_header: false,
-    };
+    let mut body = BodyParser::new(Parser::new(source));
     let root = if body
         .parser
         .tokens
@@ -46,40 +41,19 @@ pub fn parse_declaration(source: &str) -> BlockTree {
             span,
         )
     };
-    finish_declaration_tree(body, root)
+    body.finish(root, "unexpected token after declaration")
 }
 
 /// Parses a single declaration specification without its leading `var`, `const`, or `type` keyword.
 pub fn parse_decl_spec(source: &str, kind: DeclSpecKind) -> BlockTree {
-    let mut body = BodyParser {
-        parser: Parser::new(source),
-        statements: Vec::new(),
-        type_parameters: Vec::new(),
-        range_header: false,
-    };
+    let mut body = BodyParser::new(Parser::new(source));
     let keyword_kind = match kind {
         DeclSpecKind::Var => TokenKind::Var,
         DeclSpecKind::Const => TokenKind::Const,
         DeclSpecKind::Type => TokenKind::Type,
     };
     let root = body.declaration_spec(keyword_kind, 0..0);
-    finish_declaration_tree(body, root)
-}
-
-fn finish_declaration_tree(mut body: BodyParser<'_>, root: StmtId) -> BlockTree {
-    while body.eat(TokenKind::Semicolon) {}
-    if let Some(token) = body.parser.tokens.next() {
-        body.parser
-            .error(token.span, "unexpected token after declaration");
-    }
-    BlockTree {
-        root,
-        statements: body.statements,
-        expressions: body.parser.nodes,
-        diagnostics: body.parser.diagnostics,
-        type_references: body.parser.type_references,
-        type_parameters: body.type_parameters,
-    }
+    body.finish(root, "unexpected token after declaration")
 }
 
 impl BodyParser<'_> {
@@ -173,17 +147,10 @@ impl BodyParser<'_> {
                     .parameter_list(ParameterContext::TypeParameters, 0)
                     .0
             });
-            if self
-                .parser
-                .tokens
-                .peek()
-                .is_some_and(|t| &self.parser.source[t.span.clone()] == "=")
-            {
-                self.parser.tokens.next();
-            }
+            let equals = self.take(TokenKind::Assign).map(|token| token.span.start);
             let annotation = self.parser.type_syntax(0);
             end = annotation.end;
-            let declaration = self.add(
+            let declaration = self.add_delimited(
                 StmtKind::Declaration {
                     keyword: keyword_span,
                     names,
@@ -191,6 +158,7 @@ impl BodyParser<'_> {
                     values: Vec::new(),
                 },
                 start..end,
+                equals,
             );
             if let Some(parameters) = type_parameters {
                 self.type_parameters.push(LocalTypeParameters {
@@ -203,8 +171,8 @@ impl BodyParser<'_> {
         let annotation = if self.parser.tokens.peek().is_some_and(|t| {
             !matches!(
                 t.kind,
-                TokenKind::Semicolon | TokenKind::RBrace | TokenKind::RParen
-            ) && &self.parser.source[t.span.clone()] != "="
+                TokenKind::Semicolon | TokenKind::RBrace | TokenKind::RParen | TokenKind::Assign
+            )
         }) {
             let span = self.parser.type_syntax(0);
             end = span.end;
@@ -212,13 +180,8 @@ impl BodyParser<'_> {
         } else {
             None
         };
-        let values = if self
-            .parser
-            .tokens
-            .peek()
-            .is_some_and(|t| &self.parser.source[t.span.clone()] == "=")
-        {
-            self.parser.tokens.next();
+        let equals = self.take(TokenKind::Assign).map(|token| token.span.start);
+        let values = if equals.is_some() {
             self.expression_list()
         } else {
             Vec::new()
@@ -232,7 +195,7 @@ impl BodyParser<'_> {
                 "expected type or initializer in declaration",
             );
         }
-        self.add(
+        self.add_delimited(
             StmtKind::Declaration {
                 keyword: keyword_span,
                 names,
@@ -240,6 +203,7 @@ impl BodyParser<'_> {
                 values,
             },
             start..end,
+            equals,
         )
     }
 }

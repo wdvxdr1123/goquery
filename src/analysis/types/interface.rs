@@ -274,12 +274,10 @@ impl<'a> TypeArena<'a> {
         &mut self,
         source: Operand,
         target: TypeId,
-        result: usize,
-        count: usize,
         int_bits: u32,
     ) -> Option<Operand> {
         self.step()?;
-        if !matches!(count, 1 | 2) || result >= count || !self.is_interface(source.ty)? {
+        if !self.is_interface(source.ty)? {
             return None;
         }
         if !self.is_interface(target)?
@@ -296,16 +294,8 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         Some(Operand {
-            mode: if count == 1 {
-                super::Mode::CommaOk
-            } else {
-                super::Mode::Value
-            },
-            ty: if result == 0 {
-                target
-            } else {
-                self.basic(BasicKind::Bool)?
-            },
+            mode: super::Mode::CommaOk,
+            ty: target,
             value: None,
         })
     }
@@ -337,7 +327,7 @@ impl<'a> TypeArena<'a> {
                 }
             }
             if let Some(target) = target {
-                self.assertion(source, *target, 0, 1, int_bits)?;
+                self.assertion(source, *target, int_bits)?;
             }
         }
         Some(Operand {

@@ -1,7 +1,9 @@
 //! Statement checking for [`RegionChecker`].
 
+use std::collections::BTreeSet;
 use std::ops::Range;
 
+use crate::analysis::check::diagnostics::Code;
 use crate::analysis::check::{ExprOutcome, FileSymbolLookup, LocalTypeDefEntry, RegionChecker};
 use crate::analysis::obj::{DeclId, LocalId, ObjectRef, SymbolOrigin, VarKind};
 use crate::analysis::scope::tree::{BindingInit, ScopeKind};
@@ -17,6 +19,15 @@ enum TypeSwitchCaseItem {
 impl<'a, 'b> RegionChecker<'a, 'b> {
     pub(crate) fn check_stmt_list(&mut self, ids: &[StmtId]) {
         for &stmt_id in ids {
+            // Later statements cannot introduce bindings visible at the cursor.
+            // Scope construction still sees forward labels in this body.
+            if self.cursor_offset.is_some_and(|cursor| {
+                self.body
+                    .statement(stmt_id)
+                    .is_some_and(|stmt| self.body_base + stmt.span.start > cursor)
+            }) {
+                break;
+            }
             let mut single_const = None;
             self.check_stmt_inner(stmt_id, &mut single_const);
         }
@@ -28,374 +39,193 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     pub(crate) fn check_decl_spec(&mut self, is_const: bool) {
-        let root = self.body.root();
-        let Some((names, annotation, values)) =
-            self.body.statement(root).and_then(|s| match &s.kind {
+        let tree = self.body;
+        let Some(syntax::Statement {
+            kind:
                 StmtKind::Declaration {
                     names,
                     annotation,
                     values,
                     ..
-                } => Some((names.clone(), annotation.clone(), values.clone())),
-                _ => None,
-            })
+                },
+            ..
+        }) = tree.statement(tree.root())
         else {
             return;
         };
         if is_const {
-            let mut const_group = None;
-            self.check_const_decl(&names, annotation.as_ref(), &values, &mut const_group);
+            self.check_const_decl(names, annotation.as_ref(), values, &mut None);
         } else {
-            self.check_var_decl(&names, annotation.as_ref(), &values);
+            self.check_var_decl(names, annotation.as_ref(), values);
         }
     }
 
     fn check_stmt_inner(&mut self, id: StmtId, const_group: &mut Option<ConstGroupState>) {
         self.arena.reset_steps();
-        enum Action {
-            Block(Vec<StmtId>),
-            DeclarationGroup(Vec<StmtId>),
-            Expression(ExprId),
-            Decl {
-                span: Range<usize>,
-                keyword: Range<usize>,
-                names: Vec<Range<usize>>,
-                annotation: Option<Range<usize>>,
-                values: Vec<ExprId>,
-            },
-            Assign {
-                left: Vec<ExprId>,
-                operator: Range<usize>,
-                right: Vec<ExprId>,
-            },
-            If {
-                init: Option<StmtId>,
-                condition: ExprId,
-                then_block: StmtId,
-                otherwise: Option<StmtId>,
-            },
-            For {
-                init: Option<StmtId>,
-                condition: Option<ExprId>,
-                post: Option<StmtId>,
-                body: StmtId,
-            },
-            RangeFor {
-                clause: StmtId,
-                body: StmtId,
-            },
-            Switch {
-                init: Option<StmtId>,
-                tag: Option<ExprId>,
-                cases: Vec<StmtId>,
-            },
-            TypeSwitch {
-                init: Option<StmtId>,
-                guard: StmtId,
-                cases: Vec<StmtId>,
-            },
-            Select {
-                cases: Vec<StmtId>,
-            },
-            CommCase {
-                communication: Option<StmtId>,
-                statements: Vec<StmtId>,
-            },
-            Return {
-                values: Vec<ExprId>,
-            },
-            Send {
-                channel: ExprId,
-                value: ExprId,
-            },
-            Increment {
-                expression: ExprId,
-            },
-            DeferGo {
-                call: ExprId,
-            },
-            Label {
-                name: Range<usize>,
-                statement: Option<StmtId>,
-            },
-            Branch {
-                label: Option<Range<usize>>,
-            },
-            CaseFallback {
-                values: Vec<ExprId>,
-                statements: Vec<StmtId>,
-            },
-            Missing,
-        }
-
-        let Some(stmt) = self.body.statement(id) else {
+        let tree = self.body;
+        let Some(stmt) = tree.statement(id) else {
             return;
         };
-        let stmt_span = stmt.span.clone();
-        let action = match &stmt.kind {
-            StmtKind::Block { statements } => Action::Block(statements.clone()),
+        match &stmt.kind {
+            StmtKind::Missing | StmtKind::RangeClause { .. } => {}
+            StmtKind::Block { statements } => self.check_stmt_list(statements),
             StmtKind::DeclarationGroup { declarations } => {
-                Action::DeclarationGroup(declarations.clone())
+                let mut group_const = None;
+                for &decl in declarations {
+                    self.check_stmt_inner(decl, &mut group_const);
+                }
             }
-            StmtKind::Expression { expression } => Action::Expression(*expression),
+            StmtKind::Expression { expression } => {
+                let _ = self.check_expr_outcome(*expression, None);
+            }
             StmtKind::Declaration {
                 keyword,
                 names,
                 annotation,
                 values,
-            } => Action::Decl {
-                span: stmt_span,
-                keyword: keyword.clone(),
-                names: names.clone(),
-                annotation: annotation.clone(),
-                values: values.clone(),
+            } => match self.text(keyword) {
+                "type" => self.check_type_decl(id, names, annotation.as_ref()),
+                "const" => self.check_const_decl(names, annotation.as_ref(), values, const_group),
+                "var" => self.check_var_decl(names, annotation.as_ref(), values),
+                _ => {}
             },
             StmtKind::Assignment {
                 left,
                 operator,
                 right,
-            } => Action::Assign {
-                left: left.clone(),
-                operator: operator.clone(),
-                right: right.clone(),
-            },
+            } => {
+                let op_text = self.text(operator);
+                if op_text == ":=" {
+                    self.check_short_var_decl(&stmt.span, left, right);
+                } else {
+                    let compound = (op_text != "=").then_some(operator);
+                    self.check_assign(&stmt.span, left, compound, right);
+                }
+            }
             StmtKind::If {
                 init,
                 condition,
                 then_block,
                 otherwise,
-            } => Action::If {
-                init: *init,
-                condition: *condition,
-                then_block: *then_block,
-                otherwise: *otherwise,
-            },
+            } => {
+                if let Some(init) = init {
+                    self.check_stmt(*init);
+                }
+                self.check_condition(*condition, "non-boolean condition in if statement");
+                self.check_stmt(*then_block);
+                if let Some(otherwise) = otherwise {
+                    self.check_stmt(*otherwise);
+                }
+            }
             StmtKind::For {
                 init,
                 condition,
                 post,
                 body,
-            } => Action::For {
-                init: *init,
-                condition: *condition,
-                post: *post,
-                body: *body,
-            },
-            StmtKind::RangeFor { clause, body } => Action::RangeFor {
-                clause: *clause,
-                body: *body,
-            },
-            StmtKind::RangeClause { .. } => Action::Missing,
-            StmtKind::Switch { init, tag, cases } => Action::Switch {
-                init: *init,
-                tag: *tag,
-                cases: cases.clone(),
-            },
-            StmtKind::TypeSwitch { init, guard, cases } => Action::TypeSwitch {
-                init: *init,
-                guard: *guard,
-                cases: cases.clone(),
-            },
-            StmtKind::Select { cases } => Action::Select {
-                cases: cases.clone(),
-            },
-            StmtKind::CommunicationCase {
-                communication,
-                statements,
-            } => Action::CommCase {
-                communication: *communication,
-                statements: statements.clone(),
-            },
-            StmtKind::Case {
-                values, statements, ..
-            } => Action::CaseFallback {
-                values: values.clone(),
-                statements: statements.clone(),
-            },
-            StmtKind::Return { values } => Action::Return {
-                values: values.clone(),
-            },
-            StmtKind::Send { channel, value } => Action::Send {
-                channel: *channel,
-                value: *value,
-            },
-            StmtKind::Increment { expression, .. } => Action::Increment {
-                expression: *expression,
-            },
-            StmtKind::Go { call } | StmtKind::Defer { call } => Action::DeferGo { call: *call },
-            StmtKind::Label { name, statement } => Action::Label {
-                name: name.clone(),
-                statement: *statement,
-            },
-            StmtKind::Branch { label, .. } => Action::Branch {
-                label: label.clone(),
-            },
-            StmtKind::Missing => Action::Missing,
-        };
-
-        match action {
-            Action::Missing => {}
-            Action::Block(stmts) => self.check_stmt_list(&stmts),
-            Action::DeclarationGroup(decls) => {
-                let mut group_const = None;
-                for decl_id in decls {
-                    self.check_stmt_inner(decl_id, &mut group_const);
-                }
-            }
-            Action::Expression(expr_id) => {
-                let _ = self.check_expr_outcome(expr_id, None);
-            }
-            Action::Decl {
-                span,
-                keyword,
-                names,
-                annotation,
-                values,
-            } => match self.text(&keyword) {
-                "type" => self.check_type_decl(id, &span, &names, annotation.as_ref()),
-                "const" => self.check_const_decl(&names, annotation.as_ref(), &values, const_group),
-                "var" => self.check_var_decl(&names, annotation.as_ref(), &values),
-                _ => {}
-            },
-            Action::Assign {
-                left,
-                operator,
-                right,
             } => {
-                let op_text = self.text(&operator);
-                if op_text == ":=" {
-                    self.check_short_var_decl(&left, &right);
-                } else {
-                    let compound = if op_text == "=" {
-                        None
-                    } else {
-                        Some(&operator)
-                    };
-                    self.check_assign(&left, compound, &right);
+                if let Some(init) = init {
+                    self.check_stmt(*init);
                 }
+                if let Some(condition) = condition {
+                    self.check_condition(*condition, "non-boolean condition in for statement");
+                }
+                if let Some(post) = post {
+                    self.check_stmt(*post);
+                    if let Some(post) = tree.statement(*post)
+                        && let StmtKind::Assignment { operator, .. } = &post.kind
+                        && self.text(operator) == ":="
+                    {
+                        self.compiler_error(
+                            &post.span,
+                            Code::InvalidPostDecl,
+                            "cannot declare in post statement",
+                        );
+                        // A rejected declaration does not establish an unused variable.
+                        self.region.uses_complete = false;
+                    }
+                }
+                self.check_stmt(*body);
             }
-            Action::If {
-                init,
-                condition,
-                then_block,
-                otherwise,
-            } => {
-                if let Some(init_id) = init {
-                    self.check_stmt(init_id);
+            StmtKind::RangeFor { clause, body } => self.check_range_for(*clause, *body),
+            StmtKind::Switch { init, tag, cases } => {
+                if let Some(init) = init {
+                    self.check_stmt(*init);
                 }
-                let expected_bool = self.basic_bool();
-                let _ = self.check_expr_outcome(condition, expected_bool);
-                self.check_stmt(then_block);
-                if let Some(else_id) = otherwise {
-                    self.check_stmt(else_id);
-                }
-            }
-            Action::For {
-                init,
-                condition,
-                post,
-                body,
-            } => {
-                if let Some(init_id) = init {
-                    self.check_stmt(init_id);
-                }
-                if let Some(cond_id) = condition {
-                    let expected_bool = self.basic_bool();
-                    let _ = self.check_expr_outcome(cond_id, expected_bool);
-                }
-                if let Some(post_id) = post {
-                    self.check_stmt(post_id);
-                }
-                self.check_stmt(body);
-            }
-            Action::RangeFor { clause, body } => {
-                self.check_range_for(clause, body);
-            }
-            Action::Switch { init, tag, cases } => {
-                if let Some(init_id) = init {
-                    self.check_stmt(init_id);
-                }
-                let expected = if let Some(tag_id) = tag {
-                    self.check_expr(tag_id, None).map(|op| op.ty)
+                let expected = if let Some(tag) = tag {
+                    self.check_expr(*tag, None).map(|op| op.ty)
                 } else {
                     self.basic_bool()
                 };
-                for case_id in cases {
-                    let case_data = self.body.statement(case_id).and_then(|s| match &s.kind {
-                        StmtKind::Case {
-                            values, statements, ..
-                        } => Some((values.clone(), statements.clone())),
-                        _ => None,
-                    });
-                    if let Some((values, statements)) = case_data {
-                        for val_id in values {
-                            let _ = self.check_expr_outcome(val_id, expected);
-                        }
-                        self.check_stmt_list(&statements);
+                for &case in cases {
+                    if let Some(syntax::Statement {
+                        kind:
+                            StmtKind::Case {
+                                values, statements, ..
+                            },
+                        ..
+                    }) = tree.statement(case)
+                    {
+                        self.check_case(values, statements, expected);
                     }
                 }
             }
-            Action::TypeSwitch { init, guard, cases } => {
-                if let Some(init_id) = init {
-                    self.check_stmt(init_id);
+            StmtKind::TypeSwitch { init, guard, cases } => {
+                if let Some(init) = init {
+                    self.check_stmt(*init);
                 }
-                self.check_type_switch(guard, &cases);
+                self.check_type_switch(*guard, cases);
             }
-            Action::Select { cases } => {
-                for case_id in cases {
-                    self.check_stmt(case_id);
-                }
-            }
-            Action::CommCase {
+            StmtKind::Select { cases } => self.check_stmt_list(cases),
+            StmtKind::CommunicationCase {
                 communication,
                 statements,
+                ..
             } => {
-                if let Some(comm_id) = communication {
-                    self.check_comm_header(comm_id);
+                if let Some(comm) = communication
+                    && !self.check_comm_header(*comm)
+                {
+                    return;
                 }
-                self.check_stmt_list(&statements);
+                self.check_stmt_list(statements);
             }
-            Action::CaseFallback { values, statements } => {
-                for val_id in values {
-                    let _ = self.check_expr_outcome(val_id, None);
-                }
-                self.check_stmt_list(&statements);
-            }
-            Action::Return { values } => self.check_return_stmt(&values),
-            Action::Send { channel, value } => {
-                let ch_op = self.check_expr(channel, None);
+            StmtKind::Case {
+                values, statements, ..
+            } => self.check_case(values, statements, None),
+            StmtKind::Return { values } => self.check_return_stmt(&stmt.span, values),
+            StmtKind::Send { channel, value } => {
+                let ch_op = self.check_expr(*channel, None);
                 let elem_ty = ch_op.and_then(|op| self.arena.send_element(op.ty));
-                let val_op = self.check_expr(value, elem_ty);
+                let val_op = self.check_expr(*value, elem_ty);
                 if let (Some(target), Some(val), Some(int_bits)) =
                     (elem_ty, val_op, self.int_bits())
                 {
-                    let _ = self.arena.assign_value(val, target, int_bits);
+                    let _ = self.arena.assignable(val, target, int_bits);
                 }
             }
-            Action::Increment { expression } => {
-                let _ = self.check_expr(expression, None);
+            StmtKind::Increment { expression, .. } => {
+                let _ = self.check_expr(*expression, None);
             }
-            Action::DeferGo { call } => {
-                let _ = self.check_expr_outcome(call, None);
+            StmtKind::Go { call } | StmtKind::Defer { call } => {
+                let _ = self.check_expr_outcome(*call, None);
             }
-            Action::Label { name, statement } => {
-                let abs_span = self.abs_span(&name);
+            StmtKind::Label { name, statement } => {
+                let abs_span = self.abs_span(name);
                 let obj = ObjectRef::Label {
                     file: self.file,
                     span: abs_span,
                 };
                 self.region.defs.push((abs_span, obj));
-                if let Some(stmt_id) = statement {
-                    self.check_stmt(stmt_id);
+                if let Some(statement) = statement {
+                    self.check_stmt(*statement);
                 }
             }
-            Action::Branch { label } => {
-                if let Some(label_r) = label {
-                    let name = self.text(&label_r);
-                    let abs_span = self.abs_span(&label_r);
+            StmtKind::Branch { label, .. } => {
+                if let Some(label) = label {
+                    let name = self.text(label);
+                    let span = self.abs_span(label);
                     if let Some(target_span) = self.region.scopes.resolve_label(self.source, name) {
                         self.region.uses.push((
-                            abs_span,
+                            span,
                             ObjectRef::Label {
                                 file: self.file,
                                 span: target_span,
@@ -404,6 +234,29 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     }
                 }
             }
+        }
+    }
+
+    fn check_case(&mut self, values: &[ExprId], statements: &[StmtId], expected: Option<TypeId>) {
+        for &value in values {
+            let _ = self.check_expr_outcome(value, expected);
+        }
+        self.check_stmt_list(statements);
+    }
+
+    fn check_condition(&mut self, condition: ExprId, message: &str) {
+        let expected = self.basic_bool();
+        let ExprOutcome::Value(operand) = self.check_expr_outcome(condition, expected) else {
+            return;
+        };
+        if operand.mode.is_value()
+            && self
+                .arena
+                .basic_kind(operand.ty)
+                .is_some_and(|kind| !kind.boolean())
+            && let Some(expr) = self.body.expression(condition)
+        {
+            self.compiler_error(&expr.span, Code::InvalidCond, message);
         }
     }
 
@@ -459,6 +312,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         values,
                         statements,
                         default,
+                        ..
                     } => Some((s.span.clone(), values.clone(), statements.clone(), *default)),
                     _ => None,
                 })
@@ -609,7 +463,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     fn check_type_decl(
         &mut self,
         stmt_id: StmtId,
-        stmt_span: &Range<usize>,
         names: &[Range<usize>],
         annotation: Option<&Range<usize>>,
     ) {
@@ -626,50 +479,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return;
         }
         let local_id = self.region.scopes.definition_at(abs_name_span[0]);
-        let is_alias = self
-            .source
-            .get(
-                abs_name_range.end
-                    ..annotation
-                        .map(|a| self.body_base + a.start)
-                        .unwrap_or(abs_name_range.end),
-            )
-            .is_some_and(|between| between.contains('='))
-            || self
-                .text(stmt_span)
-                .strip_prefix("type")
-                .is_some_and(|rest| rest.trim_start().starts_with(&format!("{name} =")));
-
-        let is_generic_local = self
-            .body
+        let body = self.body;
+        let is_alias = body.declaration_equals(stmt_id).is_some();
+        let type_parameters = body
             .type_parameters()
             .iter()
-            .any(|tp| tp.declaration == stmt_id)
-            || self
-                .source
-                .get(
-                    abs_name_range.end
-                        ..annotation
-                            .map(|a| self.body_base + a.start)
-                            .unwrap_or(abs_name_range.end),
-                )
-                .is_some_and(|between| between.contains('['));
+            .find(|tp| tp.declaration == stmt_id);
+        let is_generic_local = type_parameters.is_some();
 
-        if is_generic_local
-            && let Some(tp_params) = self
-                .body
-                .type_parameters()
-                .iter()
-                .find(|tp| tp.declaration == stmt_id)
-                .map(|tp| {
-                    tp.parameters
-                        .iter()
-                        .map(|p| (p.name.clone(), p.annotation.clone()))
-                        .collect::<Vec<_>>()
-                })
-        {
-            for (tp_name_r, tp_ann_r) in &tp_params {
-                if let Some(name_r) = tp_name_r {
+        if let Some(type_parameters) = type_parameters {
+            for parameter in &type_parameters.parameters {
+                if let Some(name_r) = &parameter.name {
                     let tp_name = self.text(name_r);
                     if !tp_name.is_empty() && tp_name != "_" {
                         let tp_span = self.abs_span(name_r);
@@ -681,9 +501,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         }
                     }
                 }
-                if !tp_ann_r.is_empty() {
-                    let _ =
-                        self.sig_constraint_refs_valid(self.source, 0, &self.abs_range(tp_ann_r));
+                if !parameter.annotation.is_empty() {
+                    let _ = self.sig_constraint_refs_valid(
+                        self.source,
+                        0,
+                        &self.abs_range(&parameter.annotation),
+                    );
                 }
             }
         }
@@ -855,6 +678,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     fn validate_local_type_rhs(&mut self, text: &str, abs_offset: usize) -> bool {
         let mut parsed = syntax::parse_type(text);
         if !parsed.diagnostics.is_empty() {
+            self.region.uses_complete = false;
             return false;
         }
         let ok = self.check_type_references(text, abs_offset, &parsed);
@@ -873,6 +697,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return;
         };
 
+        if !values.is_empty() && names.len() != values.len() {
+            self.declaration_count(names, values);
+        }
         let prev_state = const_group.take();
         let (iota_val, prev_ann, effective_values): (u32, Option<Range<usize>>, Vec<ExprId>) =
             if let Some(prev) = prev_state {
@@ -905,13 +732,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
 
         for (idx, name_range) in names.iter().enumerate() {
             let abs_span = self.abs_span(name_range);
-            let name = self.text(name_range);
-            if name == "_" {
-                continue;
-            }
-            let Some(local_id) = self.region.scopes.definition_at(abs_span[0]) else {
-                continue;
-            };
             let rhs_op = if arity_ok {
                 rhs_ops.get(idx).and_then(|o| *o)
             } else {
@@ -924,12 +744,28 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if op.mode != Mode::Constant {
                     None
                 } else if let Some(target) = ann_ty {
-                    self.arena.assign_basic(op, target, int_bits)
+                    let converted = self.arena.assign_basic(op, target, int_bits);
+                    if converted.is_none() {
+                        self.check_assignment(
+                            op,
+                            target,
+                            effective_values[idx],
+                            "constant declaration",
+                        );
+                    }
+                    converted
                 } else {
                     Some(op)
                 }
             } else {
                 None
+            };
+
+            if self.text(name_range) == "_" {
+                continue;
+            }
+            let Some(local_id) = self.region.scopes.definition_at(abs_span[0]) else {
+                continue;
             };
 
             self.mark_active(local_id);
@@ -969,27 +805,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         let ann_ty = annotation.and_then(|r| self.resolve_type_syntax_span(r));
         let ann_valid = !has_ann || ann_ty.is_some();
 
-        let (resolved_ops, is_one_to_one): (Vec<Option<Operand>>, bool) = if values.is_empty() {
-            (vec![None; names.len()], false)
-        } else if names.len() > 1 && values.len() == 1 {
-            match self.check_multi_expr(values[0], names.len()) {
-                Some(ops) if ops.len() == names.len() => {
-                    (ops.into_iter().map(Some).collect(), false)
-                }
-                _ => (vec![None; names.len()], false),
-            }
-        } else if names.len() == values.len() {
-            let mut ops = Vec::with_capacity(values.len());
-            for &val_id in values {
-                ops.push(self.check_expr(val_id, ann_ty));
-            }
-            (ops, true)
-        } else {
-            for &val_id in values {
-                let _ = self.check_expr_outcome(val_id, None);
-            }
-            (vec![None; names.len()], false)
-        };
+        let declared_mismatch =
+            values.len() > names.len() || (values.len() > 1 && values.len() < names.len());
+        if declared_mismatch {
+            self.declaration_count(names, values);
+        }
+        let resolved_ops = self.check_initializers(names.len(), values, ann_ty);
+        if !declared_mismatch {
+            self.check_initializer_count(names.len(), values, &resolved_ops);
+        }
+        let arity_matches = resolved_ops.len() == names.len();
+        let is_one_to_one = arity_matches && values.len() == names.len();
 
         for (idx, name_range) in names.iter().enumerate() {
             let abs_span = self.abs_span(name_range);
@@ -1000,12 +826,15 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             let Some(local_id) = self.region.scopes.definition_at(abs_span[0]) else {
                 continue;
             };
+            let input = arity_matches
+                .then(|| resolved_ops.get(idx).copied().flatten())
+                .flatten();
             let var_ty = if !ann_valid {
                 None
             } else if values.is_empty() {
                 ann_ty
             } else if let Some(target) = ann_ty {
-                if let Some(rhs_op) = resolved_ops.get(idx).and_then(|o| *o) {
+                if let Some(rhs_op) = input {
                     let _ = self.check_assignment(
                         rhs_op,
                         target,
@@ -1017,7 +846,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 // initializer is incomplete or has an assignment error.
                 Some(target)
             } else {
-                resolved_ops.get(idx).and_then(|o| *o).and_then(|rhs_op| {
+                input.and_then(|rhs_op| {
                     if rhs_op.mode == Mode::TypeExpr {
                         None
                     } else {
@@ -1037,30 +866,63 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
     }
 
-    fn check_short_var_decl(&mut self, lhs: &[ExprId], rhs: &[ExprId]) {
+    fn is_call(&self, expression: ExprId) -> bool {
+        self.body
+            .expression(self.unwrap_parens(expression))
+            .is_some_and(|expression| matches!(expression.kind, ExprKind::Call { .. }))
+    }
+
+    fn check_initializers(
+        &mut self,
+        count: usize,
+        values: &[ExprId],
+        expected: Option<TypeId>,
+    ) -> Vec<Option<Operand>> {
+        if let [value] = values
+            && (count != 1 || self.is_call(*value))
+        {
+            return self
+                .check_value_pack(*value, count == 2, expected)
+                .unwrap_or_default()
+                .into_iter()
+                .map(Some)
+                .collect();
+        }
+        let expected = (count == values.len()).then_some(expected).flatten();
+        values
+            .iter()
+            .map(|&value| self.check_expr(value, expected))
+            .collect()
+    }
+
+    fn check_initializer_count(
+        &mut self,
+        variables: usize,
+        expressions: &[ExprId],
+        values: &[Option<Operand>],
+    ) {
+        if !values.is_empty()
+            && variables != values.len()
+            && values
+                .iter()
+                .all(|value| value.is_some_and(|operand| operand.mode.is_value()))
+        {
+            self.assignment_count(expressions, variables, values.len());
+        }
+    }
+
+    fn check_short_var_decl(&mut self, span: &Range<usize>, lhs: &[ExprId], rhs: &[ExprId]) {
         let Some(int_bits) = self.int_bits() else {
             return;
         };
 
-        let (rhs_ops, is_one_to_one): (Vec<Option<Operand>>, bool) = if lhs.len() > 1
-            && rhs.len() == 1
-        {
-            match self.check_multi_expr(rhs[0], lhs.len()) {
-                Some(ops) if ops.len() == lhs.len() => (ops.into_iter().map(Some).collect(), false),
-                _ => (vec![None; lhs.len()], false),
-            }
-        } else if lhs.len() == rhs.len() {
-            let mut ops = Vec::with_capacity(rhs.len());
-            for &r_id in rhs {
-                ops.push(self.check_expr(r_id, None));
-            }
-            (ops, true)
-        } else {
-            for &r_id in rhs {
-                let _ = self.check_expr_outcome(r_id, None);
-            }
-            (vec![None; lhs.len()], false)
-        };
+        let rhs_ops = self.check_initializers(lhs.len(), rhs, None);
+        self.check_initializer_count(lhs.len(), rhs, &rhs_ops);
+        let arity_matches = lhs.len() == rhs_ops.len();
+        let is_one_to_one = arity_matches && lhs.len() == rhs.len();
+        let mut names = BTreeSet::new();
+        let mut new_variable = false;
+        let mut valid_lhs = self.region.scopes.complete && self.cursor_offset.is_none();
 
         for (idx, &lhs_id) in lhs.iter().enumerate() {
             let lhs_span = self
@@ -1069,6 +931,18 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 .filter(|e| matches!(e.kind, ExprKind::Name))
                 .map(|e| e.span.clone());
             let Some(lhs_span) = lhs_span else {
+                valid_lhs = false;
+                if let Some(span) = self.body.expression(lhs_id).map(|expr| expr.span.clone()) {
+                    let text = self.text(&span);
+                    if text.len() <= 1024 {
+                        self.compiler_error(
+                            &span,
+                            Code::BadDecl,
+                            &format!("non-name {text} on left side of :="),
+                        );
+                    }
+                }
+                self.record_write_only(lhs_id);
                 let _ = self.check_expr_outcome(lhs_id, None);
                 continue;
             };
@@ -1076,8 +950,23 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             if name == "_" {
                 continue;
             }
+            if lhs.len() > 1 && !names.insert(name) {
+                valid_lhs = false;
+                if name.len() <= 1024 {
+                    self.compiler_error(
+                        &lhs_span,
+                        Code::RepeatedDecl,
+                        &format!("{name} repeated on left side of :="),
+                    );
+                }
+                continue;
+            }
             let abs_span = self.abs_span(&lhs_span);
-            let rhs_op = rhs_ops.get(idx).and_then(|o| *o);
+            let rhs_op = if arity_matches {
+                rhs_ops.get(idx).copied().flatten()
+            } else {
+                None
+            };
             let inferred_ty = rhs_op.and_then(|op| {
                 if op.mode == Mode::TypeExpr {
                     None
@@ -1087,6 +976,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             });
 
             if let Some(local_id) = self.region.scopes.definition_at(abs_span[0]) {
+                new_variable = true;
                 self.record_local_var_def(local_id, abs_span, VarKind::Local, inferred_ty);
                 if is_one_to_one
                     && inferred_ty.is_some()
@@ -1101,6 +991,21 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     .resolve_at(self.source, abs_span[0], name)
                 && self.is_active(existing_id)
             {
+                let object = self.local_object(existing_id);
+                if !matches!(object, Some(ObjectRef::Var { .. })) {
+                    valid_lhs = false;
+                    if name.len() <= 1024 {
+                        self.compiler_error(
+                            &lhs_span,
+                            Code::UnassignableOperand,
+                            &format!("cannot assign to {name}"),
+                        );
+                    }
+                    if let Some(obj) = object {
+                        self.region.uses.push((abs_span, obj));
+                    }
+                    continue;
+                }
                 let existing = self.region.local_type(existing_id);
                 self.region.writes.push(abs_span);
                 if let (Some(target), Some(op)) = (existing, rhs_op) {
@@ -1111,19 +1016,43 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         "assignment",
                     );
                 }
-                if let Some(obj) = self.local_object(existing_id) {
+                if let Some(obj) = object {
                     self.region.uses.push((abs_span, obj));
                 }
+            } else {
+                valid_lhs = false;
             }
+        }
+        if valid_lhs && !new_variable {
+            self.compiler_error(span, Code::NoNewVar, "no new variables on left side of :=");
         }
     }
 
-    fn check_assign(&mut self, lhs: &[ExprId], op_range: Option<&Range<usize>>, rhs: &[ExprId]) {
+    fn check_assign(
+        &mut self,
+        span: &Range<usize>,
+        lhs: &[ExprId],
+        op_range: Option<&Range<usize>>,
+        rhs: &[ExprId],
+    ) {
+        if let Some(operator) = op_range
+            && (lhs.len() != 1 || rhs.len() != 1)
+        {
+            let op = self.text(operator);
+            self.compiler_error(
+                span,
+                Code::MultiValAssignOp,
+                &format!("assignment operation {op} requires single-valued expressions"),
+            );
+            self.region.uses_complete = false;
+            return;
+        }
         let Some(int_bits) = self.int_bits() else {
             return;
         };
 
         let mut lhs_ops = Vec::with_capacity(lhs.len());
+        let mut valid_lhs = true;
         for &l_id in lhs {
             let is_blank = self
                 .body
@@ -1136,17 +1065,29 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if op_range.is_none() {
                     self.record_write_only(l_id);
                 }
-                lhs_ops.push(self.check_expr(l_id, None));
+                let input = self.check_expr(l_id, None);
+                valid_lhs &= input.is_some_and(|op| op.mode.is_value());
+                lhs_ops.push(input);
             }
         }
 
-        if lhs.len() > 1 && rhs.len() == 1 {
-            if let Some(rhs_ops) = self.check_multi_expr(rhs[0], lhs.len())
-                && rhs_ops.len() == lhs.len()
-            {
-                for (l_op, r_op) in lhs_ops.iter().zip(rhs_ops.iter()) {
-                    if let Some(l) = l_op {
-                        let _ = self.check_assignment(*r_op, l.ty, rhs[0], "assignment");
+        if let [value] = rhs
+            && op_range.is_none()
+            && (lhs.len() != 1 || self.is_call(*value))
+        {
+            let expected = if lhs.len() == 1 {
+                lhs_ops[0].map(|operand| operand.ty)
+            } else {
+                None
+            };
+            if let Some(rhs_ops) = self.check_value_pack(*value, lhs.len() == 2, expected) {
+                if rhs_ops.len() != lhs.len() {
+                    self.assignment_count(rhs, lhs.len(), rhs_ops.len());
+                } else {
+                    for (l_op, r_op) in lhs_ops.iter().zip(rhs_ops) {
+                        if let Some(l) = l_op {
+                            let _ = self.check_assignment(r_op, l.ty, *value, "assignment");
+                        }
                     }
                 }
             }
@@ -1154,22 +1095,31 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         if lhs.len() == rhs.len() {
-            for (l_op, &r_id) in lhs_ops.iter().zip(rhs.iter()) {
+            for ((l_op, &l_id), &r_id) in lhs_ops.iter().zip(lhs).zip(rhs.iter()) {
                 let expected = l_op.map(|l| l.ty);
                 if let Some(r_op) = self.check_expr(r_id, expected) {
                     if let (Some(op_r), Some(l)) = (op_range, l_op) {
                         let bin_op = self.text(op_r).trim_end_matches('=');
-                        let _ = self
-                            .arena
-                            .binary_expr(bin_op, *l, r_op, Some(l.ty), int_bits);
+                        if let Some(Err(error)) =
+                            self.arena
+                                .checked_binary_expr(bin_op, *l, r_op, Some(l.ty), int_bits)
+                        {
+                            self.binary_error(op_r, (l_id, *l), (r_id, r_op), error);
+                        }
                     } else if let Some(l) = l_op {
                         let _ = self.check_assignment(r_op, l.ty, r_id, "assignment");
                     }
                 }
             }
         } else {
+            let mut valid_rhs = true;
             for &r_id in rhs {
-                let _ = self.check_expr_outcome(r_id, None);
+                valid_rhs &= self
+                    .check_expr(r_id, None)
+                    .is_some_and(|op| op.mode.is_value());
+            }
+            if valid_lhs && valid_rhs {
+                self.assignment_count(rhs, lhs.len(), rhs.len());
             }
         }
     }
@@ -1199,6 +1149,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         };
 
         let iter_op = self.check_expr(iterable, None);
+        if define && iter_op.is_none() {
+            // The checker cannot establish which range bindings are valid
+            // when the iteration operand is unavailable.
+            self.region.uses_complete = false;
+        }
         let count = lhs.len();
 
         for (idx, &lhs_id) in lhs.iter().enumerate() {
@@ -1250,7 +1205,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     ty: s_ty,
                     value: None,
                 };
-                let _ = self.arena.assign_value(slot_op, lhs_op.ty, int_bits);
+                let _ = self.arena.assignable(slot_op, lhs_op.ty, int_bits);
             }
         }
 
@@ -1267,90 +1222,81 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
     }
 
-    fn check_return_stmt(&mut self, results: &[ExprId]) {
-        let expected_results = self.result_types.clone();
+    fn check_return_stmt(&mut self, span: &Range<usize>, results: &[ExprId]) {
+        let expected_count = self.result_types.len();
         if results.is_empty() {
+            if expected_count != 0 && !self.named_results {
+                self.return_count(span, results, &[]);
+            }
             return;
         }
-        if expected_results.len() > 1
-            && results.len() == 1
-            && let Some(ops) = self.check_multi_expr(results[0], expected_results.len())
+        if let [expr] = results
+            && (expected_count != 1 || self.is_call(*expr))
         {
-            for (op, expected) in ops.iter().zip(expected_results.iter()) {
-                if let Some(target) = *expected {
-                    let _ = self.check_assignment(*op, target, results[0], "return statement");
+            let expected = if expected_count == 1 {
+                self.result_types[0]
+            } else {
+                None
+            };
+            if let Some(ops) = self.check_value_pack(*expr, false, expected) {
+                if ops.len() == expected_count {
+                    for (index, op) in ops.into_iter().enumerate() {
+                        if let Some(target) = self.result_types[index] {
+                            let _ = self.check_assignment(op, target, *expr, "return statement");
+                        }
+                    }
+                } else {
+                    self.return_count(span, results, &ops);
                 }
             }
             return;
         }
-        for (idx, &res_id) in results.iter().enumerate() {
-            let expected = expected_results.get(idx).and_then(|o| *o);
-            if let Some(op) = self.check_expr(res_id, expected)
+        if results.len() != expected_count {
+            let mut actual = Vec::with_capacity(results.len());
+            for &expr in results {
+                let operand = self.check_expr(expr, None).filter(|op| op.mode.is_value());
+                actual.push(operand);
+            }
+            if let Some(actual) = actual.into_iter().collect::<Option<Vec<_>>>() {
+                self.return_count(span, results, &actual);
+            }
+            return;
+        }
+        for (index, &expr) in results.iter().enumerate() {
+            let expected = self.result_types[index];
+            if let Some(op) = self.check_expr(expr, expected)
                 && let Some(target) = expected
             {
-                let _ = self.check_assignment(op, target, res_id, "return statement");
+                let _ = self.check_assignment(op, target, expr, "return statement");
             }
         }
     }
 
-    fn is_receive_expr(&self, mut id: ExprId) -> bool {
-        for _ in 0..32 {
-            let Some(expr) = self.body.expression(id) else {
-                return false;
-            };
-            match &expr.kind {
-                ExprKind::Parenthesized { expression } => id = *expression,
-                ExprKind::Unary { operator, .. } => {
-                    return self.text(operator) == "<-";
-                }
-                _ => return false,
-            }
-        }
-        false
-    }
-
-    fn check_comm_header(&mut self, comm_id: StmtId) {
-        enum CommHeader {
-            Valid,
-            InvalidExpr(ExprId),
-            InvalidAssign(Vec<ExprId>),
-            InvalidOther,
-        }
-        let header = match self.body.statement(comm_id).map(|s| &s.kind) {
-            Some(StmtKind::Send { .. }) => CommHeader::Valid,
-            Some(StmtKind::Expression { expression }) => {
-                if self.is_receive_expr(*expression) {
-                    CommHeader::Valid
-                } else {
-                    CommHeader::InvalidExpr(*expression)
-                }
-            }
-            Some(StmtKind::Assignment {
-                operator, right, ..
-            }) => {
-                if matches!(self.text(operator), "=" | ":=")
-                    && right.len() == 1
-                    && self.is_receive_expr(right[0])
-                {
-                    CommHeader::Valid
-                } else {
-                    CommHeader::InvalidAssign(right.clone())
-                }
-            }
-            _ => CommHeader::InvalidOther,
+    fn check_comm_header(&mut self, comm: StmtId) -> bool {
+        let tree = self.body;
+        let Some(statement) = tree.statement(comm) else {
+            return false;
         };
-        match header {
-            CommHeader::Valid => self.check_stmt(comm_id),
-            CommHeader::InvalidExpr(expr) => {
-                let _ = self.check_expr_outcome(expr, None);
+        let receive = match &statement.kind {
+            StmtKind::Send { .. } => {
+                self.check_stmt(comm);
+                return true;
             }
-            CommHeader::InvalidAssign(right) => {
-                for expr in right {
-                    let _ = self.check_expr_outcome(expr, None);
-                }
-            }
-            CommHeader::InvalidOther => {}
+            StmtKind::Expression { expression } => Some(*expression),
+            StmtKind::Assignment { right, .. } if right.len() == 1 => Some(right[0]),
+            _ => None,
+        };
+        if receive.is_some_and(|expr| tree.is_receive(expr, |span| self.text(span) == "<-")) {
+            self.check_stmt(comm);
+            return true;
         }
+        self.compiler_error(
+            &statement.span,
+            Code::InvalidSelectCase,
+            "select case must be send or receive (possibly with assignment)",
+        );
+        self.region.uses_complete = false;
+        false
     }
 
     pub(crate) fn closure_scope_present(&self, abs_sig_start: u32, abs_body_end: u32) -> bool {

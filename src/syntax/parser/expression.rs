@@ -1,5 +1,7 @@
 //! Pratt expressions in a flat arena, parsed only when requested by a consumer.
-use crate::syntax::ast::expression::{Diagnostic, Expr, ExprId, ExprKind, ExpressionTree};
+use crate::syntax::ast::expression::{
+    Diagnostic, Expected, Expr, ExprId, ExprKind, ExpressionTree,
+};
 use crate::syntax::lexer::Lexer;
 use crate::syntax::token::TokenKind;
 use std::iter::Peekable;
@@ -124,8 +126,29 @@ impl Parser<'_> {
 
     pub(super) fn error(&mut self, span: Range<usize>, message: &'static str) {
         if self.diagnostics.len() < MAX_DIAGNOSTICS {
-            self.diagnostics.push(Diagnostic { span, message });
+            self.diagnostics.push(Diagnostic {
+                span,
+                message,
+                expected: None,
+            });
         }
+    }
+
+    pub(super) fn error_here(&mut self, message: &'static str, expected: Option<&'static str>) {
+        if self.diagnostics.len() >= MAX_DIAGNOSTICS {
+            return;
+        }
+        let found = self.tokens.peek().cloned();
+        let span = found
+            .as_ref()
+            .map_or(self.source.len()..self.source.len(), |token| {
+                token.span.clone()
+            });
+        self.diagnostics.push(Diagnostic {
+            span,
+            message,
+            expected: expected.map(|description| Expected { description, found }),
+        });
     }
 
     pub(super) fn expression(&mut self, minimum: u8, depth: usize) -> ExprId {
@@ -161,7 +184,7 @@ impl Parser<'_> {
     fn prefix(&mut self, depth: usize) -> ExprId {
         let Some(token) = self.tokens.peek().cloned() else {
             let end = self.source.len();
-            self.error(end..end, "expected expression");
+            self.error_here("expected expression", Some("expected operand"));
             return self.add(ExprKind::Missing, end..end);
         };
         let spelling = &self.source[token.span.clone()];
@@ -236,7 +259,7 @@ impl Parser<'_> {
                 | TokenKind::String
                 | TokenKind::Char => {
                     self.tokens.next();
-                    self.add(ExprKind::Literal, token.span)
+                    self.add(ExprKind::Literal(token.kind), token.span)
                 }
                 TokenKind::LParen => {
                     self.tokens.next();
@@ -252,7 +275,15 @@ impl Parser<'_> {
                     )
                 }
                 _ => {
-                    self.error(token.span.clone(), "expected expression");
+                    let expected = if matches!(
+                        token.kind,
+                        TokenKind::RBrace | TokenKind::RParen | TokenKind::RBrack
+                    ) {
+                        "expected operand"
+                    } else {
+                        "expected ';'"
+                    };
+                    self.error_here("expected expression", Some(expected));
                     // Preserve delimiters so callers can recover a missing argument.
                     if !matches!(
                         token.kind,
@@ -292,11 +323,13 @@ impl Parser<'_> {
                 .span
                 .end;
         }
-        let span = self
-            .tokens
-            .peek()
-            .map_or(self.source.len()..self.source.len(), |t| t.span.clone());
-        self.error(span, message);
+        let expected = match kind {
+            TokenKind::RParen => Some("expected ')'"),
+            TokenKind::RBrack => Some("expected ']'"),
+            TokenKind::RBrace => Some("expected '}'"),
+            _ => None,
+        };
+        self.error_here(message, expected);
         fallback
     }
 }

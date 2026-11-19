@@ -1,5 +1,6 @@
 //! Read-only semantic operations over the admitted request source and metadata.
-use super::Context;
+use super::locations::NavigationLocation;
+use super::{Context, Location, SourceRange};
 use crate::analysis::budget::MAX_BYTES;
 use crate::analysis::obj::{DeclId, LocalId, MethodOrigin, ObjectRef, SymbolOrigin};
 use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
@@ -7,6 +8,7 @@ use crate::analysis::scope::tree::LocalBindingKind;
 use crate::analysis::scope::{Binding, CursorScope, Locals};
 use crate::analysis::types::{Qualifier, TypeDeclaration};
 use crate::syntax::{self, Lexer, TokenKind};
+use std::borrow::Cow;
 
 impl<'a> Context<'a> {
     pub(in crate::analysis::query) fn cursor_scope(
@@ -58,10 +60,35 @@ impl<'a> Context<'a> {
         )
     }
 
-    pub(crate) fn type_declarations(
-        &mut self,
+    pub(crate) fn type_definition_locations(
+        &self,
         offset: usize,
-    ) -> Result<Vec<TypeDeclaration<'a>>, (i32, String)> {
+    ) -> Result<Vec<NavigationLocation<'a>>, (i32, String)> {
+        let declarations = self.type_declarations(offset)?;
+        let mut current_map = None;
+        Ok(declarations
+            .into_iter()
+            .filter_map(|target| {
+                let (file, range) = match target {
+                    TypeDeclaration::Named(file, symbol) => (
+                        Cow::Borrowed(file),
+                        SourceRange::indexed_selection(&symbol.selection),
+                    ),
+                    TypeDeclaration::Local(file, span) => (
+                        Cow::Borrowed(file),
+                        self.cross_file_range(file, &span, &mut current_map)?,
+                    ),
+                    TypeDeclaration::Builtin(name) => {
+                        let (file, range) = self.builtin_symbol_location(name, true)?;
+                        (Cow::Owned(file), range)
+                    }
+                };
+                Some(Location { file, range })
+            })
+            .collect())
+    }
+
+    fn type_declarations(&self, offset: usize) -> Result<Vec<TypeDeclaration<'a>>, (i32, String)> {
         let file = self.view.file;
         let source = self.source();
         let workspace = self.workspace;

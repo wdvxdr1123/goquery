@@ -4,6 +4,7 @@ use crate::text;
 use crate::workspace::Workspace;
 use serde_json::Value;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 pub(crate) enum CallDirection {
     Incoming,
@@ -51,6 +52,14 @@ pub(crate) enum DocumentQuery<'a> {
 }
 
 pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Value, (i32, String)> {
+    execute_cancellable(workspace, query, None)
+}
+
+pub(crate) fn execute_cancellable(
+    workspace: &mut Workspace,
+    query: Query<'_>,
+    cancellation: Option<&AtomicBool>,
+) -> Result<Value, (i32, String)> {
     let (file, query) = match query {
         Query::WorkspaceSymbols(params) => {
             return super::symbol_search::execute(&Context::metadata(workspace), params);
@@ -80,6 +89,25 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         }
         Query::Document { file, query } => (file, query),
     };
+    let semantic_config = workspace.semantic_config;
+    match query {
+        DocumentQuery::SemanticTokens | DocumentQuery::SemanticTokensRange(_)
+            if !semantic_config.enabled =>
+        {
+            return Ok(Value::Null);
+        }
+        DocumentQuery::DocumentHighlight(_) if !workspace.document_highlight_enabled => {
+            return Ok(Value::Null);
+        }
+        DocumentQuery::CodeAction(params)
+            if workspace.open_source(file).is_some()
+                && workspace.files.contains_key(file)
+                && super::code_actions::is_noop(params) =>
+        {
+            return Ok(Value::Null);
+        }
+        _ => {}
+    }
     // Syntactic features only need the admitted source text; documents excluded
     // by build constraints or discovery rules still answer them, as gopls does.
     if matches!(
@@ -103,7 +131,6 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
             _ => unreachable!("syntax-only dispatch"),
         };
     }
-    let semantic_config = workspace.semantic_config;
     let completion_config = workspace.completion_config;
     let signature_plaintext = workspace.signature_plaintext;
     let mut context = match Context::new(workspace, file) {
@@ -161,7 +188,7 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         "invalid UTF-16 position".into(),
     ))?;
     match query {
-        DocumentQuery::TypeDefinition(_) => super::type_definition::execute(&mut context, offset),
+        DocumentQuery::TypeDefinition(_) => super::type_definition::execute(&context, offset),
         DocumentQuery::Completion(_) => {
             super::completion::execute(&context, offset, &completion_config)
         }
@@ -169,24 +196,28 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
             super::signature_help::execute(&context, offset, params, signature_plaintext)
         }
         DocumentQuery::Definition(_) => {
-            super::navigation::execute(&context, offset, "textDocument/definition")
+            super::navigation::definition(&context, offset, "textDocument/definition")
         }
         DocumentQuery::Declaration(_) => {
-            super::navigation::execute(&context, offset, "textDocument/declaration")
+            super::navigation::definition(&context, offset, "textDocument/declaration")
         }
         DocumentQuery::Hover(_) => super::hover::execute(&context, offset),
         DocumentQuery::PrepareRename(_) => super::rename::prepare(&context, offset),
         DocumentQuery::Rename(_) => super::rename::execute(&mut context, offset, params),
         DocumentQuery::Implementation(_) => super::implementation::execute(&context, offset),
         DocumentQuery::DocumentHighlight(_) => {
-            super::document::highlight::execute(&context, offset)
+            super::document::highlight::execute(&context, offset, cancellation)
         }
-        DocumentQuery::PrepareCallHierarchy(_) => {
-            super::navigation::execute(&context, offset, "textDocument/prepareCallHierarchy")
-        }
-        DocumentQuery::PrepareTypeHierarchy(_) => {
-            super::navigation::execute(&context, offset, "textDocument/prepareTypeHierarchy")
-        }
+        DocumentQuery::PrepareCallHierarchy(_) => super::navigation::prepare_hierarchy(
+            &context,
+            offset,
+            "textDocument/prepareCallHierarchy",
+        ),
+        DocumentQuery::PrepareTypeHierarchy(_) => super::navigation::prepare_hierarchy(
+            &context,
+            offset,
+            "textDocument/prepareTypeHierarchy",
+        ),
         DocumentQuery::References(_) => super::references::execute(context, offset, params),
         DocumentQuery::Symbols
         | DocumentQuery::SemanticTokens
@@ -199,6 +230,27 @@ pub(crate) fn execute(workspace: &mut Workspace, query: Query<'_>) -> Result<Val
         | DocumentQuery::DocumentLink => {
             unreachable!("handled before positioned access")
         }
+    }
+}
+
+pub(super) fn source_location(
+    location: crate::analysis::query::Location<impl AsRef<Path>>,
+) -> Value {
+    serde_json::json!({
+        "uri": crate::workspace::uri(location.file.as_ref()),
+        "range": source_range(location.range),
+    })
+}
+
+/// Navigation serializes an absent location list as null.
+pub(super) fn source_locations<File: AsRef<Path>>(
+    locations: impl IntoIterator<Item = crate::analysis::query::Location<File>>,
+) -> Value {
+    let locations: Vec<_> = locations.into_iter().map(source_location).collect();
+    if locations.is_empty() {
+        Value::Null
+    } else {
+        Value::Array(locations)
     }
 }
 

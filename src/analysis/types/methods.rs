@@ -305,13 +305,32 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         name: &str,
     ) -> Option<Option<TypeId>> {
+        self.implementation_selection(recv, origin, name)
+            .map(|selection| selection.map(|selection| selection.ty))
+    }
+
+    fn implementation_selection(
+        &mut self,
+        recv: TypeId,
+        origin: &Path,
+        name: &str,
+    ) -> Option<Option<Selection<'a>>> {
         let Some(candidate) = self.lookup_member(recv, recv, origin, name, true)? else {
             return Some(None);
         };
-        Some(
-            (candidate.selection.kind == SelectionKind::MethodVal)
-                .then_some(candidate.selection.ty),
-        )
+        Some((candidate.selection.kind == SelectionKind::MethodVal).then_some(candidate.selection))
+    }
+
+    pub(crate) fn implementation_method_object(
+        &mut self,
+        declaration: DeclId<'a>,
+        origin: &Path,
+        name: &str,
+    ) -> Option<ObjectRef<'a>> {
+        self.with_projection(true, |arena| {
+            let receiver = arena.implementation_receiver(declaration)?;
+            Some(arena.implementation_selection(receiver, origin, name)??.obj)
+        })
     }
 
     fn lookup_interface_methods(

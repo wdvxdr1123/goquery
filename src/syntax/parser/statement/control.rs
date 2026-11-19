@@ -177,17 +177,17 @@ impl BodyParser<'_> {
                 keyword.span.start..end,
             );
         }
+        if keyword_kind == TokenKind::If && condition.is_none() {
+            self.parser
+                .error_here("missing condition in if statement", None);
+            condition = Some(self.parser.add(ExprKind::Missing, keyword.span.clone()));
+        }
         let body = self.block(depth + 1);
         let end = self.statements[body.0].span.end;
         let kind = if keyword_kind == TokenKind::If {
-            let condition = condition.unwrap_or_else(|| {
-                self.parser
-                    .error(keyword.span.clone(), "if requires condition");
-                self.parser.add(ExprKind::Missing, keyword.span.clone())
-            });
             StmtKind::If {
                 init,
-                condition,
+                condition: condition.expect("if condition or recovery node"),
                 then_block: body,
                 otherwise: None,
             }
@@ -258,34 +258,15 @@ impl BodyParser<'_> {
             } else {
                 self.expression_list()
             };
-            if self
-                .parser
-                .tokens
-                .peek()
-                .is_some_and(|t| &self.parser.source[t.span.clone()] == ":")
-            {
-                self.parser.tokens.next();
-            } else {
-                self.parser
-                    .error(token.span.clone(), "expected ':' after case");
-            }
-            let (statements, end) = self.case_body(depth, token.span.end);
-            // The clause span covers the whole clause region up to the next
-            // clause keyword or the switch closing brace; the query scope layer
-            // uses it to keep clause locals visible in trailing trivia.
-            let end = self
-                .parser
-                .tokens
-                .peek()
-                .map_or(self.parser.source.len(), |token| token.span.start)
-                .max(end);
-            cases.push(self.add(
+            let (statements, colon, end) = self.clause_body(depth, token.span.end);
+            cases.push(self.add_delimited(
                 StmtKind::Case {
                     values,
                     statements,
                     default,
                 },
                 token.span.start..end,
+                colon,
             ));
         }
         let end = self.parser.close(
@@ -295,9 +276,18 @@ impl BodyParser<'_> {
         );
         (cases, end)
     }
-    pub(super) fn case_body(&mut self, depth: usize, initial_end: usize) -> (Vec<StmtId>, usize) {
+    pub(super) fn clause_body(
+        &mut self,
+        depth: usize,
+        initial_end: usize,
+    ) -> (Vec<StmtId>, Option<usize>, usize) {
+        let colon = self.take(TokenKind::Colon);
+        if colon.is_none() {
+            self.parser
+                .error_here("expected ':' after case", Some("expected ':'"));
+        }
         let mut statements = Vec::new();
-        let mut end = initial_end;
+        let mut end = colon.as_ref().map_or(initial_end, |token| token.span.end);
         while let Some(next) = self.parser.tokens.peek() {
             if next.kind == TokenKind::RBrace
                 || matches!(&self.parser.source[next.span.clone()], "case" | "default")
@@ -339,6 +329,13 @@ impl BodyParser<'_> {
                 self.parser.error(before..before, "invalid case statement");
             }
         }
-        (statements, end)
+        // Includes trailing trivia up to the next clause or closing brace.
+        let end = self
+            .parser
+            .tokens
+            .peek()
+            .map_or(self.parser.source.len(), |token| token.span.start)
+            .max(end);
+        (statements, colon.map(|token| token.span.start), end)
     }
 }

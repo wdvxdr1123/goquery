@@ -9,18 +9,19 @@ const QUICKFIX: &str = "quickfix";
 const ORGANIZE_IMPORTS: &str = "source.organizeImports";
 
 pub(super) fn execute(context: &Context<'_>, params: &Value) -> Result<Value, (i32, String)> {
-    let only: Vec<&str> = params["context"]["only"]
-        .as_array()
-        .map(|kinds| kinds.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+    let organize = allows(params, ORGANIZE_IMPORTS);
+    let quickfix = can_quickfix(params);
+    if !organize && !quickfix {
+        return Ok(Value::Null);
+    }
     let source = context.source();
     let map = SourceMap::new(source);
-    let requested = requested_range(source, &params["range"]);
     let mut actions = Vec::new();
-    if allows(&only, QUICKFIX) {
+    if quickfix {
+        let requested = requested_range(source, &params["range"]);
         quickfixes(context, &map, requested, params, &mut actions);
     }
-    if allows(&only, ORGANIZE_IMPORTS) {
+    if organize {
         organize_imports(context, &map, &mut actions);
     }
     if actions.is_empty() {
@@ -29,12 +30,45 @@ pub(super) fn execute(context: &Context<'_>, params: &Value) -> Result<Value, (i
     Ok(Value::Array(actions))
 }
 
+pub(super) fn is_noop(params: &Value) -> bool {
+    !allows(params, ORGANIZE_IMPORTS) && !can_quickfix(params)
+}
+
+fn can_quickfix(params: &Value) -> bool {
+    allows(params, QUICKFIX)
+        && params["context"]["diagnostics"]
+            .as_array()
+            .is_some_and(|diagnostics| {
+                diagnostics
+                    .iter()
+                    .any(|item| unused_variable(item).is_some())
+            })
+}
+
 /// LSP kind filters match themselves and every more specific kind.
-fn allows(filters: &[&str], kind: &str) -> bool {
-    filters.is_empty()
-        || filters
-            .iter()
-            .any(|filter| kind == *filter || kind.starts_with(&format!("{filter}.")))
+fn allows(params: &Value, kind: &str) -> bool {
+    let mut filters = params["context"]["only"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .peekable();
+    filters.peek().is_none()
+        || filters.any(|filter| {
+            kind.strip_prefix(filter)
+                .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('.'))
+        })
+}
+
+fn unused_variable(diagnostic: &Value) -> Option<&str> {
+    if diagnostic["source"].as_str() != Some("compiler")
+        || diagnostic["code"].as_str() != Some("UnusedVar")
+    {
+        return None;
+    }
+    diagnostic["message"]
+        .as_str()?
+        .strip_prefix("declared and not used: ")
 }
 
 /// Requested byte range; an unparseable range disables position filtering.
@@ -60,15 +94,7 @@ fn quickfixes(
     };
     let source = context.source();
     for diagnostic in diagnostics {
-        if diagnostic["source"].as_str() != Some("compiler")
-            || diagnostic["code"].as_str() != Some("UnusedVar")
-        {
-            continue;
-        }
-        let Some(message) = diagnostic["message"].as_str() else {
-            continue;
-        };
-        let Some(name) = message.strip_prefix("declared and not used: ") else {
+        let Some(name) = unused_variable(diagnostic) else {
             continue;
         };
         let (Some(start), Some(end)) = (

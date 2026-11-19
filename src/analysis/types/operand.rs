@@ -1,7 +1,7 @@
 //! Bounded operands: match untyped types before operator checks and defaulting.
 use super::{BasicKind, Ty, TypeArena, TypeId};
 use crate::analysis::obj::BuiltinFunction;
-use crate::syntax::{Lexer, TokenKind};
+use crate::syntax::TokenKind;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
@@ -36,11 +36,57 @@ pub(crate) enum Constant {
         approximate: f64,
         integral: Option<i128>,
         rounded32: Option<f32>,
+        fractional: bool,
     },
     Boolean,
     String {
         length: Option<u64>,
     },
+}
+
+impl Constant {
+    pub(super) fn integer_value(self) -> Option<i128> {
+        match self {
+            Self::Int(value)
+            | Self::Float {
+                integral: Some(value),
+                ..
+            } => Some(value),
+            Self::Complex { .. } => match super::complex::real(self)?.constant() {
+                Self::Int(value) => Some(value),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub(super) fn definitely_fractional(self) -> bool {
+        matches!(
+            self,
+            Self::Float {
+                fractional: true,
+                ..
+            }
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum BinaryError {
+    DivisionByZero,
+    NegativeShift,
+    ShiftOperandType,
+    ShiftCountType,
+    InvalidShiftCount,
+    ShiftCountConversion(ConstAssignError),
+    Overflow(Operand),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ConstAssignError {
+    Incompatible,
+    Overflow,
+    Truncated,
 }
 
 #[derive(Clone, Copy)]
@@ -71,12 +117,11 @@ const _: () = {
 };
 
 impl TypeArena<'_> {
-    pub(crate) fn literal(&mut self, text: &str) -> Option<Operand> {
+    pub(crate) fn literal(&mut self, kind: TokenKind, text: &str) -> Option<Operand> {
         if text.len() > super::MAX_BYTES {
             return None;
         }
-        let token = Lexer::new(text).next()?;
-        let (kind, value) = match token.kind {
+        let (kind, value) = match kind {
             TokenKind::Int => (BasicKind::UntypedInt, integer(text).map(Constant::Int)),
             TokenKind::Char => (
                 BasicKind::UntypedRune,
@@ -155,6 +200,41 @@ impl TypeArena<'_> {
         Some(operand)
     }
 
+    /// An untyped constant assignment can fail without enough information to
+    /// distinguish non-representability from an unavailable exact value.
+    pub(super) fn const_assignment_error(
+        &mut self,
+        input: Operand,
+        target: TypeId,
+        int_bits: u32,
+    ) -> Option<ConstAssignError> {
+        if input.mode != Mode::Constant {
+            return None;
+        }
+        let source = self.basic_kind(input.ty).filter(|kind| kind.untyped())?;
+        let target = self.basic_kind(target)?;
+        if source.string() && !target.string()
+            || source.boolean() && !target.boolean()
+            || source.numeric_rank().is_some() && target.numeric_rank().is_none()
+        {
+            return Some(ConstAssignError::Incompatible);
+        }
+        let value = input.value?;
+        if target.integer() && !representable(value, target, int_bits) {
+            if value.integer_value().is_some() {
+                return Some(if source.integer() {
+                    ConstAssignError::Overflow
+                } else {
+                    ConstAssignError::Truncated
+                });
+            }
+            if value.definitely_fractional() {
+                return Some(ConstAssignError::Truncated);
+            }
+        }
+        None
+    }
+
     pub(crate) fn indirect(&mut self, input: Operand) -> Option<Operand> {
         self.step()?;
         let root = self.common_under(input.ty)?;
@@ -221,10 +301,12 @@ impl TypeArena<'_> {
                             approximate,
                             integral,
                             rounded32,
+                            fractional,
                         }) => Some(Constant::Float {
                             approximate: -approximate,
                             integral: integral.and_then(i128::checked_neg),
                             rounded32: rounded32.map(|value| -value),
+                            fractional,
                         }),
                         Some(value @ Constant::Complex { .. }) => super::complex::negate(value),
                         _ => None,
@@ -267,12 +349,23 @@ impl TypeArena<'_> {
         expected: Option<TypeId>,
         int_bits: u32,
     ) -> Option<Operand> {
+        self.checked_binary_expr(operator, left, right, expected, int_bits)?
+            .ok()
+    }
+
+    pub(crate) fn checked_binary_expr(
+        &mut self,
+        operator: &str,
+        left: Operand,
+        right: Operand,
+        expected: Option<TypeId>,
+        int_bits: u32,
+    ) -> Option<Result<Operand, BinaryError>> {
+        if matches!(operator, "<<" | ">>") {
+            return self.check_shift(operator, left, right, expected, int_bits);
+        }
         if let Some(res) = self.binary(operator, left, right, int_bits) {
             return Some(res);
-        }
-
-        if matches!(operator, "<<" | ">>") {
-            return self.binary_shift(left, right, expected, int_bits);
         }
 
         if matches!(operator, "==" | "!=") {
@@ -286,133 +379,152 @@ impl TypeArena<'_> {
             let cmp_rl = self.assignable(right, left.ty, int_bits) == Some(true)
                 && self.comparable(left.ty, 0) == Some(true);
             if cmp_lr || cmp_rl {
-                return Some(Operand {
+                return Some(Ok(Operand {
                     mode: Mode::Value,
                     ty: self.basic(BasicKind::UntypedBool)?,
                     value: None,
-                });
+                }));
             }
         }
 
         self.binary_param(operator, left, right, int_bits)
     }
 
-    fn binary_shift(
+    fn check_shift(
         &mut self,
+        operator: &str,
         left: Operand,
         right: Operand,
         expected: Option<TypeId>,
         int_bits: u32,
-    ) -> Option<Operand> {
-        // Validate shift count: integer (non-negative if constant).
-        if let Some(rk) = self.basic_kind(right.ty) {
-            if rk.untyped() {
-                if right.mode != Mode::Constant {
-                    return None;
-                }
-                let uint_ty = self.basic(BasicKind::Uint)?;
-                self.assign_basic(right, uint_ty, int_bits)?;
-            } else {
-                if !rk.integer() {
-                    return None;
-                }
-                if right.mode == Mode::Constant
-                    && let Some(Constant::Int(v)) = right.value
-                    && v < 0
-                {
-                    return None;
-                }
-            }
-        } else {
-            let rt_root = self.underlying(right.ty)?;
-            if !matches!(
-                self.nodes.get(usize::from(rt_root.0)),
-                Some(Ty::Parameter(_))
-            ) {
+    ) -> Option<Result<Operand, BinaryError>> {
+        let left_kind = self.basic_kind(left.ty);
+        let left_untyped = left_kind.is_some_and(BasicKind::untyped);
+        let left_value = left.value.and_then(Constant::integer_value);
+        if !(self.integer_type(left.ty)? || left_untyped && left_value.is_some()) {
+            // A bounded constant without an exact integer projection can still
+            // be valid. Only reject cases where the represented facts prove it.
+            if left_untyped
+                && left_kind?.numeric_rank().is_some()
+                && !left.value.is_some_and(Constant::definitely_fractional)
+            {
                 return None;
             }
-            let terms = self.parameter_set(rt_root)?.terms?;
+            return Some(Err(BinaryError::ShiftOperandType));
+        }
+        let right_kind = self.basic_kind(right.ty);
+        let count = right.value.and_then(Constant::integer_value);
+        if right.mode == Mode::Constant {
+            if count.is_some_and(|count| count < 0) {
+                return Some(Err(BinaryError::NegativeShift));
+            }
+            if right_kind.is_some_and(BasicKind::untyped) {
+                let uint = self.basic(BasicKind::Uint)?;
+                if self.assign_basic(right, uint, int_bits).is_none() {
+                    let error = self.const_assignment_error(right, uint, int_bits)?;
+                    return Some(Err(BinaryError::ShiftCountConversion(error)));
+                }
+            }
+        } else if !self.integer_type(right.ty)? {
+            return Some(Err(BinaryError::ShiftCountType));
+        }
+
+        if left.mode == Mode::Constant && right.mode == Mode::Constant {
+            let count = if let Some(count) = count {
+                count
+            } else if right.value.is_some_and(Constant::definitely_fractional) {
+                return Some(Err(BinaryError::InvalidShiftCount));
+            } else {
+                return None;
+            };
+            // go/types bounds constant shift counts independently of machine int.
+            if count > 1023 - 1 + 52 {
+                return Some(Err(BinaryError::InvalidShiftCount));
+            }
+            let count = u32::try_from(count).ok()?;
+            let kind = left_kind?;
+            let ty = if left_untyped && !kind.integer() {
+                self.basic(BasicKind::UntypedInt)?
+            } else {
+                left.ty
+            };
+            let value = left_value
+                .and_then(|value| fold_integer_shift(operator, value, count))
+                .map(Constant::Int);
+            let result = Operand {
+                mode: Mode::Constant,
+                ty,
+                value,
+            };
+            if !left_untyped && !representable(value?, kind, int_bits) {
+                return Some(Err(BinaryError::Overflow(result)));
+            }
+            return Some(Ok(result));
+        }
+
+        let ty = if left_untyped {
+            self.contextual_shift_type(left, expected, int_bits)?
+        } else {
+            left.ty
+        };
+        Some(Ok(Operand {
+            mode: Mode::Value,
+            ty,
+            value: None,
+        }))
+    }
+
+    fn contextual_shift_type(
+        &mut self,
+        operand: Operand,
+        expected: Option<TypeId>,
+        int_bits: u32,
+    ) -> Option<TypeId> {
+        let target = match expected {
+            Some(ty) if self.is_interface(ty) != Some(true) => ty,
+            _ => self.basic(BasicKind::Int)?,
+        };
+        let root = self.underlying(target)?;
+        if let Ty::Parameter(_) = self.nodes[usize::from(root.0)] {
+            let value = operand.value?;
+            let terms = self.parameter_set(root)?.terms?;
             if terms.is_empty() {
                 return None;
             }
             for term in terms {
                 self.step()?;
-                if !self.basic_kind(term.ty)?.integer() {
+                let kind = self.basic_kind(term.ty)?;
+                if !kind.integer() || !representable(value, kind, int_bits) {
                     return None;
                 }
             }
+            return Some(target);
         }
+        self.basic_kind(target)?.integer().then_some(())?;
+        self.assign_basic(operand, target, int_bits).map(|op| op.ty)
+    }
 
-        // Validate / contextualize left operand.
-        if self.basic_kind(left.ty).is_some_and(BasicKind::untyped) {
-            let target = match expected {
-                Some(t) if self.is_interface(t) != Some(true) => t,
-                _ => self.basic(BasicKind::Int)?,
-            };
-            if let Some(target_root) = self.underlying(target)
-                && matches!(
-                    self.nodes.get(usize::from(target_root.0)),
-                    Some(Ty::Parameter(_))
-                )
-            {
-                let val = left.value?;
-                let terms = self.parameter_set(target_root)?.terms?;
-                if terms.is_empty() {
-                    return None;
-                }
-                for term in terms {
-                    self.step()?;
-                    let kind = self.basic_kind(term.ty)?;
-                    if !kind.integer() || !representable(val, kind, int_bits) {
-                        return None;
-                    }
-                }
-                return Some(Operand {
-                    mode: Mode::Value,
-                    ty: target,
-                    value: None,
-                });
-            }
-            let converted = self.assign_basic(left, target, int_bits)?;
-            if !self.basic_kind(converted.ty)?.integer() {
-                return None;
-            }
-            return Some(Operand {
-                mode: Mode::Value,
-                ty: converted.ty,
-                value: None,
-            });
+    pub(super) fn integer_type(&mut self, input: TypeId) -> Option<bool> {
+        let root = self.underlying(input)?;
+        if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+            return Some(
+                matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if kind.integer()),
+            );
         }
-
-        if let Some(lk) = self.basic_kind(left.ty) {
-            return lk.integer().then_some(Operand {
-                mode: Mode::Value,
-                ty: left.ty,
-                value: None,
-            });
+        let Some(terms) = self.parameter_set(root)?.terms else {
+            return Some(false);
+        };
+        if terms.is_empty() {
+            return None;
         }
-
-        let lt_root = self.underlying(left.ty)?;
-        if matches!(
-            self.nodes.get(usize::from(lt_root.0)),
-            Some(Ty::Parameter(_))
-        ) {
-            let terms = self.parameter_set(lt_root)?.terms?;
-            if !terms.is_empty() {
-                for term in terms {
-                    self.step()?;
-                    if !self.basic_kind(term.ty)?.integer() {
-                        return None;
-                    }
-                }
-                return Some(Operand {
-                    mode: Mode::Value,
-                    ty: left.ty,
-                    value: None,
-                });
+        for term in terms {
+            self.step()?;
+            let root = self.underlying(term.ty)?;
+            if !matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if kind.integer()) {
+                return Some(false);
             }
         }
-        None
+        Some(true)
     }
 
     fn binary_param(
@@ -421,7 +533,7 @@ impl TypeArena<'_> {
         left: Operand,
         right: Operand,
         int_bits: u32,
-    ) -> Option<Operand> {
+    ) -> Option<Result<Operand, BinaryError>> {
         let l_untyped = self.basic_kind(left.ty).filter(|k| k.untyped());
         let r_untyped = self.basic_kind(right.ty).filter(|k| k.untyped());
 
@@ -456,9 +568,11 @@ impl TypeArena<'_> {
             return None;
         }
         let comparison = matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=");
+        let mut all_integer = true;
         for term in terms {
             self.step()?;
             let kind = self.basic_kind(term.ty);
+            all_integer &= kind.is_some_and(BasicKind::integer);
             if let Some(uc) = untyped_const {
                 if uc.mode != Mode::Constant {
                     return None;
@@ -483,68 +597,33 @@ impl TypeArena<'_> {
                 return None;
             }
         }
-        if comparison {
-            Some(Operand {
-                mode: Mode::Value,
-                ty: self.basic(BasicKind::UntypedBool)?,
-                value: None,
-            })
-        } else {
-            Some(Operand {
-                mode: Mode::Value,
-                ty: param_ty,
-                value: None,
-            })
+        if all_integer
+            && matches!(operator, "/" | "%")
+            && right.mode == Mode::Constant
+            && right.value.is_some_and(super::complex::is_zero)
+        {
+            return Some(Err(BinaryError::DivisionByZero));
         }
+        Some(Ok(Operand {
+            mode: Mode::Value,
+            ty: if comparison {
+                self.basic(BasicKind::UntypedBool)?
+            } else {
+                param_ty
+            },
+            value: None,
+        }))
     }
 
-    pub(crate) fn binary(
+    fn binary(
         &mut self,
         operator: &str,
         mut left: Operand,
         mut right: Operand,
         int_bits: u32,
-    ) -> Option<Operand> {
+    ) -> Option<Result<Operand, BinaryError>> {
         let mut kind = self.basic_kind(left.ty)?;
         let other = self.basic_kind(right.ty)?;
-        if matches!(operator, "<<" | ">>") {
-            if !kind.integer() || !other.integer() {
-                return None;
-            }
-            let Some(Constant::Int(shift)) = right.value else {
-                return None;
-            };
-            if shift < 0 {
-                return None;
-            }
-            // Unlike checked_shl, multiplication also detects lost sign bits.
-            left.value = match left.value {
-                Some(Constant::Int(value)) => u32::try_from(shift)
-                    .ok()
-                    .filter(|shift| *shift < 127)
-                    .and_then(|shift| {
-                        if operator == "<<" {
-                            value.checked_mul(1i128 << shift)
-                        } else {
-                            Some(value >> shift)
-                        }
-                    })
-                    .map(Constant::Int),
-                _ => None,
-            };
-            if right.mode != Mode::Constant {
-                return None;
-            }
-            if left.mode == Mode::Constant && !kind.untyped() {
-                representable(left.value?, kind, int_bits).then_some(())?;
-            }
-            left.mode = if left.mode == Mode::Constant {
-                Mode::Constant
-            } else {
-                Mode::Value
-            };
-            return Some(left);
-        }
         // go/types matchTypes: only untyped operands may implicitly convert.
         if kind.untyped() && other.untyped() {
             if let (Some(a), Some(b)) = (kind.numeric_rank(), other.numeric_rank()) {
@@ -591,7 +670,7 @@ impl TypeArena<'_> {
             && right.mode == Mode::Constant
             && right.value.is_some_and(super::complex::is_zero)
         {
-            return None;
+            return Some(Err(BinaryError::DivisionByZero));
         }
         let constant = left.mode == Mode::Constant && right.mode == Mode::Constant;
         let mut value = if comparison || kind.boolean() {
@@ -632,12 +711,18 @@ impl TypeArena<'_> {
             left.ty
         };
         if constant && !kind.untyped() && !comparison {
-            representable(value?, kind, int_bits).then_some(())?;
+            if !representable(value?, kind, int_bits) {
+                return kind.integer().then_some(Err(BinaryError::Overflow(Operand {
+                    mode: Mode::Constant,
+                    ty,
+                    value,
+                })));
+            }
             if kind.numeric_rank() == Some(3) {
                 value = Some(super::conversion::constant_value(value?, kind)?);
             }
         }
-        Some(Operand {
+        Some(Ok(Operand {
             mode: if constant {
                 Mode::Constant
             } else {
@@ -645,8 +730,23 @@ impl TypeArena<'_> {
             },
             ty,
             value: constant.then_some(value).flatten(),
-        })
+        }))
     }
+}
+
+fn fold_integer_shift(operator: &str, value: i128, count: u32) -> Option<i128> {
+    if operator == ">>" {
+        return Some(
+            value
+                .checked_shr(count)
+                .unwrap_or(if value < 0 { -1 } else { 0 }),
+        );
+    }
+    if value == 0 {
+        return Some(0);
+    }
+    let shifted = value.checked_shl(count)?;
+    (shifted >> count == value).then_some(shifted)
 }
 
 pub(super) fn representable(value: Constant, target: BasicKind, int_bits: u32) -> bool {
@@ -654,13 +754,8 @@ pub(super) fn representable(value: Constant, target: BasicKind, int_bits: u32) -
         return super::complex::representable(value, target, int_bits);
     }
     if let Some((signed, bits)) = target.integer_width(int_bits) {
-        let value = match value {
-            Constant::Int(value) => value,
-            Constant::Float {
-                integral: Some(value),
-                ..
-            } => value,
-            _ => return false,
+        let Some(value) = value.integer_value() else {
+            return false;
         };
         return if signed {
             -(1i128 << (bits - 1)) <= value && value < (1i128 << (bits - 1))
@@ -724,6 +819,7 @@ fn float(text: &str) -> Option<Constant> {
         approximate,
         integral: decimal_integer(&text),
         rounded32: text.parse::<f32>().ok().filter(|value| value.is_finite()),
+        fractional: approximate.fract() != 0.0,
     })
 }
 
@@ -770,6 +866,7 @@ fn hex_float(text: &str) -> Option<Constant> {
         approximate,
         integral: hexadecimal_integer(mantissa, scale),
         rounded32: narrow.is_finite().then_some(narrow),
+        fractional: approximate.fract() != 0.0,
     })
 }
 

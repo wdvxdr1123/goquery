@@ -1,8 +1,6 @@
 //! Function signatures use bounded shared type-ID lists, without names or bodies.
 use super::constraints;
-use super::{
-    BasicKind, Direction, MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId,
-};
+use super::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
 use crate::syntax::{Lexer, Signature, TokenKind};
 use std::path::Path;
 
@@ -226,15 +224,16 @@ impl TypeArena<'_> {
         }
     }
 
-    pub(crate) fn call_signature(
+    /// Validate the arguments once, then borrow the result types. An empty
+    /// result slice is a valid call with no value.
+    pub(crate) fn call_results(
         &mut self,
         callee: TypeId,
         actuals: &[Operand],
         spread: bool,
-        result: usize,
         count: usize,
         int_bits: u32,
-    ) -> Option<TypeId> {
+    ) -> Option<&[TypeId]> {
         let callee = self.underlying(callee)?;
         let Ty::Signature {
             parameters,
@@ -244,10 +243,9 @@ impl TypeArena<'_> {
         else {
             return None;
         };
-        if results.len() != count || result >= count || actuals.len() > MAX_NODES {
+        if results.len() != count || actuals.len() > MAX_NODES {
             return None;
         }
-        let parameters = self.arguments[parameters].to_vec();
         let fixed = parameters.len().checked_sub(usize::from(variadic))?;
         if (!variadic && (spread || actuals.len() != fixed))
             || (variadic && (actuals.len() < fixed || spread && actuals.len() != fixed + 1))
@@ -255,7 +253,10 @@ impl TypeArena<'_> {
             return None;
         }
         for (index, actual) in actuals.iter().enumerate() {
-            let mut target = *parameters.get(index.min(fixed))?;
+            let mut target = *self
+                .arguments
+                .get(parameters.clone())?
+                .get(index.min(fixed))?;
             if variadic && index >= fixed && !spread {
                 let Ty::Slice(element) = self.nodes[usize::from(target.0)] else {
                     return None;
@@ -264,7 +265,7 @@ impl TypeArena<'_> {
             }
             self.assignable(*actual, target, int_bits)?.then_some(())?;
         }
-        self.arguments.get(results.start + result).copied()
+        self.arguments.get(results)
     }
 
     pub(crate) fn signature_parts(
@@ -283,56 +284,6 @@ impl TypeArena<'_> {
                 *variadic,
             )),
             _ => None,
-        }
-    }
-
-    pub(crate) fn assignable(
-        &mut self,
-        source: Operand,
-        target: TypeId,
-        int_bits: u32,
-    ) -> Option<bool> {
-        self.step()?;
-        if !source.mode.is_value() {
-            return Some(false);
-        }
-        // Nominal equality does not require expanding a possibly large body.
-        // Interface constructors still need their complete basic method set.
-        if !self.interface_constructor(target)? && self.identical(source.ty, target)? {
-            return Some(true);
-        }
-        if self.is_interface(target)? {
-            return self.assign_interface(source, target, int_bits);
-        }
-        if let Some(kind) = self.basic_kind(source.ty).filter(|kind| kind.untyped()) {
-            if kind == BasicKind::UntypedNil {
-                return self.nilable(target);
-            }
-            return self.assign_basic(source, target, int_bits).map(|_| true);
-        }
-        if self.identical(source.ty, target)? {
-            return Some(true);
-        }
-        let (a, b) = (self.unalias(source.ty)?, self.unalias(target)?);
-        if self.is_defined_type(a) && self.is_defined_type(b) {
-            return Some(false);
-        }
-        let (a, b) = (self.underlying(a)?, self.underlying(b)?);
-        if self.identical(a, b)? {
-            return Some(true);
-        }
-        match (
-            self.nodes[usize::from(a.0)].clone(),
-            self.nodes[usize::from(b.0)].clone(),
-        ) {
-            (
-                Ty::Chan {
-                    direction: Direction::Both,
-                    element: a,
-                },
-                Ty::Chan { element: b, .. },
-            ) => self.identical(a, b),
-            _ => Some(false),
         }
     }
 }

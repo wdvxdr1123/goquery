@@ -52,8 +52,8 @@ pub(crate) fn execute(
     let scope = match context.cursor_scope(offset) {
         Ok(scope) => scope,
         Err(_) => {
-            if let Ok(navigation) = context.navigation_target(offset) {
-                match navigation.target {
+            if let Ok(target) = context.navigation_target(offset) {
+                match target {
                     Target::Member(member) => {
                         let content = render::member_id(context, member, &span, range);
                         if !content.is_empty() {
@@ -104,11 +104,11 @@ pub(crate) fn execute(
     if let Some(hover) = package::import_alias(context, &span, range) {
         return Ok(Some(hover));
     }
-    let navigation = match context.navigation_target(offset) {
-        Ok(navigation) => navigation,
+    let target = match context.navigation_target(offset) {
+        Ok(target) => target,
         Err(_) => return Ok(None),
     };
-    match navigation.target {
+    match target {
         Target::Global(path, symbol) => {
             let mut content = symbol::reference(context, path, symbol, range)?;
             if let Some(content_ref) = content.as_mut()
@@ -151,7 +151,7 @@ pub(crate) fn execute(
                 return Ok(Some(hover));
             }
         }
-        Target::Unresolved => {}
+        Target::Unresolved | Target::Builtin(_) | Target::CrossFile(..) => {}
     }
     if let Some(hover) = package_initializer_target(context, offset, &span, range)? {
         return Ok(Some(hover));

@@ -68,6 +68,15 @@ impl<'a> MethodSet<'a> {
             members,
         }
     }
+
+    fn covers(&self, interface: &Self) -> bool {
+        interface.abstract_
+            && !interface.members.is_empty()
+            && interface
+                .members
+                .keys()
+                .all(|id| self.members.contains_key(id))
+    }
 }
 
 impl<'a> Search<'a> {
@@ -99,16 +108,9 @@ impl<'a> Search<'a> {
         concrete: &MethodSet<'a>,
         interface: &MethodSet<'a>,
     ) -> bool {
-        if !interface.abstract_ || interface.members.is_empty() {
-            return false;
-        }
         // Exact IDs reject unrelated types without reading their sources. No
         // type-name or direct-import filter is valid for structural matching.
-        if !interface
-            .members
-            .keys()
-            .all(|id| concrete.members.contains_key(id))
-        {
+        if !concrete.covers(interface) {
             return false;
         }
         let (concrete_file, concrete_owner) = (concrete.file, concrete.owner);
@@ -269,12 +271,40 @@ impl<'a, View> Context<'a, View> {
         target: &'a Symbol,
         supers: bool,
     ) -> Result<Vec<SymbolTarget<'a>>, (i32, String)> {
+        self.relations(file, target, supers, None)
+    }
+
+    pub(in crate::analysis::query) fn method_relations(
+        &self,
+        file: &'a Path,
+        target: &'a Symbol,
+        supers: bool,
+        name: &'a str,
+    ) -> Result<Vec<SymbolTarget<'a>>, (i32, String)> {
+        self.relations(file, target, supers, Some(name))
+    }
+
+    fn relations(
+        &self,
+        file: &'a Path,
+        target: &'a Symbol,
+        supers: bool,
+        method: Option<&'a str>,
+    ) -> Result<Vec<SymbolTarget<'a>>, (i32, String)> {
         let started = Instant::now();
         let target =
             self.with_sema(|sema| MethodSet::new(sema, self.workspace, file, target, None));
         if target.members.is_empty() || !supers && !target.abstract_ {
             return Ok(Vec::new());
         }
+        let view = self.resolver();
+        let method_packages = method
+            .filter(|name| !crate::analysis::resolve::exported(name))
+            .and_then(|name| {
+                let id = crate::analysis::resolve::member_id(self.workspace, file, name);
+                target.members.get(&id)?.file()
+            })
+            .and_then(|origin| view.dependent_packages(origin));
         let mut search = Search {
             workspace: self.workspace,
             matches: HashMap::new(),
@@ -427,6 +457,9 @@ impl<'a, View> Context<'a, View> {
             let file_phase = self.workspace.trace.queries.then(Instant::now);
             if self.workspace.is_detached(path) != detached_target
                 || !self.workspace.hierarchy_scope(file, path)
+                || method_packages.as_ref().is_some_and(|packages| {
+                    view.file_visible(path) && !packages.contains(path, stub)
+                })
             {
                 continue;
             }
@@ -872,6 +905,11 @@ impl<'a, View> Context<'a, View> {
                 let matches = match fast_match {
                     Some(matched) => matched,
                     None => match (&candidate_set, supers) {
+                        // For a private method query the package filter already
+                        // narrowed the search. Check IDs here and let the native
+                        // proof below compare each signature once.
+                        (Some(set), true) if method_packages.is_some() => target.covers(set),
+                        (Some(set), false) if method_packages.is_some() => set.covers(&target),
                         (Some(set), true) => {
                             self.with_sema(|sema| search.implements(sema, &target, set))
                         }

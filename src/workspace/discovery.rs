@@ -229,11 +229,7 @@ impl Workspace {
         {
             return false;
         }
-        if self.sdk_packages.contains(file.parent().unwrap_or(file))
-            || self
-                .dependency_packages
-                .contains(file.parent().unwrap_or(file))
-        {
+        if self.is_mounted_directory(file.parent().unwrap_or(file)) {
             return !file
                 .file_name()
                 .is_some_and(|name| name.to_string_lossy().ends_with("_test.go"));

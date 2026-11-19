@@ -1,6 +1,7 @@
 //! Cross-file relations prove canonical declarations in the shared type arena.
 use super::Semantics;
 use crate::analysis::obj::{DeclId, MethodOrigin, NamedObject, ObjectRef};
+use std::path::Path;
 
 impl<'a> Semantics<'a> {
     pub(crate) fn direct_embedding_declarations(
@@ -56,6 +57,18 @@ impl<'a> Semantics<'a> {
             })
             .collect::<Option<Vec<_>>>()?;
         Some((abstract_, members))
+    }
+
+    pub(crate) fn implementation_method_object(
+        &mut self,
+        declaration: DeclId<'_>,
+        origin: &Path,
+        name: &str,
+    ) -> Option<ObjectRef<'a>> {
+        let declaration = self.canonical_decl(declaration)?;
+        self.prepare_for_new_region();
+        self.arena
+            .implementation_method_object(declaration, origin, name)
     }
 
     fn canonical_decl(&self, declaration: DeclId<'_>) -> Option<DeclId<'a>> {

@@ -347,7 +347,7 @@ impl Occurrences {
 
 // Initializers can contain nested function bodies. Only the declaration's
 // top-level '=' is excluded; assignments inside those bodies remain operators.
-pub(super) fn declaration_assignment(source: &str) -> Option<usize> {
+fn declaration_assignment(source: &str) -> Option<usize> {
     let mut depth = 0usize;
     for token in Lexer::new(source) {
         match token.kind {

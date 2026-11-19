@@ -1,5 +1,47 @@
 //! Value-producing builtins share native identity, assignment and index rules.
-use super::{BasicKind, Constant, Mode, Operand, Ty, TypeArena, TypeId};
+use super::index::IndexValueError;
+use super::{
+    AssignmentError, BasicKind, CheckError, Constant, Direction, Mode, Operand, Ty, TypeArena,
+    TypeId,
+};
+use crate::analysis::obj::BuiltinFunction;
+use CheckError::{Invalid, Unknown};
+
+pub(crate) enum MakeError {
+    NotMakeable,
+    Count { minimum: usize },
+}
+
+pub(crate) struct MakeResult {
+    pub(crate) operand: Option<Operand>,
+    pub(crate) size_errors: [Option<IndexValueError>; 2],
+    pub(crate) swapped: bool,
+}
+
+pub(crate) enum AppendError {
+    NotSlice,
+    SpreadCount {
+        trailing_slice: TypeId,
+    },
+    Argument {
+        index: usize,
+        target: TypeId,
+        reason: AssignmentError,
+    },
+}
+
+pub(crate) enum CopyError {
+    NotSlice(usize),
+    DifferentElements(TypeId, TypeId),
+}
+
+pub(crate) enum ProcedureError {
+    NotClearable,
+    NotChannel,
+    ReceiveOnly,
+    NotMap,
+    DifferentKeys,
+}
 
 impl TypeArena<'_> {
     pub(crate) fn builtin_length(
@@ -9,18 +51,33 @@ impl TypeArena<'_> {
         has_call: bool,
         int_bits: u32,
     ) -> Option<Operand> {
-        self.step()?;
-        let root = self.underlying(input.ty)?;
+        self.checked_builtin_length(input, capacity, has_call, int_bits)
+            .ok()
+    }
+
+    pub(crate) fn checked_builtin_length(
+        &mut self,
+        input: Operand,
+        capacity: bool,
+        has_call: bool,
+        int_bits: u32,
+    ) -> Result<Operand, CheckError<()>> {
+        self.step().ok_or(Unknown)?;
+        let root = self.underlying(input.ty).ok_or(Unknown)?;
         if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
-            let terms = self.parameter_set(root)?.terms?;
+            let terms = self
+                .parameter_set(root)
+                .ok_or(Unknown)?
+                .terms
+                .ok_or(Unknown)?;
             if terms.is_empty() {
-                return None;
+                return Err(Unknown);
             }
             for term in terms {
-                self.step()?;
+                self.step().ok_or(Unknown)?;
                 self.length_type(term.ty, capacity)?;
             }
-            return self.int_result(None, int_bits);
+            return self.int_result(None, int_bits).ok_or(Unknown);
         }
         let mut length = self.length_type(root, capacity)?;
         if has_call {
@@ -34,28 +91,37 @@ impl TypeArena<'_> {
                 length: Some(value),
             }) = input.value
             else {
-                return None;
+                return Err(Unknown);
             };
             length = Some(value);
         }
-        self.int_result(length, int_bits)
+        self.int_result(length, int_bits).ok_or(Unknown)
     }
 
     /// A static array length, or a valid runtime-sized len/cap operand.
-    fn length_type(&mut self, input: TypeId, capacity: bool) -> Option<Option<u64>> {
-        let mut root = self.underlying(input)?;
+    fn length_type(
+        &mut self,
+        input: TypeId,
+        capacity: bool,
+    ) -> Result<Option<u64>, CheckError<()>> {
+        let mut root = self.underlying(input).ok_or(Unknown)?;
         if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
-            root = self.underlying(element)?;
+            root = self.underlying(element).ok_or(Unknown)?;
             if !matches!(self.nodes[usize::from(root.0)], Ty::Array { .. }) {
-                return None;
+                return Err(Invalid(()));
             }
         }
         match self.nodes[usize::from(root.0)] {
-            Ty::Array { length, .. } => Some(Some(length)),
-            Ty::Slice(_) | Ty::Chan { .. } => Some(None),
-            Ty::Map { key, .. } if !capacity => self.comparable(key, 0)?.then_some(None),
-            Ty::Basic(kind) if kind.string() && !capacity => Some(None),
-            _ => None,
+            Ty::Array { length, .. } => Ok(Some(length)),
+            Ty::Slice(_) | Ty::Chan { .. } => Ok(None),
+            Ty::Map { key, .. } if !capacity => {
+                self.comparable(key, 0)
+                    .filter(|valid| *valid)
+                    .ok_or(Unknown)?;
+                Ok(None)
+            }
+            Ty::Basic(kind) if kind.string() && !capacity => Ok(None),
+            _ => Err(Invalid(())),
         }
     }
 
@@ -78,36 +144,49 @@ impl TypeArena<'_> {
     pub(crate) fn builtin_make(
         &mut self,
         ty: TypeId,
-        sizes: &[Operand],
+        sizes: [Operand; 2],
+        size_count: usize,
         int_bits: u32,
-    ) -> Option<Operand> {
-        self.step()?;
-        self.constructor_map_keys(ty)?;
-        let root = self.common_under(ty)?;
-        let valid = match self.nodes[usize::from(root.0)] {
-            Ty::Slice(_) => matches!(sizes.len(), 1 | 2),
-            Ty::Map { key, .. } => sizes.len() <= 1 && self.comparable(key, 0)?,
-            Ty::Chan { .. } => sizes.len() <= 1,
-            _ => false,
-        };
-        if !valid {
-            return None;
-        }
-        let mut previous = None;
-        for size in sizes {
-            let value = self.index_value(*size, int_bits)?;
-            if previous
-                .zip(value)
-                .is_some_and(|(length, capacity)| length > capacity)
-            {
-                return None;
+    ) -> Result<MakeResult, CheckError<MakeError>> {
+        self.step().ok_or(Unknown)?;
+        self.constructor_map_keys(ty).ok_or(Unknown)?;
+        let root = self.common_under(ty).ok_or(Unknown)?;
+        let minimum = match self.nodes[usize::from(root.0)] {
+            Ty::Slice(_) => 1,
+            Ty::Map { key, .. } => {
+                self.comparable(key, 0)
+                    .filter(|valid| *valid)
+                    .ok_or(Unknown)?;
+                0
             }
-            previous = value;
+            Ty::Chan { .. } => 0,
+            _ => return Err(Invalid(MakeError::NotMakeable)),
+        };
+        if !(minimum..=minimum + 1).contains(&size_count) {
+            return Err(Invalid(MakeError::Count {
+                minimum: minimum + 1,
+            }));
         }
-        Some(Operand {
-            mode: Mode::Value,
-            ty,
-            value: None,
+        let mut sizes_known = true;
+        let mut size_errors = [None; 2];
+        let mut values = [None; 2];
+        for (index, size) in sizes.into_iter().take(size_count).enumerate() {
+            match self.checked_index_value(size, int_bits) {
+                Ok(value) => values[index] = value,
+                Err(Invalid(error)) => size_errors[index] = Some(error),
+                Err(Unknown) => sizes_known = false,
+            }
+        }
+        Ok(MakeResult {
+            operand: sizes_known.then_some(Operand {
+                mode: Mode::Value,
+                ty,
+                value: None,
+            }),
+            size_errors,
+            swapped: values[0]
+                .zip(values[1])
+                .is_some_and(|(length, capacity)| length > capacity),
         })
     }
 
@@ -185,33 +264,55 @@ impl TypeArena<'_> {
         arguments: &[Operand],
         spread: bool,
         int_bits: u32,
-    ) -> Option<Operand> {
-        self.step()?;
-        let input = *arguments.first()?;
-        let element = self.slice_element(input.ty)?;
+    ) -> Result<Operand, CheckError<AppendError>> {
+        self.step().ok_or(Unknown)?;
+        let input = *arguments.first().ok_or(Unknown)?;
+        let element = self
+            .checked_slice_element(input.ty)
+            .map_err(|error| error.map(|()| AppendError::NotSlice))?;
         if spread {
             if arguments.len() != 2 {
-                return None;
+                let trailing_slice = self.slice_type(element).ok_or(Unknown)?;
+                return Err(Invalid(AppendError::SpreadCount { trailing_slice }));
             }
-            if !self.byte_string_source(input, arguments[1])? {
+            if !self
+                .byte_string_source(element, arguments[1])
+                .ok_or(Unknown)?
+            {
                 let source = arguments[1];
-                let root = self.underlying(source.ty)?;
+                let root = self.underlying(source.ty).ok_or(Unknown)?;
                 if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
-                    let source_element = self.slice_element(source.ty)?;
-                    self.identical(element, source_element)?.then_some(())?;
+                    let source_element =
+                        self.checked_slice_element(source.ty).ok().ok_or(Unknown)?;
+                    self.identical(element, source_element)
+                        .filter(|valid| *valid)
+                        .ok_or(Unknown)?;
                 } else {
-                    let target = self.push(Ty::Slice(element))?;
-                    self.assignable(source, target, int_bits)?.then_some(())?;
+                    let target = self.push(Ty::Slice(element)).ok_or(Unknown)?;
+                    self.check_assignment(source, target, int_bits)
+                        .map_err(|error| {
+                            error.map(|reason| AppendError::Argument {
+                                index: 1,
+                                target,
+                                reason,
+                            })
+                        })?;
                 }
             }
         } else {
-            for argument in &arguments[1..] {
-                self.step()?;
-                self.assignable(*argument, element, int_bits)?
-                    .then_some(())?;
+            for (index, &argument) in arguments.iter().enumerate().skip(1) {
+                self.step().ok_or(Unknown)?;
+                self.check_assignment(argument, element, int_bits)
+                    .map_err(|error| {
+                        error.map(|reason| AppendError::Argument {
+                            index,
+                            target: element,
+                            reason,
+                        })
+                    })?;
             }
         }
-        Some(Operand {
+        Ok(Operand {
             mode: Mode::Value,
             ty: input.ty,
             value: None,
@@ -223,28 +324,46 @@ impl TypeArena<'_> {
         destination: Operand,
         source: Operand,
         int_bits: u32,
-    ) -> Option<Operand> {
-        self.step()?;
-        let destination_element = self.slice_element(destination.ty)?;
-        if !self.byte_string_source(destination, source)? {
-            let source_element = self.slice_element(source.ty)?;
-            self.identical(destination_element, source_element)?
-                .then_some(())?;
+    ) -> Result<Operand, CheckError<CopyError>> {
+        self.step().ok_or(Unknown)?;
+        let destination_element = self
+            .checked_slice_element(destination.ty)
+            .map_err(|error| error.map(|()| CopyError::NotSlice(0)))?;
+        if !self
+            .byte_string_source(destination_element, source)
+            .ok_or(Unknown)?
+        {
+            let source_element = match self.checked_slice_element(source.ty) {
+                Ok(element) => element,
+                Err(Invalid(())) if self.basic_kind(source.ty).is_some_and(BasicKind::string) => {
+                    self.basic(BasicKind::Byte).ok_or(Unknown)?
+                }
+                Err(Invalid(())) => return Err(Invalid(CopyError::NotSlice(1))),
+                Err(Unknown) => return Err(Unknown),
+            };
+            if !self
+                .identical(destination_element, source_element)
+                .ok_or(Unknown)?
+            {
+                return Err(Invalid(CopyError::DifferentElements(
+                    destination_element,
+                    source_element,
+                )));
+            }
         }
-        self.int_result(None, int_bits)
+        self.int_result(None, int_bits).ok_or(Unknown)
     }
 
-    fn slice_element(&mut self, input: TypeId) -> Option<TypeId> {
-        let root = self.common_under(input)?;
+    fn checked_slice_element(&mut self, input: TypeId) -> Result<TypeId, CheckError<()>> {
+        let root = self.common_under(input).ok_or(Unknown)?;
         match self.nodes[usize::from(root.0)] {
-            Ty::Slice(element) => Some(element),
-            _ => None,
+            Ty::Slice(element) => Ok(element),
+            _ => Err(Invalid(())),
         }
     }
 
     /// The string/[]byte type-set exception shared by append and copy.
-    fn byte_string_source(&mut self, destination: Operand, source: Operand) -> Option<bool> {
-        let element = self.slice_element(destination.ty)?;
+    fn byte_string_source(&mut self, element: TypeId, source: Operand) -> Option<bool> {
         let byte = self.basic(BasicKind::Uint8)?;
         if !self.identical(element, byte)? {
             return Some(false);
@@ -276,5 +395,72 @@ impl TypeArena<'_> {
             }
         }
         Some(true)
+    }
+
+    /// Validate structural operands for builtins without a result. Delete
+    /// returns the common key so the caller can use the ordinary assignment check.
+    pub(crate) fn builtin_procedure(
+        &mut self,
+        function: BuiltinFunction,
+        input: TypeId,
+    ) -> Result<Option<TypeId>, CheckError<ProcedureError>> {
+        let root = self.underlying(input).ok_or(Unknown)?;
+        let mut key = None;
+        if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+            let terms = self
+                .parameter_set(root)
+                .ok_or(Unknown)?
+                .terms
+                .ok_or(Unknown)?;
+            if terms.is_empty() {
+                return Err(Unknown);
+            }
+            for term in terms {
+                self.step().ok_or(Unknown)?;
+                let root = self.underlying(term.ty).ok_or(Unknown)?;
+                self.procedure_term(function, root, &mut key)?;
+            }
+        } else {
+            self.procedure_term(function, root, &mut key)?;
+        }
+        Ok(key)
+    }
+
+    fn procedure_term(
+        &mut self,
+        function: BuiltinFunction,
+        root: TypeId,
+        key: &mut Option<TypeId>,
+    ) -> Result<(), CheckError<ProcedureError>> {
+        match (function, &self.nodes[usize::from(root.0)]) {
+            (BuiltinFunction::Clear, Ty::Map { .. } | Ty::Slice(_)) => {}
+            (
+                BuiltinFunction::Close,
+                Ty::Chan {
+                    direction: Direction::Receive,
+                    ..
+                },
+            ) => {
+                return Err(Invalid(ProcedureError::ReceiveOnly));
+            }
+            (BuiltinFunction::Close, Ty::Chan { .. }) => {}
+            (BuiltinFunction::Delete, Ty::Map { key: actual, .. }) => {
+                let actual = *actual;
+                if self.comparable(actual, 0) != Some(true) {
+                    return Err(Unknown);
+                }
+                if let Some(previous) = *key
+                    && !self.identical(previous, actual).ok_or(Unknown)?
+                {
+                    return Err(Invalid(ProcedureError::DifferentKeys));
+                }
+                *key = Some(actual);
+            }
+            (BuiltinFunction::Clear, _) => return Err(Invalid(ProcedureError::NotClearable)),
+            (BuiltinFunction::Close, _) => return Err(Invalid(ProcedureError::NotChannel)),
+            (BuiltinFunction::Delete, _) => return Err(Invalid(ProcedureError::NotMap)),
+            _ => return Err(Unknown),
+        }
+        Ok(())
     }
 }

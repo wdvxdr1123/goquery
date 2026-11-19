@@ -1,5 +1,43 @@
 //! Index and slice operands retain identity and validate Go bounds/key rules.
-use super::{BasicKind, Constant, Mode, Operand, Ty, TypeArena, TypeId};
+use super::{
+    AssignmentError, BasicKind, CheckError, ConstAssignError, Constant, Mode, Operand, Ty,
+    TypeArena, TypeId,
+};
+use CheckError::{Invalid, Unknown};
+
+#[derive(Clone, Copy)]
+pub(crate) enum IndexError {
+    NonIndexable,
+    Key {
+        target: TypeId,
+        reason: AssignmentError,
+    },
+    Value(IndexValueError),
+    Bounds {
+        index: u64,
+        length: u64,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum IndexValueError {
+    NonInteger,
+    Negative,
+    Overflow,
+    ImplicitConversion(ConstAssignError),
+}
+
+pub(crate) enum SliceError {
+    NonSliceable,
+    Unaddressable,
+    StringFull,
+}
+
+pub(crate) struct SliceResult {
+    pub(crate) operand: Option<Operand>,
+    pub(crate) errors: [Option<IndexError>; 3],
+    pub(crate) swapped: Option<(usize, u64, u64)>,
+}
 
 #[derive(Clone, Copy)]
 struct IndexProjection {
@@ -14,61 +52,72 @@ impl TypeArena<'_> {
         &mut self,
         input: Operand,
         index: Operand,
-        result: usize,
-        count: usize,
         int_bits: u32,
-    ) -> Option<Operand> {
-        self.step()?;
+    ) -> Result<Operand, CheckError<IndexError>> {
+        self.step().ok_or(Unknown)?;
+        if !input.mode.is_value() || !index.mode.is_value() {
+            return Err(Unknown);
+        }
         let projection = self.index_projection(input)?;
         if let Some(key) = projection.key {
-            if !matches!(count, 1 | 2) || result >= count {
-                return None;
+            if self.comparable(key, 0) != Some(true) {
+                return Err(Unknown);
             }
-            self.comparable(key, 0)?.then_some(())?;
-            self.assignable(index, key, int_bits)?.then_some(())?;
-            return Some(Operand {
-                mode: if count == 1 {
-                    Mode::MapIndex
-                } else {
-                    Mode::Value
-                },
-                ty: if result == 0 {
-                    projection.element
-                } else {
-                    self.basic(BasicKind::Bool)?
-                },
+            self.check_assignment(index, key, int_bits)
+                .map_err(|error| {
+                    error.map(|reason| IndexError::Key {
+                        target: key,
+                        reason,
+                    })
+                })?;
+            return Ok(Operand {
+                mode: Mode::MapIndex,
+                ty: projection.element,
                 value: None,
             });
         }
-        if count != 1 || result != 0 {
-            return None;
-        }
-        if let Some(value) = self.index_value(index, int_bits)?
-            && projection.bound.is_some_and(|length| value >= length)
-        {
-            return None;
-        }
-        Some(Operand {
+        self.bounded_index(index, projection.bound, int_bits)?;
+        Ok(Operand {
             mode: projection.mode,
             ty: projection.element,
             value: None,
         })
     }
 
-    fn index_projection(&mut self, input: Operand) -> Option<IndexProjection> {
-        let root = self.underlying(input.ty)?;
+    fn bounded_index(
+        &mut self,
+        index: Operand,
+        limit: Option<u64>,
+        int_bits: u32,
+    ) -> Result<Option<u64>, CheckError<IndexError>> {
+        let value = self
+            .checked_index_value(index, int_bits)
+            .map_err(|error| error.map(IndexError::Value))?;
+        if let (Some(index), Some(length)) = (value, limit)
+            && index >= length
+        {
+            return Err(Invalid(IndexError::Bounds { index, length }));
+        }
+        Ok(value)
+    }
+
+    fn index_projection(
+        &mut self,
+        input: Operand,
+    ) -> Result<IndexProjection, CheckError<IndexError>> {
+        let root = self.underlying(input.ty).ok_or(Unknown)?;
         if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
             return self.index_term(input, root);
         }
-        let set = self.parameter_set(root)?;
-        let terms = set.terms?;
+        let set = self.parameter_set(root).ok_or(Unknown)?;
+        let terms = set.terms.ok_or(Unknown)?;
         let mut terms = terms.into_iter();
-        let ty = terms.next()?.ty;
-        let root = self.underlying(ty)?;
+        let ty = terms.next().ok_or(Unknown)?.ty;
+        let root = self.underlying(ty).ok_or(Unknown)?;
         let mut projection = self.index_term(Operand { ty, ..input }, root)?;
         for term in terms {
-            self.step()?;
-            let root = self.underlying(term.ty)?;
+            self.step().ok_or(Unknown)?;
+            let root = self.underlying(term.ty).ok_or(Unknown)?;
             let next = self.index_term(
                 Operand {
                     ty: term.ty,
@@ -76,13 +125,18 @@ impl TypeArena<'_> {
                 },
                 root,
             )?;
-            match (projection.key, next.key) {
-                (Some(a), Some(b)) => self.identical(a, b)?.then_some(())?,
-                (None, None) => {}
-                _ => return None,
+            let same_key = match (projection.key, next.key) {
+                (Some(a), Some(b)) => self.identical(a, b).ok_or(Unknown)?,
+                (None, None) => true,
+                _ => false,
+            };
+            if !same_key
+                || !self
+                    .identical(projection.element, next.element)
+                    .ok_or(Unknown)?
+            {
+                return Err(Invalid(IndexError::NonIndexable));
             }
-            self.identical(projection.element, next.element)?
-                .then_some(())?;
             if next.mode == Mode::Value {
                 projection.mode = Mode::Value;
             }
@@ -92,12 +146,16 @@ impl TypeArena<'_> {
                 projection.bound = Some(previous.min(next));
             }
         }
-        Some(projection)
+        Ok(projection)
     }
 
-    fn index_term(&mut self, input: Operand, mut root: TypeId) -> Option<IndexProjection> {
+    fn index_term(
+        &mut self,
+        input: Operand,
+        mut root: TypeId,
+    ) -> Result<IndexProjection, CheckError<IndexError>> {
         let pointer = if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
-            root = self.underlying(element)?;
+            root = self.underlying(element).ok_or(Unknown)?;
             true
         } else {
             false
@@ -121,17 +179,22 @@ impl TypeArena<'_> {
                         length: Some(length),
                     }) = input.value
                     else {
-                        return None;
+                        return Err(Unknown);
                     };
                     Some(length)
                 } else {
                     None
                 };
-                (None, self.basic(BasicKind::Byte)?, Mode::Value, bound)
+                (
+                    None,
+                    self.basic(BasicKind::Byte).ok_or(Unknown)?,
+                    Mode::Value,
+                    bound,
+                )
             }
-            _ => return None,
+            _ => return Err(Invalid(IndexError::NonIndexable)),
         };
-        Some(IndexProjection {
+        Ok(IndexProjection {
             key,
             element,
             mode,
@@ -140,42 +203,69 @@ impl TypeArena<'_> {
     }
 
     pub(crate) fn index_value(&mut self, index: Operand, int_bits: u32) -> Option<Option<u64>> {
-        let root = self.underlying(index.ty)?;
+        self.checked_index_value(index, int_bits).ok()
+    }
+
+    pub(super) fn checked_index_value(
+        &mut self,
+        index: Operand,
+        int_bits: u32,
+    ) -> Result<Option<u64>, CheckError<IndexValueError>> {
+        use IndexValueError::*;
+        if !index.mode.is_value() {
+            return Err(Unknown);
+        }
+        let root = self.underlying(index.ty).ok_or(Unknown)?;
         if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
             if index.mode == Mode::Constant {
-                return None;
+                return Err(Unknown);
             }
-            let terms = self.parameter_set(root)?.terms?;
-            if terms.is_empty() {
-                return None;
-            }
-            for term in terms {
-                self.step()?;
-                self.basic_kind(term.ty)?.integer().then_some(())?;
-            }
-            return Some(None);
-        }
-        let kind = self.basic_kind(root)?;
-        if index.mode != Mode::Constant {
-            return kind.integer().then_some(None);
-        }
-        let value = if kind.untyped() && kind.numeric_rank().is_some() {
-            // go/types converts every untyped numeric index to int first.
-            // Zero imaginary components and integrality require exact facts.
-            match super::complex::real(index.value?)?.constant() {
-                Constant::Int(value) => value,
-                _ => return None,
-            }
-        } else {
-            let Constant::Int(value) = index.value? else {
-                return None;
+            return if self.integer_type(root).ok_or(Unknown)? {
+                Ok(None)
+            } else {
+                Err(Invalid(NonInteger))
             };
-            kind.integer().then_some(())?;
-            value
+        }
+        let Ty::Basic(kind) = self.nodes[usize::from(root.0)] else {
+            return Err(Invalid(NonInteger));
         };
-        super::operand::representable(Constant::Int(value), BasicKind::Int, int_bits)
-            .then_some(())?;
-        Some(Some(u64::try_from(value).ok()?))
+        if kind.untyped() && kind.numeric_rank().is_none() {
+            return Err(Invalid(ImplicitConversion(ConstAssignError::Incompatible)));
+        }
+        if index.mode != Mode::Constant {
+            return if kind.integer() {
+                Ok(None)
+            } else {
+                Err(Invalid(NonInteger))
+            };
+        }
+        if !kind.integer() && !kind.untyped() {
+            return Err(Invalid(NonInteger));
+        }
+        let constant = index.value.ok_or(Unknown)?;
+        let value = constant.integer_value().ok_or_else(|| {
+            if kind.untyped() && constant.definitely_fractional() {
+                Invalid(ImplicitConversion(ConstAssignError::Truncated))
+            } else {
+                Unknown
+            }
+        })?;
+        let fits = super::operand::representable(Constant::Int(value), BasicKind::Int, int_bits);
+        if kind.untyped() && !fits {
+            let reason = if kind.integer() {
+                ConstAssignError::Overflow
+            } else {
+                ConstAssignError::Truncated
+            };
+            return Err(Invalid(ImplicitConversion(reason)));
+        }
+        if value < 0 {
+            return Err(Invalid(Negative));
+        }
+        if !fits {
+            return Err(Invalid(Overflow));
+        }
+        Ok(Some(u64::try_from(value).map_err(|_| Unknown)?))
     }
 
     pub(crate) fn is_array(&mut self, input: super::TypeId) -> Option<bool> {
@@ -219,14 +309,14 @@ impl TypeArena<'_> {
         indices: [Option<Operand>; 3],
         full: bool,
         int_bits: u32,
-    ) -> Option<Operand> {
-        self.step()?;
+    ) -> Result<SliceResult, CheckError<SliceError>> {
+        self.step().ok_or(Unknown)?;
         if full && (indices[1].is_none() || indices[2].is_none()) || !full && indices[2].is_some() {
-            return None;
+            return Err(Unknown);
         }
-        let mut root = self.slice_root(input.ty)?;
+        let mut root = self.slice_root(input.ty).ok_or(Unknown)?;
         let pointer = if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
-            root = self.underlying(element)?;
+            root = self.underlying(element).ok_or(Unknown)?;
             true
         } else {
             false
@@ -235,53 +325,71 @@ impl TypeArena<'_> {
             Ty::Slice(_) if !pointer => (input.ty, None),
             Ty::Array { length, element } => {
                 if !pointer && input.mode != Mode::Variable {
-                    return None;
+                    return Err(Invalid(SliceError::Unaddressable));
                 }
-                (self.push(Ty::Slice(element))?, Some(length))
+                (self.push(Ty::Slice(element)).ok_or(Unknown)?, Some(length))
             }
-            Ty::Basic(kind) if !pointer && kind.string() && !full => {
+            Ty::Basic(kind) if !pointer && kind.string() => {
+                if full {
+                    return Err(Invalid(SliceError::StringFull));
+                }
                 let bound = if input.mode == Mode::Constant {
                     let Some(Constant::String {
                         length: Some(length),
                     }) = input.value
                     else {
-                        return None;
+                        return Err(Unknown);
                     };
                     Some(length)
                 } else {
                     None
                 };
                 let ty = if kind.untyped() {
-                    self.basic(BasicKind::String)?
+                    self.basic(BasicKind::String).ok_or(Unknown)?
                 } else {
                     input.ty
                 };
                 (ty, bound)
             }
-            _ => return None,
+            _ => return Err(Invalid(SliceError::NonSliceable)),
         };
+        let limit = bound.and_then(|length| length.checked_add(1));
+        let mut known = true;
+        let mut errors = [None; 3];
         let mut values = [Some(0), bound, bound];
-        for (slot, index) in values.iter_mut().zip(indices) {
+        for (position, index) in indices.into_iter().enumerate() {
             if let Some(index) = index {
-                *slot = self.index_value(index, int_bits)?;
-                if slot.is_some_and(|value| bound.is_some_and(|length| value > length)) {
-                    return None;
+                match self.bounded_index(index, limit, int_bits) {
+                    Ok(value) => values[position] = value,
+                    Err(failure) => {
+                        values[position] = None;
+                        match failure {
+                            Invalid(error) => errors[position] = Some(error),
+                            Unknown => known = false,
+                        }
+                    }
                 }
             }
         }
-        for (i, low) in values.iter().enumerate() {
-            for high in &values[i + 1..] {
+        let mut swapped = None;
+        'indices: for (i, low) in values.iter().enumerate() {
+            for (j, high) in values.iter().enumerate().skip(i + 1) {
                 if let (Some(low), Some(high)) = (low, high)
                     && low > high
                 {
-                    return None;
+                    swapped = Some((j, *low, *high));
+                    break 'indices;
                 }
             }
         }
-        Some(Operand {
-            mode: Mode::Value,
-            ty,
-            value: None,
+        Ok(SliceResult {
+            operand: known.then_some(Operand {
+                mode: Mode::Value,
+                ty,
+                value: None,
+            }),
+            errors,
+            swapped,
         })
     }
 }

@@ -1,7 +1,9 @@
 //! Navigation and reference seeds share the request's immutable source view.
 pub(in crate::analysis::query) mod anonymous;
 mod decl_targets;
-use super::Context;
+use super::hierarchy::SymbolTarget;
+use super::locations::NavigationLocation;
+use super::{Context, Location, SourceRange};
 use crate::analysis::obj::MemberDeclId;
 use crate::analysis::obj::{MethodOrigin, ObjectRef, SymbolOrigin};
 use crate::analysis::resolve::NameProbe;
@@ -16,22 +18,13 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-pub(crate) enum Target<'a> {
+pub(super) enum Target<'a> {
     Unresolved,
     Local(Range<usize>),
     Global(&'a PathBuf, &'a Symbol),
     Member(MemberDeclId<'a>),
-}
-
-pub(crate) struct NavigationTarget<'a> {
-    pub(crate) target: Target<'a>,
-    pub(crate) fallback: bool,
-    /// Predeclared identifier that resolves to the configured SDK's builtin.go
-    /// declaration; the feature projects the name to its SDK location.
-    pub(crate) builtin: Option<String>,
-    /// Cross-file location for targets that are not indexed symbols (the
-    /// package clause of another compiled file).
-    pub(crate) location: Option<(PathBuf, Range<usize>)>,
+    Builtin(&'static str),
+    CrossFile(&'a Path, Range<usize>),
 }
 
 pub(crate) enum ReferenceTarget<'a> {
@@ -193,11 +186,11 @@ fn has_package_doc(source: &str) -> bool {
 
 /// gopls links the package clause to the first compiled file that documents the
 /// package; file order follows the indexed path order of the same package.
-fn package_definition(
-    context: &Context<'_>,
+fn package_definition<'a>(
+    context: &Context<'a>,
     file: &Path,
     source: &str,
-) -> Option<(PathBuf, Range<usize>)> {
+) -> Option<(&'a Path, Range<usize>)> {
     let workspace = context.workspace();
     if workspace.is_detached(file) && !crate::workspace::production_file(file) {
         return None;
@@ -225,7 +218,7 @@ fn package_definition(
         read_bytes += text.len();
         if has_package_doc(&text) {
             return (candidate != file)
-                .then(|| Some((candidate.clone(), package_clause_name(&text)?)))
+                .then(|| Some((candidate.as_path(), package_clause_name(&text)?)))
                 .flatten();
         }
     }
@@ -233,10 +226,81 @@ fn package_definition(
 }
 
 impl<'a> Context<'a> {
-    pub(crate) fn navigation_target(
+    pub(crate) fn definition_location(
         &self,
         offset: usize,
-    ) -> Result<NavigationTarget<'a>, (i32, String)> {
+        method: &str,
+    ) -> Result<Option<NavigationLocation<'a>>, (i32, String)> {
+        let target = self.navigation_target_at(offset, true)?;
+        self.trace_candidates(method, 1);
+        let mut current_map = None;
+        let location = match target {
+            Target::Unresolved => None,
+            Target::Local(span) => self
+                .cross_file_range(self.file(), &span, &mut current_map)
+                .map(|range| Location {
+                    file: Cow::Borrowed(self.file()),
+                    range,
+                }),
+            Target::CrossFile(file, span) => self
+                .cross_file_range(file, &span, &mut current_map)
+                .map(|range| Location {
+                    file: Cow::Borrowed(file),
+                    range,
+                }),
+            Target::Member(member) => {
+                self.member_selection(member, &mut current_map)
+                    .map(|range| Location {
+                        file: Cow::Borrowed(member.file),
+                        range,
+                    })
+            }
+            Target::Builtin(name) => {
+                self.builtin_symbol_location(name, false)
+                    .map(|(file, range)| Location {
+                        file: Cow::Owned(file),
+                        range,
+                    })
+            }
+            Target::Global(file, symbol) => {
+                // Body-less Go functions may link to an assembler TEXT declaration.
+                Some(self.asm_symbol_location(file, symbol).map_or_else(
+                    || Location {
+                        file: Cow::Borrowed(file.as_path()),
+                        range: SourceRange::indexed_selection(&symbol.selection),
+                    },
+                    |(file, range)| Location {
+                        file: Cow::Owned(file),
+                        range,
+                    },
+                ))
+            }
+        };
+        Ok(location)
+    }
+
+    pub(crate) fn hierarchy_symbol(
+        &self,
+        offset: usize,
+        method: &str,
+    ) -> Result<Option<SymbolTarget<'a>>, (i32, String)> {
+        let target = self.navigation_target(offset)?;
+        self.trace_candidates(method, 1);
+        Ok(match target {
+            Target::Global(file, symbol) => Some(SymbolTarget { file, symbol }),
+            _ => None,
+        })
+    }
+
+    pub(super) fn navigation_target(&self, offset: usize) -> Result<Target<'a>, (i32, String)> {
+        self.navigation_target_at(offset, false)
+    }
+
+    fn navigation_target_at(
+        &self,
+        offset: usize,
+        at_cursor: bool,
+    ) -> Result<Target<'a>, (i32, String)> {
         let workspace = self.workspace;
         let file = self.view.file;
         let source = self.source();
@@ -252,11 +316,9 @@ impl<'a> Context<'a> {
         if let Some(name) = package_clause_name(source)
             && selection.as_ref() == Some(&name)
         {
-            return Ok(NavigationTarget {
-                target: Target::Local(name.clone()),
-                fallback: false,
-                builtin: None,
-                location: package_definition(self, file, source),
+            return Ok(match package_definition(self, file, source) {
+                Some((path, span)) => Target::CrossFile(path, span),
+                None => Target::Local(name),
             });
         }
         let sites = import_sites(self, source);
@@ -265,12 +327,7 @@ impl<'a> Context<'a> {
             .iter()
             .find(|site| site.path.start <= offset && offset <= site.path.end)
         {
-            return Ok(NavigationTarget {
-                target: Target::Local(site.path.clone()),
-                fallback: false,
-                builtin: None,
-                location: None,
-            });
+            return Ok(Target::Local(site.path.clone()));
         }
         // Cursor on an import alias declaration: links the alias name itself.
         if let Some(selection) = &selection
@@ -278,15 +335,10 @@ impl<'a> Context<'a> {
                 .iter()
                 .any(|site| site.alias.as_ref() == Some(selection))
         {
-            return Ok(NavigationTarget {
-                target: Target::Local(selection.clone()),
-                fallback: false,
-                builtin: None,
-                location: None,
-            });
+            return Ok(Target::Local(selection.clone()));
         }
         if let Some(selection) = &selection
-            && let Some(target) = self.sema_navigation_target(selection)
+            && let Some(target) = self.sema_navigation_target(selection, at_cursor)
         {
             return Ok(target);
         }
@@ -303,22 +355,27 @@ impl<'a> Context<'a> {
         } else {
             Target::Unresolved
         };
-        Ok(NavigationTarget {
-            target,
-            fallback: false,
-            builtin: None,
-            location: None,
-        })
+        Ok(target)
     }
 
-    fn sema_navigation_target(&self, selection: &Range<usize>) -> Option<NavigationTarget<'a>> {
+    fn sema_navigation_target(
+        &self,
+        selection: &Range<usize>,
+        at_cursor: bool,
+    ) -> Option<Target<'a>> {
         let sel = [
             u32::try_from(selection.start).ok()?,
             u32::try_from(selection.end).ok()?,
         ];
         let file = self.view.file;
         let source = self.source();
-        let obj = self.with_sema(|sema| sema.resolve_offset(file, source, sel))?;
+        let obj = self.with_sema(|sema| {
+            if at_cursor {
+                sema.resolve_navigation_offset(file, source, sel)
+            } else {
+                sema.resolve_offset(file, source, sel)
+            }
+        })?;
         match obj {
             ObjectRef::PkgName { .. } => {
                 let name = source.get(selection.clone())?;
@@ -326,12 +383,7 @@ impl<'a> Context<'a> {
                 let site = sites
                     .iter()
                     .find(|site| site.name.as_deref() == Some(name))?;
-                Some(NavigationTarget {
-                    target: Target::Local(import_qualifier_target(self, site, source)),
-                    fallback: false,
-                    builtin: None,
-                    location: None,
-                })
+                Some(Target::Local(import_qualifier_target(self, site, source)))
             }
             ObjectRef::Var {
                 origin:
@@ -350,44 +402,26 @@ impl<'a> Context<'a> {
                     },
                 ..
             }
-            | ObjectRef::Label { file: f, span: d } => (f == file).then_some(NavigationTarget {
-                target: Target::Local(d[0] as usize..d[1] as usize),
-                fallback: false,
-                builtin: None,
-                location: None,
-            }),
+            | ObjectRef::Label { file: f, span: d } => {
+                (f == file).then_some(Target::Local(d[0] as usize..d[1] as usize))
+            }
             ObjectRef::TypeParam {
                 owner: Some(decl),
                 span: d,
                 ..
             } => {
                 let r = d[0] as usize..d[1] as usize;
-                if decl.file == file {
-                    Some(NavigationTarget {
-                        target: Target::Local(r),
-                        fallback: false,
-                        builtin: None,
-                        location: None,
-                    })
+                Some(if decl.file == file {
+                    Target::Local(r)
                 } else {
-                    Some(NavigationTarget {
-                        target: Target::Unresolved,
-                        fallback: false,
-                        builtin: None,
-                        location: Some((decl.file.to_path_buf(), r)),
-                    })
-                }
+                    Target::CrossFile(decl.file, r)
+                })
             }
             ObjectRef::TypeParam {
                 owner: None,
                 span: d,
                 ..
-            } => Some(NavigationTarget {
-                target: Target::Local(d[0] as usize..d[1] as usize),
-                fallback: false,
-                builtin: None,
-                location: None,
-            }),
+            } => Some(Target::Local(d[0] as usize..d[1] as usize)),
             ObjectRef::Const(SymbolOrigin::Package(decl))
             | ObjectRef::TypeName {
                 origin: SymbolOrigin::Package(decl),
@@ -400,62 +434,27 @@ impl<'a> Context<'a> {
             | ObjectRef::Func(decl)
             | ObjectRef::Method(MethodOrigin::Concrete(decl)) => {
                 let (path_buf, _) = self.workspace.files.get_key_value(decl.file)?;
-                Some(NavigationTarget {
-                    target: Target::Global(path_buf, decl.symbol),
-                    fallback: false,
-                    builtin: None,
-                    location: None,
-                })
+                Some(Target::Global(path_buf, decl.symbol))
             }
             ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member)) => {
                 if let Some(decl) = member.indexed(self.workspace) {
-                    Some(NavigationTarget {
-                        target: Target::Member(decl),
-                        fallback: false,
-                        builtin: None,
-                        location: None,
-                    })
+                    Some(Target::Member(decl))
                 } else if member.selection[0] < member.selection[1] {
                     let r = member.selection[0] as usize..member.selection[1] as usize;
-                    if member.file == file {
-                        Some(NavigationTarget {
-                            target: Target::Local(r),
-                            fallback: false,
-                            builtin: None,
-                            location: None,
-                        })
+                    Some(if member.file == file {
+                        Target::Local(r)
                     } else {
-                        Some(NavigationTarget {
-                            target: Target::Unresolved,
-                            fallback: false,
-                            builtin: None,
-                            location: Some((member.file.to_path_buf(), r)),
-                        })
-                    }
+                        Target::CrossFile(member.file, r)
+                    })
                 } else {
                     None
                 }
             }
-            ObjectRef::BuiltinFunction(bf) => Some(NavigationTarget {
-                target: Target::Unresolved,
-                fallback: false,
-                builtin: Some(bf.name().to_owned()),
-                location: None,
-            }),
+            ObjectRef::BuiltinFunction(bf) => Some(Target::Builtin(bf.name())),
             ObjectRef::BuiltinType(name) | ObjectRef::BuiltinConst(name) => {
-                Some(NavigationTarget {
-                    target: Target::Unresolved,
-                    fallback: false,
-                    builtin: Some(name.to_owned()),
-                    location: None,
-                })
+                Some(Target::Builtin(name))
             }
-            ObjectRef::Nil => Some(NavigationTarget {
-                target: Target::Unresolved,
-                fallback: false,
-                builtin: Some("nil".to_owned()),
-                location: None,
-            }),
+            ObjectRef::Nil => Some(Target::Builtin("nil")),
         }
     }
 
@@ -525,14 +524,15 @@ impl<'a> Context<'a> {
         Ok(target)
     }
 
-    pub(crate) fn cross_file_range(
-        &self,
+    pub(super) fn cross_file_range<'source>(
+        &'source self,
         path: &Path,
         span: &Range<usize>,
-        current_map: &SourceMap<'_>,
+        current_map: &mut Option<SourceMap<'source>>,
     ) -> Option<super::SourceRange> {
         if path == self.view.file {
-            Some(super::SourceRange::new(current_map, span.clone()))
+            let map = current_map.get_or_insert_with(|| SourceMap::new(self.source()));
+            Some(SourceRange::new(map, span.clone()))
         } else {
             let source = self.workspace.source(path)?;
             Some(super::SourceRange::new(
@@ -542,10 +542,10 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub(crate) fn member_selection(
-        &self,
+    pub(super) fn member_selection<'source>(
+        &'source self,
         member: MemberDeclId<'_>,
-        current_map: &SourceMap<'_>,
+        current_map: &mut Option<SourceMap<'source>>,
     ) -> Option<super::SourceRange> {
         self.cross_file_range(
             member.file,
@@ -555,7 +555,7 @@ impl<'a> Context<'a> {
     }
 
     /// gopls links a body-less Go function to its assembler `TEXT` declaration.
-    pub(crate) fn asm_symbol_location(
+    fn asm_symbol_location(
         &self,
         go_file: &Path,
         symbol: &Symbol,
@@ -568,7 +568,6 @@ impl<'a> Context<'a> {
             return None;
         }
         let source = self.workspace.source(&asm_file)?;
-        let map = SourceMap::new(&source);
         let mut offset = 0;
         while let Some(found) = source[offset..].find("TEXT") {
             let start = offset + found;
@@ -580,20 +579,15 @@ impl<'a> Context<'a> {
                         character.is_whitespace() || character == '(' || character == ','
                     })
                     .unwrap_or(after.len());
-            let token = &source[token_start..token_end];
-            if let Some(separator) = token.rfind('·') {
-                let name_start = token_start + separator + '·'.len_utf8();
-                let name = &source[name_start..token_end];
-                if name == symbol.name {
-                    return Some((
-                        asm_file,
-                        super::SourceRange::new(&map, name_start..name_start + name.len()),
-                    ));
-                }
-            } else if token == symbol.name {
+            let name_start = source[token_start..token_end]
+                .rfind('·')
+                .map_or(token_start, |separator| {
+                    token_start + separator + '·'.len_utf8()
+                });
+            if source[name_start..token_end] == symbol.name {
                 return Some((
                     asm_file,
-                    super::SourceRange::new(&map, token_start..token_end),
+                    SourceRange::new(&SourceMap::new(&source), name_start..token_end),
                 ));
             }
             offset = start + 4;

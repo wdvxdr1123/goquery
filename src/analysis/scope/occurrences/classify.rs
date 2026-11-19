@@ -218,7 +218,7 @@ impl Occurrences {
                 }
             }
         }
-        for statement in &block.statements {
+        for (index, statement) in block.statements.iter().enumerate() {
             if let StmtKind::Declaration { names, keyword, .. } = &statement.kind {
                 let keyword = source.get(base + keyword.start..base + keyword.end);
                 for name in names {
@@ -258,13 +258,10 @@ impl Occurrences {
                     }
                 }
             }
-            if matches!(statement.kind, StmtKind::Declaration { .. })
-                && let Some(positions) = &mut self.declaration_operators
-                && let Some(offset) = super::build::declaration_assignment(
-                    &source[base + statement.span.start..base + statement.span.end],
-                )
+            if let Some(positions) = &mut self.declaration_operators
+                && let Some(offset) = block.declaration_equals(crate::syntax::StmtId(index))
             {
-                positions.push(base + statement.span.start + offset);
+                positions.push(base + offset);
             }
 
             match &statement.kind {

@@ -9,7 +9,7 @@
 mod format;
 use super::navigation::anonymous;
 use super::{Context, SourceRange};
-use crate::analysis::obj::MemberDeclId;
+use crate::analysis::obj::{MemberDeclId, MethodOrigin, ObjectRef};
 use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::{self, DeclarationKind, Locals};
 use crate::analysis::sema::{Identity, IdentityResolver};
@@ -22,6 +22,7 @@ pub(crate) use format::collect_region_format_directives;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 const MAX_HIGHLIGHTS: usize = 4096;
 const MAX_FUNCTIONS: usize = 512;
@@ -99,6 +100,7 @@ impl<'a> Context<'a> {
     pub(crate) fn document_highlights(
         &self,
         offset: usize,
+        cancellation: Option<&AtomicBool>,
     ) -> Result<Option<Vec<HighlightRow>>, (i32, String)> {
         let source = self.source();
         let Some(selection) = crate::analysis::scope::occurrences::identifier_at(source, offset)
@@ -112,17 +114,23 @@ impl<'a> Context<'a> {
         };
         let trace = workspace.trace.queries.then(std::time::Instant::now);
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let Ok(analysis) = Occurrences::new(source, stub) else {
+        let spelling = &source[selection.clone()];
+        let Ok(analysis) = Occurrences::for_name(source, stub, spelling) else {
             return Ok(None);
         };
         let analysis_time = phase.map(|phase| phase.elapsed());
         let Some(cursor_name) = analysis.names.iter().find(|name| name.span == selection) else {
             return Ok(self.format_highlights(offset));
         };
+        let candidates = analysis.names.len();
+        if candidates > MAX_HIGHLIGHTS {
+            return Ok(None);
+        }
+        let lone_selectors = lone_selectors(stub, &analysis);
         let map = SourceMap::new(source);
         let phase = workspace.trace.queries.then(std::time::Instant::now);
         let mut scanner = Scanner::new(self, source);
-        scanner.collect(stub);
+        scanner.collect(stub, cancellation)?;
         let collect_time = phase.map(|phase| phase.elapsed());
         if scanner.exhausted {
             return Ok(None);
@@ -135,6 +143,7 @@ impl<'a> Context<'a> {
             source,
             &map,
             &analysis,
+            &lone_selectors,
             cursor_name,
             &scanner.declarations,
             scanner.package_name.as_ref(),
@@ -159,18 +168,11 @@ impl<'a> Context<'a> {
             rows.push((span, HighlightKind::Text));
         }
         let mut resolver = IdentityResolver::new(workspace, file);
-        let mut candidates = 0usize;
         let mut match_time = std::time::Duration::ZERO;
         let mut extra_time = std::time::Duration::ZERO;
         let mut kind_time = std::time::Duration::ZERO;
         for name in &analysis.names {
-            if &source[name.span.clone()] != cursor.spelling {
-                continue;
-            }
-            candidates += 1;
-            if candidates > MAX_HIGHLIGHTS {
-                return Ok(None);
-            }
+            crate::error::check_cancelled(cancellation)?;
             if !candidate_role_plausible(&cursor, name) {
                 continue;
             }
@@ -198,6 +200,7 @@ impl<'a> Context<'a> {
                     source,
                     &map,
                     &analysis,
+                    &lone_selectors,
                     &mut resolver,
                     name,
                     &cursor,
@@ -348,6 +351,7 @@ fn cursor<'a, 'workspace: 'a>(
     source: &'a str,
     map: &SourceMap<'_>,
     analysis: &Occurrences,
+    lone_selectors: &[usize],
     name: &Name,
     declarations: &[Range<usize>],
     package_name: Option<&Range<usize>>,
@@ -357,6 +361,11 @@ fn cursor<'a, 'workspace: 'a>(
     // own implicit variable. Keep the declaration in gopls' nil-object group.
     let identity = if type_switch_guard_declaration(analysis, source, name) {
         None
+    } else if let Some(ObjectRef::Method(MethodOrigin::Concrete(declaration))) =
+        selector_object(context, file, source, lone_selectors, name)
+        && let Some((path, _)) = workspace.files.get_key_value(declaration.file)
+    {
+        Some(Identity::Global(path, declaration.symbol))
     } else {
         context.resolve_identity(
             &mut IdentityResolver::new(workspace, file),
@@ -467,6 +476,50 @@ fn cursor<'a, 'workspace: 'a>(
         fallback,
         global_kind,
     }
+}
+
+/// A full check is shared by candidates in the same declaration. Checking
+/// a new prefix at each such offset would repeat earlier statements.
+fn lone_selectors(stub: &crate::index::IndexedFile, analysis: &Occurrences) -> Vec<usize> {
+    let mut positions = Vec::new();
+    for symbol in stub.symbols.iter().filter(|symbol| symbol.is_callable()) {
+        let Some(declaration) = symbol.declaration() else {
+            continue;
+        };
+        let first = analysis
+            .names
+            .partition_point(|candidate| candidate.span.start < declaration.start);
+        if let Some(name) = analysis.names.get(first)
+            && declaration.contains(&name.span.start)
+            && matches!(name.role, Role::Member(_) | Role::ExpressionMember(_))
+            && analysis
+                .names
+                .get(first + 1)
+                .is_none_or(|candidate| !declaration.contains(&candidate.span.start))
+        {
+            positions.push(name.span.start);
+            if positions.len() == MAX_HIGHLIGHTS {
+                break;
+            }
+        }
+    }
+    positions.sort_unstable();
+    positions.dedup();
+    positions
+}
+
+fn selector_object<'a>(
+    context: &Context<'a>,
+    file: &Path,
+    source: &str,
+    lone_selectors: &[usize],
+    name: &Name,
+) -> Option<ObjectRef<'a>> {
+    lone_selectors.binary_search(&name.span.start).ok()?;
+    // Reuse the prefix check from go-to-definition. Later statements cannot
+    // change a selector's identity once the checker has proved it here.
+    let span = [name.span.start as u32, name.span.end as u32];
+    context.with_sema(|sema| sema.resolve_navigation_offset(file, source, span))
 }
 
 fn canonical_tag(canonical: &Canonical<'_>) -> &'static str {
@@ -719,6 +772,7 @@ fn occurrence_matches<'identity, 'workspace: 'identity>(
     source: &str,
     map: &SourceMap<'_>,
     analysis: &Occurrences,
+    lone_selectors: &[usize],
     resolver: &mut IdentityResolver<'identity>,
     name: &Name,
     cursor: &Cursor<'_>,
@@ -777,6 +831,12 @@ fn occurrence_matches<'identity, 'workspace: 'identity>(
                 .is_some()
             {
                 return false;
+            }
+            if cursor.global_kind == Some(SymbolKind::Method)
+                && let Some(object) = selector_object(context, file, source, lone_selectors, name)
+            {
+                return matches!(object, ObjectRef::Method(MethodOrigin::Concrete(declaration))
+                    if declaration.file == *path && declaration.symbol.start == *start);
             }
             matches!(
                 context.resolve_identity(resolver, analysis, source, name),
@@ -960,9 +1020,14 @@ impl<'a, 'q> Scanner<'a, 'q> {
         }
     }
 
-    fn collect(&mut self, stub: &crate::index::IndexedFile) {
+    fn collect(
+        &mut self,
+        stub: &crate::index::IndexedFile,
+        cancellation: Option<&AtomicBool>,
+    ) -> Result<(), (i32, String)> {
         self.collect_package_name();
         for symbol in &stub.symbols {
+            crate::error::check_cancelled(cancellation)?;
             if self.exhausted {
                 break;
             }
@@ -984,6 +1049,7 @@ impl<'a, 'q> Scanner<'a, 'q> {
         self.writes.dedup();
         self.declarations.sort_by_key(|span| span.start);
         self.declarations.dedup();
+        Ok(())
     }
 
     /// Records the package clause name: it stays a nil-object identity even
@@ -1620,7 +1686,7 @@ fn eligible_spans(tree: &BlockTree, id: ExprId, out: &mut Vec<Range<usize>>) {
         ExprKind::Call { function, .. } => {
             eligible_spans(tree, *function, out);
         }
-        ExprKind::Name | ExprKind::Literal | ExprKind::Type | ExprKind::Missing => {
+        ExprKind::Name | ExprKind::Literal(_) | ExprKind::Type | ExprKind::Missing => {
             out.push(expression.span.clone());
         }
         ExprKind::Composite {

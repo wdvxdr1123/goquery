@@ -128,6 +128,8 @@ pub struct BlockTree {
     pub(crate) diagnostics: Vec<Diagnostic>,
     pub(crate) type_references: Vec<TypeReference>,
     pub(crate) type_parameters: Vec<LocalTypeParameters>,
+    /// Delimiter offsets, sorted by statement ID. Most statements need no entry.
+    pub(crate) delimiters: Vec<(StmtId, usize)>,
 }
 
 impl BlockTree {
@@ -151,6 +153,7 @@ impl BlockTree {
             diagnostics: tree.diagnostics,
             type_references: tree.type_references,
             type_parameters: Vec::new(),
+            delimiters: Vec::new(),
         }
     }
 
@@ -166,12 +169,55 @@ impl BlockTree {
         self.statements.get(id.index())
     }
 
+    /// Returns the byte offset of a declaration's top-level `=`, if present.
+    pub fn declaration_equals(&self, id: StmtId) -> Option<usize> {
+        match self.statement(id)?.kind {
+            StmtKind::Declaration { .. } => self.delimiter(id),
+            _ => None,
+        }
+    }
+
+    /// Returns the byte offset immediately after a case clause's colon.
+    pub fn clause_body_start(&self, id: StmtId) -> Option<usize> {
+        match self.statement(id)?.kind {
+            StmtKind::Case { .. } | StmtKind::CommunicationCase { .. } => {
+                self.delimiter(id).map(|colon| colon + 1)
+            }
+            _ => None,
+        }
+    }
+
+    fn delimiter(&self, id: StmtId) -> Option<usize> {
+        let index = self
+            .delimiters
+            .binary_search_by_key(&id.0, |(id, _)| id.0)
+            .ok()?;
+        Some(self.delimiters[index].1)
+    }
+
     pub fn expressions(&self) -> &[Expr] {
         &self.expressions
     }
 
     pub fn expression(&self, id: ExprId) -> Option<&Expr> {
         self.expressions.get(id.index())
+    }
+
+    /// Recognizes a receive expression through any enclosing parentheses.
+    /// The operator predicate reads the span in this tree's source snapshot.
+    pub(crate) fn is_receive(
+        &self,
+        mut id: ExprId,
+        is_arrow: impl FnOnce(&Range<usize>) -> bool,
+    ) -> bool {
+        while let Some(expr) = self.expression(id) {
+            match &expr.kind {
+                crate::syntax::ExprKind::Parenthesized { expression } => id = *expression,
+                crate::syntax::ExprKind::Unary { operator, .. } => return is_arrow(operator),
+                _ => return false,
+            }
+        }
+        false
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {

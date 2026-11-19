@@ -1,7 +1,12 @@
 //! Bounded complex constants and the numeric builtin type functions.
 use super::conversion;
 use super::operand;
-use super::{BasicKind, Constant, Mode, Operand, TypeArena};
+use super::{BasicKind, Constant, Mode, Operand, Ty, TypeArena, TypeId};
+
+pub(crate) enum ComplexError {
+    NonFloating(TypeId),
+    Mismatch(TypeId, TypeId),
+}
 
 /// Keep exact bounded integers, or independently parsed floating projections.
 /// A rounded approximate zero never proves an exact zero or integer.
@@ -63,6 +68,7 @@ impl ComplexPart {
                 approximate,
                 integral: None,
                 rounded32,
+                fractional: false,
             },
         }
     }
@@ -239,6 +245,14 @@ impl TypeArena<'_> {
         arguments: &[Operand],
         int_bits: u32,
     ) -> Option<Operand> {
+        self.checked_builtin_complex(arguments, int_bits)?.ok()
+    }
+
+    pub(crate) fn checked_builtin_complex(
+        &mut self,
+        arguments: &[Operand],
+        int_bits: u32,
+    ) -> Option<Result<Operand, ComplexError>> {
         self.step()?;
         let [mut left, mut right] = *arguments else {
             return None;
@@ -269,7 +283,9 @@ impl TypeArena<'_> {
                 a
             }
             (false, false) => {
-                self.identical(left.ty, right.ty)?.then_some(())?;
+                if !self.identical(left.ty, right.ty)? {
+                    return Some(Err(ComplexError::Mismatch(left.ty, right.ty)));
+                }
                 a
             }
         };
@@ -277,10 +293,10 @@ impl TypeArena<'_> {
             BasicKind::Float32 => BasicKind::Complex64,
             BasicKind::Float64 => BasicKind::Complex128,
             BasicKind::UntypedFloat => BasicKind::UntypedComplex,
-            _ => return None,
+            _ => return Some(Err(ComplexError::NonFloating(left.ty))),
         };
         let constant = left.mode == Mode::Constant && right.mode == Mode::Constant;
-        Some(Operand {
+        Some(Ok(Operand {
             mode: if constant {
                 Mode::Constant
             } else {
@@ -295,12 +311,25 @@ impl TypeArena<'_> {
             } else {
                 None
             },
-        })
+        }))
     }
 
     pub(crate) fn builtin_component(&mut self, input: Operand, imaginary: bool) -> Option<Operand> {
+        self.checked_builtin_component(input, imaginary)?.ok()
+    }
+
+    pub(crate) fn checked_builtin_component(
+        &mut self,
+        input: Operand,
+        imaginary: bool,
+    ) -> Option<Result<Operand, ()>> {
         self.step()?;
-        let kind = self.basic_kind(input.ty)?;
+        let root = self.underlying(input.ty)?;
+        let kind = match self.nodes[usize::from(root.0)] {
+            Ty::Basic(kind) => kind,
+            Ty::Parameter(_) => return None,
+            _ => return Some(Err(())),
+        };
         let target = match kind {
             BasicKind::Complex64 => BasicKind::Float32,
             BasicKind::Complex128 => BasicKind::Float64,
@@ -310,7 +339,7 @@ impl TypeArena<'_> {
             {
                 BasicKind::UntypedFloat
             }
-            _ => return None,
+            _ => return Some(Err(())),
         };
         let value = if input.mode == Mode::Constant {
             let (real, imag) = parts(input.value?)?;
@@ -318,7 +347,7 @@ impl TypeArena<'_> {
         } else {
             None
         };
-        Some(Operand {
+        Some(Ok(Operand {
             mode: if input.mode == Mode::Constant {
                 Mode::Constant
             } else {
@@ -326,6 +355,6 @@ impl TypeArena<'_> {
             },
             ty: self.basic(target)?,
             value,
-        })
+        }))
     }
 }

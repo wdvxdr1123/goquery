@@ -1,6 +1,7 @@
 use crate::syntax::ast::expression::{ExprId, ExprKind};
 use crate::syntax::parser::expression::Parser;
 use crate::syntax::token::TokenKind;
+use std::num::NonZeroU32;
 
 impl Parser<'_> {
     pub(super) fn postfix(&mut self, mut operand: ExprId, depth: usize) -> ExprId {
@@ -63,6 +64,7 @@ impl Parser<'_> {
                     let closing = TokenKind::RParen;
                     let mut arguments = Vec::new();
                     let mut variadic = false;
+                    let mut ellipsis = None;
                     while let Some(next) = self.tokens.peek() {
                         if next.kind == closing || next.kind == TokenKind::Semicolon {
                             break;
@@ -78,7 +80,10 @@ impl Parser<'_> {
                             .peek()
                             .is_some_and(|t| &self.source[t.span.clone()] == "...")
                         {
-                            self.tokens.next();
+                            let dots = self.tokens.next().expect("peeked ellipsis");
+                            ellipsis = u32::try_from(dots.span.start)
+                                .ok()
+                                .and_then(NonZeroU32::new);
                             variadic = true;
                         }
                         if !self
@@ -96,11 +101,16 @@ impl Parser<'_> {
                     let end = arguments
                         .last()
                         .map_or(opening.span.end, |id| self.nodes[id.0].span.end);
+                    if self.tokens.peek().is_some_and(|token| token.inserted) {
+                        self.error_here("missing ',' before newline in argument list", None);
+                        self.tokens.next();
+                    }
                     let end = self.close(closing, "expected ')'", end);
                     let kind = ExprKind::Call {
                         function: operand,
                         arguments,
                         variadic,
+                        ellipsis,
                     };
                     operand = self.add(kind, start..end);
                 }

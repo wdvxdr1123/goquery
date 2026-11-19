@@ -184,6 +184,7 @@ fn extract_name(parser: &Parser<'_>, id: ExprId, force: bool) -> Option<(ExprId,
             function,
             arguments,
             variadic,
+            ..
         } => {
             if !*variadic
                 && arguments.len() == 1

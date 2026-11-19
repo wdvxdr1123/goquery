@@ -209,13 +209,14 @@ impl SemanticModifier {
 
 #[derive(Clone, Copy)]
 pub(crate) struct SemanticConfig {
+    pub(crate) enabled: bool,
     types: [Option<u8>; SemanticTokenKind::ALL.len()],
     modifiers: [Option<u8>; SemanticModifier::ALL.len()],
 }
 
 impl Default for SemanticConfig {
     fn default() -> Self {
-        Self::from_initialize(&Value::Null)
+        Self::from_initialize(&Value::Null, true)
     }
 }
 
@@ -226,7 +227,7 @@ impl SemanticConfig {
             .any(|modifier| self.modifiers[*modifier as usize].is_some())
     }
 
-    pub(crate) fn from_initialize(params: &Value) -> Self {
+    pub(crate) fn from_initialize(params: &Value, enabled: bool) -> Self {
         let capabilities = &params["capabilities"]["textDocument"]["semanticTokens"];
         let requested = capabilities["tokenTypes"].as_array();
         let mut next = 0;
@@ -258,7 +259,11 @@ impl SemanticConfig {
                     id
                 })
         });
-        Self { types, modifiers }
+        Self {
+            enabled,
+            types,
+            modifiers,
+        }
     }
 
     pub(super) fn type_index(&self, kind: SemanticTokenKind) -> Option<u8> {

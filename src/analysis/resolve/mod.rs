@@ -44,6 +44,12 @@ impl<'a> View<'a> {
     ) -> Vec<(&'a PathBuf, &'a crate::index::IndexedFile)> {
         candidates::dependent_candidates(self, file)
     }
+    pub(crate) fn dependent_packages(
+        self,
+        file: &Path,
+    ) -> Option<candidates::DependentPackages<'a>> {
+        candidates::dependent_packages(self, file)
+    }
     pub(crate) fn file_symbol_iter(
         self,
         file: &Path,

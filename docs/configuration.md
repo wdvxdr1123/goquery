@@ -26,6 +26,14 @@ LSP `initializationOptions`, not the dynamic `workspace/configuration` channel:
 
 ## Options
 
+The stdio runtime can read cancellation notifications while a single background
+thread processes workspace changes and queries in order. Read-ahead pauses at
+eight admitted messages or 1 MiB of admitted LSP body bytes. A frame can cross
+the byte threshold and the next decoded frame can wait for admission.
+Document highlighting checks for cancellation between regions and candidate
+matches. Other active queries finish their current computation before the worker
+discards a cancelled result. These limits are fixed.
+
 | Key | Type | Description |
 | --- | --- | --- |
 | `goroot` | string | Optional SDK override. Absolute Go SDK root containing `src/builtin/builtin.go`. `""` disables SDK discovery. Default: `go env GOROOT`, then `GOROOT`, then the installation layout of `go` on `PATH`. |
@@ -36,11 +44,19 @@ LSP `initializationOptions`, not the dynamic `workspace/configuration` channel:
 | `usePlaceholders` | bool | Insert snippet placeholders in function/method completions when the client supports snippets. Default `false`. |
 | `completeFunctionCalls` | bool | Insert call syntax on function/method completion. Default `true`. |
 | `completionDocumentation` | bool | Attach documentation to completion items. Default `true`. |
+| `semanticTokens` | bool | Enable full and range semantic tokens. Default `true`. With `false`, the server omits `semanticTokensProvider` at initialization and returns `null` for token requests. Restart the server to apply changes. |
+| `documentHighlight` | bool | Enable symbol occurrence highlights in the current document. Default `true`. With `false`, the server omits `documentHighlightProvider` at initialization and returns `null` for highlight requests. Restart the server to apply changes. |
+| `diagnostics.onSave` | bool | Compute and push diagnostics on `textDocument/didSave`. Default `true`. Set to `false` for live diagnostics on open, edit, and file events. Restart the server to apply changes. |
 | `fileWatch` | bool | Enable the server file watcher (Windows directory notifications, Linux inotify, macOS FSEvents). Default `true`; `false` disables it without enabling polling. |
 | `fileWatchMaxRoots` | integer | File watch root budget after merging overlapping roots. Default `128`; `0` removes this application limit. |
 | `fileWatchMaxDirectories` | integer | Directory watch budget on Linux and other nonrecursive backends. Default `4096`; `0` removes this application limit. Unused on Windows/macOS. |
 | `fileWatchMaxEntries` | integer | Entry budget for file-watcher directory discovery on Linux and other nonrecursive backends. Default `20000`; `0` removes this application limit. Unused on Windows/macOS. |
 | `fileWatchExcludeDirectories` | string[] | Regexes matching relative directory ancestor prefixes with `/` separators. Matching a directory excludes its subtree from file watching and event-triggered disk checks. Default `[]`. |
+
+Save-only diagnostics use the nested option `"diagnostics": {"onSave": true}`.
+Automatic saves also send `didSave`. In Zed, set the top-level editor option
+`"autosave": "off"` to disable periodic or focus-triggered autosaves.
+`GOQUERY_DISABLE_DIAG` takes precedence over the trigger setting.
 
 File events wake a task with one coalesced pending flag and a 100 ms burst debounce.
 There is no periodic scan, request-triggered poll or polling fallback. Errors are

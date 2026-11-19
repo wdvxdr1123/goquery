@@ -18,9 +18,8 @@ pub(crate) mod semantic_tokens;
 mod semantics;
 mod signatures;
 pub(crate) mod symbols;
-pub(crate) use crate::analysis::types::TypeDeclaration;
-pub(crate) use locations::{SourceLocation, SourceRange};
-pub(crate) use navigation::{ReferenceTarget, Target as NavigationSymbolTarget};
+pub(crate) use locations::{Location, SourceLocation, SourceRange};
+pub(crate) use navigation::ReferenceTarget;
 pub(crate) use signatures::SignatureTrigger;
 pub(crate) use signatures::label::CallableSignature;
 mod source;
@@ -43,7 +42,7 @@ pub(crate) struct Context<'a, View = Document<'a>> {
     sema: RefCell<Option<crate::analysis::sema::Semantics<'a>>>,
 }
 impl<'a, View> Context<'a, View> {
-    pub(crate) fn with_sema<R>(
+    pub(in crate::analysis::query) fn with_sema<R>(
         &self,
         f: impl FnOnce(&mut crate::analysis::sema::Semantics<'a>) -> R,
     ) -> R {

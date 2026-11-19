@@ -109,7 +109,7 @@ impl<'a> Semantics<'a> {
                 if !operand.mode.is_value() {
                     return Some(false);
                 }
-                if arena.assign_value(operand, target, int_bits) == Some(true) {
+                if arena.assignable(operand, target, int_bits) == Some(true) {
                     return Some(true);
                 }
                 if calls
@@ -118,7 +118,7 @@ impl<'a> Semantics<'a> {
                     && let Some((_, results, _)) = arena.signature_parts(operand.ty)
                     && results.len() == 1
                 {
-                    return arena.assign_value(
+                    return arena.assignable(
                         Operand {
                             mode: Mode::Value,
                             ty: results[0],
@@ -128,7 +128,7 @@ impl<'a> Semantics<'a> {
                         int_bits,
                     );
                 }
-                arena.assign_value(operand, target, int_bits)
+                arena.assignable(operand, target, int_bits)
             });
             self.decls.rewind_above(self.arena.node_count());
             compatible.push(fit);

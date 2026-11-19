@@ -1,8 +1,8 @@
 //! Tier 1 demand-driven declaration resolution with cycle detection (`obj_path`).
 
 use crate::analysis::budget::{MAX_BYTES, MAX_DECL_CACHE, MAX_DEPTH};
-use crate::analysis::check::RegionChecker;
 use crate::analysis::check::region::RegionInfo;
+use crate::analysis::check::{ExprOutcome, RegionChecker};
 use crate::analysis::obj::DeclId;
 use crate::analysis::resolve::UnqualifiedLookup;
 use crate::analysis::scope::tree::ScopeTree;
@@ -17,6 +17,7 @@ use std::path::Path;
 enum DeclSlot {
     Checking,
     Ready { operand: Operand, arena_len: u16 },
+    InvalidVar,
     Failed,
 }
 
@@ -65,9 +66,10 @@ impl<'a> DeclCache<'a> {
     }
 
     pub(crate) fn rewind_above(&mut self, max_nodes: u16) {
-        self.slots.retain(
-            |_, slot| matches!(slot, DeclSlot::Ready { arena_len, .. } if *arena_len <= max_nodes),
-        );
+        self.slots.retain(|_, slot| {
+            matches!(slot, DeclSlot::Ready { arena_len, .. } if *arena_len <= max_nodes)
+                || matches!(slot, DeclSlot::InvalidVar)
+        });
     }
 
     fn ensure_file_scope(&mut self, file: &'a Path) -> Option<&mut FileScopeMemo<'a>> {
@@ -238,7 +240,7 @@ impl<'a> DeclCache<'a> {
         if let Some(slot) = self.slots.get(&decl).copied() {
             return match slot {
                 DeclSlot::Ready { operand, .. } => Some(operand),
-                DeclSlot::Checking | DeclSlot::Failed => None,
+                DeclSlot::Checking | DeclSlot::InvalidVar | DeclSlot::Failed => None,
             };
         }
         if self.slots.len() >= MAX_DECL_CACHE || self.obj_path.len() >= MAX_DEPTH {
@@ -249,6 +251,10 @@ impl<'a> DeclCache<'a> {
         let resolved = self.resolve_uncached(arena, decl);
         self.obj_path.pop();
         match resolved {
+            Some(operand) if operand.mode == Mode::Invalid => {
+                self.slots.insert(decl, DeclSlot::InvalidVar);
+                None
+            }
             Some(operand) => {
                 self.slots.insert(
                     decl,
@@ -264,6 +270,10 @@ impl<'a> DeclCache<'a> {
                 None
             }
         }
+    }
+
+    pub(super) fn invalid_var(&self, decl: DeclId<'a>) -> bool {
+        matches!(self.slots.get(&decl), Some(DeclSlot::InvalidVar))
     }
 
     pub(crate) fn type_of(
@@ -467,7 +477,13 @@ impl<'a> DeclCache<'a> {
                     value: None,
                 });
             } else if values.len() == names.len() {
-                checker.check_expr(values[position], target)?
+                let outcome = checker.check_expr_outcome(values[position], target);
+                if !constant && matches!(outcome, ExprOutcome::MissingName) {
+                    // A directly missing initializer or callee proves the
+                    // inferred variable type invalid, independent of the arena.
+                    return Some(Operand::non_value(Mode::Invalid));
+                }
+                outcome.operand()?
             } else if values.len() == 1 && !constant && names.len() > 1 {
                 checker
                     .check_multi_expr(values[0], names.len())?

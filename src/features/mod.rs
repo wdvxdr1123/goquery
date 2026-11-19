@@ -20,4 +20,6 @@ mod type_definition;
 mod type_hierarchy;
 pub(crate) use completion::CompletionConfig;
 pub(crate) use highlighting::SemanticConfig;
-pub(crate) use query::{CallDirection, DocumentQuery, Query, TypeDirection, execute};
+pub(crate) use query::{
+    CallDirection, DocumentQuery, Query, TypeDirection, execute, execute_cancellable,
+};

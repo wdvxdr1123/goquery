@@ -2,13 +2,12 @@
 
 ## Notes
 
-- Do not write invalid or duplicate tests. Keep integration tests centralized in
-  `tests/stdio.rs` (real stdio e2e); put pure logic contract tests in the
-  corresponding module's `#[cfg(test)]` and do not add scattered test files.
+- Write new tests as real stdio end-to-end tests in `tests/stdio.rs`. Exercise
+  the public LSP entry points and avoid invalid or duplicate coverage.
 - Keep the multi-layered architecture; do not pile too many responsibilities into
   a single file. Prefer placing new logic in existing modules.
-- Do not introduce unnecessary dependencies. After changes, always run
-  `cargo fmt --check`, `cargo test` and `cargo clippy --all-targets -- -D warnings`.
+- Do not introduce unnecessary dependencies. Use targeted checks while changes
+  are in progress. Run the full verification suite once the work is complete.
 - Use the edit/write tools for code changes; do not rewrite source files in bulk.
 - Record unfinished capabilities honestly; do not redefine acceptance criteria
   around current results.
@@ -19,8 +18,9 @@ Build a compact Rust Go language server with a ccls-like feature scope and gopls
 as the semantic reference, for editors and AI-assisted development.
 
 - The server is a library (`src/lib.rs`) plus a thin stdio binary
-  (`src/main.rs` → `goquery::run`), built on tower-lsp with a current-thread
-  Tokio runtime and sequential request handling.
+  (`src/main.rs` → `goquery::run`). A current-thread Tokio runtime handles
+  tower-lsp I/O, and one background thread owns the workspace and executes
+  ordered jobs. Bounded read-ahead admits cancellation during computation.
 - goquery indexes source directly and answers semantic requests without launching
   `go` or `gopls`. The only Go invocations are one bounded `go env` probe during
   initialization (SDK/module-cache defaults) and `gofmt` for formatting. Both may
@@ -66,6 +66,13 @@ as the semantic reference, for editors and AI-assisted development.
 
 - Use tower-lsp for framing, lifecycle and typed routing; do not add a second
   protocol dispatcher. Register custom methods with `LspService`.
+- Keep document events and queries in protocol order. The transport admits
+  at most eight messages and pauses when their wire body lengths reach 1 MiB.
+  One frame can cross that threshold and one decoded frame can await admission.
+  The worker has one queued job in addition to the job it is executing. Check
+  cancellation before queuing a query, before computing it, and before emitting
+  its result. Document highlights also check cancellation between scan regions
+  and candidate matches.
 - Keep dependencies directed: features → analysis/query/workspace; analysis must
   not import feature or server modules. Do not reintroduce retired Workspace
   semantic entry points; document features admit through `analysis::query::Context`.
@@ -74,8 +81,10 @@ as the semantic reference, for editors and AI-assisted development.
 - External changes enter through dynamic `workspace/didChangeWatchedFiles`
   registration (only when the client advertises it) and the typed watched-files
   event: one bounded batch, one dependency/SDK discovery pass, module-plan
-  refresh for `go.mod`/`go.work` updates, and diagnostic republishes for affected
-  open documents (changed package first, then direct importers). When the client
+  refresh for `go.mod`/`go.work` updates, and live diagnostic republishes for affected
+  open documents (changed package first, then direct importers). Diagnostics
+  default to `didSave` only. Live diagnostics require
+  `initializationOptions.diagnostics.onSave: false`. When the client
   supplies no file events (agent/shell edits), file watching (`fileWatch`, default
   true) wakes a task with one coalesced pending flag and a 100 ms burst debounce.
   There is no periodic/request-triggered disk polling or polling fallback.
@@ -108,6 +117,11 @@ as the semantic reference, for editors and AI-assisted development.
   type nodes, operand modes and explicit assignment/instantiation relations.
   Do not grow spelling heuristics in place of semantic algorithms. Compare with
   the pinned offline go/types oracle; never invoke Go during semantic queries.
+- Keep lexer access in syntax for compiler and syntax diagnostics. Pass
+  parser errors, import spans and body nodes to the check and query layers.
+  Reuse parsed declaration and clause delimiters for scopes and analysis.
+  Publish the first syntax error for a file and suppress its compiler
+  diagnostics while it is malformed.
 - Module planning is offline: `go.mod`/`go.work`, selected main modules, local
   replacements, nested modules and cache mounts only. Never download or invoke
   Go for dependency resolution. Missing manifests/cache entries are logged as

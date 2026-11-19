@@ -60,47 +60,53 @@ pub fn parse_type_parameters(source: &str) -> Signature {
 }
 
 #[derive(PartialEq, Eq)]
-enum HeaderKind {
+pub(in crate::syntax::parser) enum HeaderKind {
     Named,
     Literal,
 }
 
 fn header(source: &str, kind: HeaderKind) -> Signature {
     let mut parser = Parser::new(source);
-    parser.expect_kind(TokenKind::Func, "expected func");
-    let receiver = if kind == HeaderKind::Named && parser.at(TokenKind::LParen) {
-        parser.parameter_list(ParameterContext::Inputs, 0).0
-    } else {
-        Vec::new()
-    };
-    if kind == HeaderKind::Named {
-        parser.expect_kind(TokenKind::Ident, "expected function name");
-    }
-    let type_parameters = if kind == HeaderKind::Named && parser.at(TokenKind::LBrack) {
-        parser.parameter_list(ParameterContext::TypeParameters, 0).0
-    } else {
-        Vec::new()
-    };
-    let (parameters, end) = parser.parameter_list(ParameterContext::Inputs, 0);
-    let (results, _) = parser.result_parameters(0, end);
+    let mut signature = parser.signature_header(kind);
     while parser.at(TokenKind::Semicolon) {
         parser.tokens.next();
     }
     if let Some(token) = parser.tokens.next() {
         parser.error(token.span, "unexpected token after signature");
     }
-    Signature {
-        receiver,
-        type_parameters,
-        parameters,
-        results,
-        diagnostics: parser.diagnostics,
-        type_references: parser.type_references,
-        expressions: parser.nodes,
-    }
+    signature.diagnostics = parser.diagnostics;
+    signature.type_references = parser.type_references;
+    signature.expressions = parser.nodes;
+    signature
 }
 
 impl Parser<'_> {
+    pub(in crate::syntax::parser) fn signature_header(&mut self, kind: HeaderKind) -> Signature {
+        self.expect_kind(TokenKind::Func, "expected func");
+        let receiver = if kind == HeaderKind::Named && self.at(TokenKind::LParen) {
+            self.parameter_list(ParameterContext::Inputs, 0).0
+        } else {
+            Vec::new()
+        };
+        if kind == HeaderKind::Named {
+            self.expect_kind(TokenKind::Ident, "expected function name");
+        }
+        let type_parameters = if kind == HeaderKind::Named && self.at(TokenKind::LBrack) {
+            self.parameter_list(ParameterContext::TypeParameters, 0).0
+        } else {
+            Vec::new()
+        };
+        let (parameters, end) = self.parameter_list(ParameterContext::Inputs, 0);
+        let (results, _) = self.result_parameters(0, end);
+        Signature {
+            receiver,
+            type_parameters,
+            parameters,
+            results,
+            ..Signature::default()
+        }
+    }
+
     fn at(&mut self, kind: TokenKind) -> bool {
         self.tokens.peek().is_some_and(|token| token.kind == kind)
     }

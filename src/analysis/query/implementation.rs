@@ -7,7 +7,7 @@
 //! corresponding member of its method set.
 use super::hierarchy::SymbolTarget;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::obj::NamedObject;
+use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
 use crate::analysis::resolve::MemberDescription;
 use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
 use crate::analysis::scope::{self, DeclarationKind};
@@ -91,7 +91,7 @@ impl<'a> Context<'a> {
         {
             classify_member(member)?
         } else {
-            let analysis = Occurrences::new(source, stub)?;
+            let analysis = Occurrences::for_name(source, stub, &source[selection.clone()])?;
             let Some(name) = analysis.names.iter().find(|name| name.span == selection) else {
                 return Err((0, "no identifier found".to_owned()));
             };
@@ -164,57 +164,39 @@ impl<'a> Context<'a> {
     ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
         let supers = !self.type_is_interface(file, owner);
         let mut locations: Vec<SourceLocation<'a>> = Vec::new();
-        for target in self.type_relations(file, owner, supers)? {
-            let Some((_, members)) = self.with_sema(|sema| {
-                sema.implementation_members_matching(
-                    crate::analysis::obj::DeclId {
+        for target in self.method_relations(file, owner, supers, name)? {
+            let Some(member) = self.with_sema(|sema| {
+                sema.implementation_method_object(
+                    DeclId {
                         file: target.file,
                         symbol: target.symbol,
                     },
-                    Some(&[name]),
+                    file,
+                    name,
                 )
             }) else {
                 continue;
             };
-            for member in members {
-                if !self.member_matches(member, file, name) {
-                    continue;
-                }
-                // A promoted method declared by the queried interface keeps the
-                // interface declaration as its location; gopls reports it and
-                // dedups equal locations across embedding types.
-                if let Some(location) = self.member_location(member) {
-                    locations.push(location);
-                }
-                break;
+            // A promoted method retains its original declaration, even when
+            // multiple embedding types contribute the same location.
+            if let Some(location) = self.implementation_method_location(member) {
+                locations.push(location);
             }
         }
         Ok(locations)
     }
 
-    /// Unexported method names carry the declaring package's identity.
-    fn member_matches(&self, member: NamedObject<'a>, file: &Path, name: &str) -> bool {
-        let Some(origin) = member.file() else {
-            return false;
-        };
-        member.name == name
-            && crate::analysis::resolve::member_id(self.workspace, origin, member.name)
-                == crate::analysis::resolve::member_id(self.workspace, file, name)
-    }
-
-    fn member_location(&self, member: NamedObject<'a>) -> Option<SourceLocation<'a>> {
-        if let Some(decl) = member.method() {
-            Some(SourceLocation {
+    fn implementation_method_location(&self, object: ObjectRef<'a>) -> Option<SourceLocation<'a>> {
+        match object {
+            ObjectRef::Method(MethodOrigin::Concrete(decl)) => Some(SourceLocation {
                 file: decl.file,
-                range: selection_range(&decl.symbol.selection),
-            })
-        } else {
-            let identity = member.member_id()?;
-            let range = self.member_selection(identity, &SourceMap::new(self.source()))?;
-            Some(SourceLocation {
-                file: identity.file,
-                range,
-            })
+                range: SourceRange::indexed_selection(&decl.symbol.selection),
+            }),
+            ObjectRef::Method(MethodOrigin::Interface(member)) => Some(SourceLocation {
+                file: member.file,
+                range: self.member_selection(member, &mut None)?,
+            }),
+            _ => None,
         }
     }
 }
@@ -222,15 +204,8 @@ impl<'a> Context<'a> {
 fn declaration_location(target: SymbolTarget<'_>) -> SourceLocation<'_> {
     SourceLocation {
         file: target.file,
-        range: selection_range(&target.symbol.selection),
+        range: SourceRange::indexed_selection(&target.symbol.selection),
     }
-}
-
-fn selection_range(range: &tower_lsp::lsp_types::Range) -> SourceRange {
-    SourceRange::coordinates(
-        (range.start.line, range.start.character),
-        (range.end.line, range.end.character),
-    )
 }
 
 /// Results keep the protocol's URI ordering, deduplicated within the cap.

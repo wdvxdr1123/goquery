@@ -44,6 +44,8 @@ pub(crate) struct RegionInfo<'a> {
     pub(crate) uses: Vec<([u32; 2], ObjectRef<'a>)>,
     /// Bare identifiers assigned without reading their previous value.
     pub(super) writes: Vec<[u32; 2]>,
+    /// False when recovery, cursor filtering, or budgets can omit reads.
+    /// An unknown operand type alone does not affect this.
     pub(super) uses_complete: bool,
     pub(crate) implicits: Vec<([u32; 2], ObjectRef<'a>)>,
     pub(crate) selections: Vec<([u32; 2], Selection<'a>)>,

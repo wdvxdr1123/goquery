@@ -2,9 +2,7 @@
 
 use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
 use crate::analysis::obj::{LocalId, ScopeId};
-use crate::syntax::{
-    BlockTree, Expr, ExprId, ExprKind, Lexer, Signature, StmtId, StmtKind, TokenKind,
-};
+use crate::syntax::{BlockTree, Expr, ExprId, ExprKind, Signature, StmtId, StmtKind};
 use std::ops::Range;
 
 const MAX_SCOPE_NODES: usize = 4096;
@@ -593,13 +591,10 @@ impl TreeBuilder<'_> {
                     }
                 }
                 let is_type = kw_text == "type";
-                let alias = is_type
-                    && names.first().is_some_and(|name| {
-                        Lexer::new(&self.source[base + name.end..base + stmt.span.end])
-                            .any(|token| token.kind == TokenKind::Assign)
-                    });
                 let kind = match kw_text {
-                    "type" => LocalBindingKind::TypeDecl { alias },
+                    "type" => LocalBindingKind::TypeDecl {
+                        alias: body.declaration_equals(stmt_id).is_some(),
+                    },
                     "const" => LocalBindingKind::Const,
                     _ => LocalBindingKind::Var,
                 };
@@ -801,8 +796,9 @@ impl TreeBuilder<'_> {
                 if let Some(comm_id) = communication
                     && let Some(comm_stmt) = body.statement(*comm_id)
                 {
-                    let visible =
-                        self.clause_body_start(Some(base + comm_stmt.span.end), own[1] as usize);
+                    let visible = body
+                        .clause_body_start(stmt_id)
+                        .map_or(own[1], |start| (base + start) as u32);
                     if let StmtKind::Assignment {
                         left,
                         operator,
@@ -813,7 +809,11 @@ impl TreeBuilder<'_> {
                         for &expr in right {
                             self.walk_expr(comm_scope, base, body, expr, depth + 1);
                         }
-                        if right.len() == 1 && self.is_receive_expr(base, body, right[0]) {
+                        if right.len() == 1
+                            && body.is_receive(right[0], |span| {
+                                self.source.get(base + span.start..base + span.end) == Some("<-")
+                            })
+                        {
                             self.bind_short_vars(comm_scope, base, body, *comm_id, left, visible);
                         }
                     } else {
@@ -837,23 +837,6 @@ impl TreeBuilder<'_> {
             }
             StmtKind::Branch { .. } | StmtKind::Missing => {}
         }
-    }
-
-    fn is_receive_expr(&self, base: usize, body: &BlockTree, mut id: ExprId) -> bool {
-        for _ in 0..32 {
-            let Some(expr) = body.expression(id) else {
-                return false;
-            };
-            match &expr.kind {
-                ExprKind::Parenthesized { expression } => id = *expression,
-                ExprKind::Unary { operator, .. } => {
-                    return self.source.get(base + operator.start..base + operator.end)
-                        == Some("<-");
-                }
-                _ => return false,
-            }
-        }
-        false
     }
 
     fn bind_short_vars(
@@ -962,16 +945,9 @@ impl TreeBuilder<'_> {
             self.walk_expr(parent, base, body, value, depth + 1);
         }
         if let Some((guard_stmt, guard_span)) = guard_binding {
-            let header_end = values.last().map_or_else(
-                || {
-                    self.source
-                        .get(own[0] as usize..own[1] as usize)
-                        .and_then(|slice| Lexer::new(slice).next())
-                        .map(|token| own[0] as usize + token.span.end)
-                },
-                |value| body.expression(*value).map(|expr| base + expr.span.end),
-            );
-            let visible = self.clause_body_start(header_end, own[1] as usize);
+            let visible = body
+                .clause_body_start(case_id)
+                .map_or(own[1], |start| (base + start) as u32);
             self.tree.push_binding(
                 case_scope,
                 guard_span,
@@ -986,16 +962,6 @@ impl TreeBuilder<'_> {
         for &child in statements {
             self.walk_statement(case_scope, base, body, child, 0, depth + 1);
         }
-    }
-
-    fn clause_body_start(&self, header_end: Option<usize>, end: usize) -> u32 {
-        let start = header_end
-            .and_then(|offset| {
-                let colon = Lexer::new(self.source.get(offset..end)?).next()?;
-                (colon.kind == TokenKind::Colon).then_some(offset + colon.span.end)
-            })
-            .unwrap_or(end);
-        u32::try_from(start).unwrap_or(0)
     }
 
     fn walk_expr(
@@ -1128,7 +1094,7 @@ impl TreeBuilder<'_> {
                     self.walk_expr(scope, base, body, sub, depth + 1);
                 }
             }
-            ExprKind::Name | ExprKind::Literal | ExprKind::Missing | ExprKind::Type => {}
+            ExprKind::Name | ExprKind::Literal(_) | ExprKind::Missing | ExprKind::Type => {}
         }
     }
 }

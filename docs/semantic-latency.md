@@ -328,3 +328,119 @@ request above 100 ms in those groups. Token/highlight timings above belong to
 the preceding nested-signature snapshot.
 Verification overlapped the enhanced Ollama memory workload; no controlled
 speed improvement is claimed. The SDK token latency target remains unmet.
+
+## Workspace worker and generated dependency highlights
+
+The Windows MikuFan trace reached a generated `mygo` method call with 369
+same-spelling candidates. The installed baseline spent about 4.6 s per
+highlight, mainly in candidate identity checks. Type parsing now reuses exact
+file-scoped declaration lookups within each arena. The table holds at most 1,024
+entries and 16 KiB of name bytes. It retains declaration identities through
+region rewinds and is dropped with the arena.
+
+The release replay reduced the two-highlight burst from 11.2 s to 272 ms at
+the final code-action reply. The first highlight and the hover both returned
+`RequestCancelled`. The surviving highlight returned all 359 original rows.
+Cancelling after the highlight started its candidate phase took 1.7 ms to
+respond, and the following definition took 4.3 ms from cancellation. All four
+standalone MikuFan responses matched gopls v0.24.0 with Go 1.27.3.
+
+The separate mysing trace submitted hover and highlight at LSP coordinate
+`6798:20` on `_handle.node()`. Its definition requests targeted coordinates on
+the `Element` and `_node.c` lines. On replay, a definition at `6798:20` returned
+`ui/frame.go:97` in 4.2–4.6 ms alone and in 289–300 ms queued behind the
+uncancelled highlight, across runs with file watching enabled and disabled.
+All three definition replies matched gopls. The uncancelled highlight at that
+coordinate still exceeds 100 ms.
+
+The complete highlight comparisons matched SDK 120/120, Tile38 109/109,
+Ollama 120/120, typescript-go 118/118, and Prometheus 119/120. The Prometheus
+residual is unchanged from the baseline. `promql/engine_test.go:start@18594`
+omits two read highlights at LSP ranges `640:93..98` and `642:91..96`.
+These checks use prepared, offline package inputs and make no full-build claim.
+
+The corpus comparisons ran concurrently. These sampled Prometheus highlights
+exceeded 100 ms on at least one build:
+
+| Request | Initial worker, ms | Follow-up, ms |
+| --- | ---: | ---: |
+| `model/histogram/histogram_test.go:CustomBucketsSchema@18874` | 133.3 | 125.7 |
+| `model/histogram/histogram_test.go:Histogram@30039` | 110.9 | 120.4 |
+| `model/histogram/histogram_test.go:PositiveBuckets@42176` | 115.3 | 131.1 |
+| `promql/engine_test.go:Unix@38189` | 425.8 | 389.5 |
+| `promql/engine_test.go:Second@65161` | 362.7 | 320.4 |
+| `promql/engine_test.go:Query@95132` | 259.8 | 190.8 |
+| `promql/engine_test.go:F@110291` | 176.3 | 131.5 |
+| `promql/engine_test.go:T@124006` | 140.7 | 115.0 |
+| `promql/engine_test.go:parser@139323` | 186.7 | 180.2 |
+| `promql/engine_test.go:i@174861` | 103.2 | 78.8 |
+| `promql/engine_test.go:Close@201079` | 279.9 | 224.9 |
+
+The initial worker build completed three pinned Ollama cycles over 1,068 Go
+files, including the type-definition and type-shape probes. Windows root peak
+working set was 61,919,232 B and sampled private bytes peaked at 51,707,904 B.
+The maximum sampled `gofmt` working set was 9,261,056 B, with 13,901,824 B
+private. Child samples ran every 50 ms.
+
+### Full mysing follow-up replay
+
+Highlights now collect only occurrences of the selected spelling and plan
+which functions contain a single selector candidate. The statement-prefix
+checker proves those identities. Functions with multiple candidates share a
+full check. Quick-fix requests with no supported diagnostic can answer from
+their parameters for admitted open files. CodeLens skips the syntax index when
+the source has neither the generate marker nor a possible cgo import literal.
+
+Five Windows release replays used the complete `op.log` message order, the
+logged generated buffer, disk text for the earlier editor buffers, and default
+file watching. The replay appended a definition request at the actual method
+selection before the final cancellation notification. All 54 complete replies
+in every run matched the initial worker build, including cancellation statuses.
+The generated-file `didOpen` mutation took 4 ms in the workspace edit trace.
+
+| Operation | Initial worker, ms | Follow-up range, ms |
+| --- | ---: | ---: |
+| `didOpen` through the first subsequent highlight reply (503) | 10.62 | 9.28–9.85 |
+| Definition before the slow burst (504) | 11.10 | 11.32–11.89 |
+| `Opacity` highlight (505) | 24.76 | 18.55–19.38 |
+| Empty quick fix on the dependency (518) | 0.54 | 0.09–0.26 |
+| CodeLens (519) | 7.58 | 1.89–2.18 |
+| `node` hover (520) | 13.90 | 14.00–14.58 |
+| `node` highlight (522) | 317.23 | 95.49–99.87 |
+| Empty quick fix behind the highlight (524) | 317.36 | 95.52–99.86 |
+| Added `node` definition behind the highlight (525) | 321.61 | 99.22–103.82 |
+
+`node` still resolves to the complete declaration range in `ui/frame.go:97`.
+The original editor messages at `6798:20` were hover and highlight. The
+follow-up timings measure the server through stdio. The local offline module
+plan reported five unavailable cached manifests.
+
+The follow-up replay of the earlier MikuFan burst returned its final reply
+at 102.5 ms. A separate replay cancelled a highlight after the candidate phase
+started. The cancellation reply arrived in 2.5 ms and the following definition
+arrived 5.5 ms after cancellation.
+
+The gopls v0.24.0 / Go 1.27.3 checks for the other paths matched definition
+18/18 in the SDK, CodeLens 12/12 in the SDK and 2/2 in the fixture, code
+actions 4/4 in the feature fixture and 24/26 in the diagnostics fixture.
+The two action residuals are the undefined-name quick fix and the unused-import
+organize edit. All 26 action replies matched the initial worker. SDK hover
+matched 336/351. All 351 hover responses matched the
+initial worker on the same plan. The 15 gopls residuals include three missing
+struct layout annotations and nine absent local or field hovers in
+`cmd/compile/internal/ssa/loopreschedchecks.go`, plus absent hovers at
+`bytes/boundary_test.go:PROT_WRITE@861`,
+`crypto/internal/cryptotest/wycheproof/_schema/schema_gen.go:err@930`, and
+`runtime/traceruntime.go:trace@2851`.
+
+The follow-up highlight comparison retained the five match totals and the
+same two missing Prometheus read highlights. All sampled follow-up highlights
+in the SDK, Tile38, Ollama and typescript-go completed below 100 ms. The
+concurrent SDK hover sample peaked at 446.5 ms in the linker fixture, and the
+SDK definition sample peaked at 128.9 ms in the assembler fixture.
+
+The follow-up release passed one complete pinned Ollama cycle over all 1,068
+Go files, with type-definition and type-shape probes. Root OS peak working set
+was 58,368,000 B and sampled private bytes peaked at 48,336,896 B. Separately,
+the observed `gofmt` child reached 6,402,048 B working set and 12,029,952 B
+private in 50 ms samples.

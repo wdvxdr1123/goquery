@@ -1,43 +1,21 @@
 use crate::syntax::ast::expression::{ExprId, ExprKind};
 use crate::syntax::ast::statement::{BlockTree, LocalTypeParameters, Statement, StmtId, StmtKind};
 use crate::syntax::parser::expression::Parser;
-use crate::syntax::token::TokenKind;
+use crate::syntax::token::{Token, TokenKind};
 use std::ops::Range;
 
 /// Parses a body beginning with `{`. This initial statement grammar supports
 /// nested blocks, simple statements, returns and single local declarations.
 /// Unsupported syntax is diagnosed and recovered at a statement boundary.
 pub fn parse_block(source: &str) -> BlockTree {
-    let mut body = BodyParser {
-        parser: Parser::new(source),
-        statements: Vec::new(),
-        type_parameters: Vec::new(),
-        range_header: false,
-    };
+    let mut body = BodyParser::new(Parser::new(source));
     let root = body.block(0);
-    while body.eat(TokenKind::Semicolon) {}
-    if let Some(token) = body.parser.tokens.next() {
-        body.parser
-            .error(token.span, "unexpected token after block");
-    }
-    BlockTree {
-        root,
-        statements: body.statements,
-        expressions: body.parser.nodes,
-        diagnostics: body.parser.diagnostics,
-        type_references: body.parser.type_references,
-        type_parameters: body.type_parameters,
-    }
+    body.finish(root, "unexpected token after block")
 }
 
 /// Reuse declaration grammar without keeping its statement arena between specs.
 pub(in crate::syntax::parser) fn declaration_parser(parser: Parser<'_>) -> Parser<'_> {
-    let mut body = BodyParser {
-        parser,
-        statements: Vec::new(),
-        type_parameters: Vec::new(),
-        range_header: false,
-    };
+    let mut body = BodyParser::new(parser);
     body.declaration();
     body.parser
 }
@@ -47,22 +25,65 @@ pub(super) struct BodyParser<'a> {
     pub(super) parser: Parser<'a>,
     pub(super) statements: Vec<Statement>,
     pub(super) type_parameters: Vec<LocalTypeParameters>,
+    delimiters: Vec<(StmtId, usize)>,
 }
 
-impl BodyParser<'_> {
+impl<'a> BodyParser<'a> {
+    pub(super) fn new(parser: Parser<'a>) -> Self {
+        Self {
+            parser,
+            statements: Vec::new(),
+            type_parameters: Vec::new(),
+            range_header: false,
+            delimiters: Vec::new(),
+        }
+    }
+
+    pub(super) fn finish(mut self, root: StmtId, unexpected: &'static str) -> BlockTree {
+        while self.eat(TokenKind::Semicolon) {}
+        if let Some(token) = self.parser.tokens.next() {
+            self.parser.error(token.span, unexpected);
+        }
+        BlockTree {
+            root,
+            statements: self.statements,
+            expressions: self.parser.nodes,
+            diagnostics: self.parser.diagnostics,
+            type_references: self.parser.type_references,
+            type_parameters: self.type_parameters,
+            delimiters: self.delimiters,
+        }
+    }
+
     pub(super) fn add(&mut self, kind: StmtKind, span: Range<usize>) -> StmtId {
         let id = StmtId(self.statements.len());
         self.statements.push(Statement { kind, span });
         id
     }
 
-    pub(super) fn eat(&mut self, kind: TokenKind) -> bool {
-        if self.parser.tokens.peek().is_some_and(|t| t.kind == kind) {
-            self.parser.tokens.next();
-            true
-        } else {
-            false
+    pub(super) fn add_delimited(
+        &mut self,
+        kind: StmtKind,
+        span: Range<usize>,
+        delimiter: Option<usize>,
+    ) -> StmtId {
+        let id = self.add(kind, span);
+        if let Some(offset) = delimiter {
+            self.delimiters.push((id, offset));
         }
+        id
+    }
+
+    pub(super) fn take(&mut self, kind: TokenKind) -> Option<Token> {
+        if self.parser.tokens.peek().is_some_and(|t| t.kind == kind) {
+            self.parser.tokens.next()
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn eat(&mut self, kind: TokenKind) -> bool {
+        self.take(kind).is_some()
     }
 
     pub(super) fn block(&mut self, depth: usize) -> StmtId {
@@ -105,14 +126,8 @@ impl BodyParser<'_> {
             {
                 break;
             }
-            let span = self
-                .parser
-                .tokens
-                .peek()
-                .map_or(self.parser.source.len()..self.parser.source.len(), |t| {
-                    t.span.clone()
-                });
-            self.parser.error(span, "expected statement separator");
+            self.parser
+                .error_here("expected statement separator", Some("expected ';'"));
             // Always make progress, including for unsupported control flow.
             while let Some(next) = self.parser.tokens.peek() {
                 if matches!(next.kind, TokenKind::Semicolon | TokenKind::RBrace)
@@ -259,17 +274,35 @@ impl BodyParser<'_> {
                 .map_or(token.span.end, |id| self.parser.nodes[id.0].span.end);
             return self.add(StmtKind::Return { values }, token.span.start..end);
         }
-        if matches!(spelling, "go" | "defer") {
+        if matches!(token.kind, TokenKind::Go | TokenKind::Defer) {
             self.parser.tokens.next();
             let call = self.parser.expression(1, 0);
-            if !matches!(self.parser.nodes[call.0].kind, ExprKind::Call { .. }) {
-                self.parser.error(
-                    self.parser.nodes[call.0].span.clone(),
-                    "go/defer requires an unparenthesized call",
-                );
+            let expr = &self.parser.nodes[call.0];
+            let end = expr.span.end;
+            let is_go = token.kind == TokenKind::Go;
+            match expr.kind {
+                ExprKind::Parenthesized { .. } => {
+                    let start = expr.span.start;
+                    self.parser.error(
+                        start..start,
+                        if is_go {
+                            "expression in go must not be parenthesized"
+                        } else {
+                            "expression in defer must not be parenthesized"
+                        },
+                    );
+                }
+                ExprKind::Call { .. } | ExprKind::Missing => {}
+                _ => self.parser.error(
+                    end..end,
+                    if is_go {
+                        "expression in go must be function call"
+                    } else {
+                        "expression in defer must be function call"
+                    },
+                ),
             }
-            let end = self.parser.nodes[call.0].span.end;
-            let kind = if spelling == "go" {
+            let kind = if is_go {
                 StmtKind::Go { call }
             } else {
                 StmtKind::Defer { call }

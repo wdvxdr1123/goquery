@@ -2,6 +2,10 @@
 
 - Navigation: definition, declaration, type definition, references,
   implementation and document highlights from resolved symbol identity.
+  Highlighting collects occurrences of the selected spelling, then proves
+  each match semantically. A lone concrete method selector in a function can
+  use the same statement-prefix check as definition. Multiple candidates in
+  one function share a full-region check.
   Highlight candidates include literal keys whose expected container type makes
   them expressions; field labels still require their own field identity.
   Type-switch guard declarations remain in the reference's nil-object group,
@@ -9,6 +13,11 @@
   Anonymous-field references share rename's declaration provenance and honor
   `includeDeclaration`. Resolved targets with no references return `[]`;
   unavailable targets return `null`.
+  Definition and declaration check the enclosing region up to the cursor.
+  Unexported method implementation search limits native checks to packages
+  that can inherit the declaring package's method through embedding. Its
+  reverse-import graph is request-local and falls back to ordinary search
+  above 4,096 packages or 32,768 package-to-import edges.
 - Symbols: document symbols (flat and hierarchical), and fuzzy workspace symbol
   search with gopls-style query syntax (`^prefix`, `'substring`, `suffix$`).
 - Completion and signature help: gopls-derived scoring, scoped locals and
@@ -73,8 +82,9 @@
 - Call hierarchy (incoming/outgoing) and type hierarchy by structural method sets,
   with separate `goquery/embedding/{supertypes,subtypes}` extensions for explicit
   named embedding.
-- Diagnostics for compiler/syntax-class errors, with quick fixes and
-  `source.organizeImports` edits.
+- Diagnostics for compiler/syntax-class errors are computed on save by default.
+  Set `initializationOptions.diagnostics.onSave` to `false` for live diagnostics.
+  Quick fixes and `source.organizeImports` edits are available through code actions.
 - Initialization runs `go env` once for SDK and module-cache defaults; formatting
   runs `gofmt`. Both invocations are bounded, and a failure falls back instead of
   failing the request.
@@ -94,12 +104,17 @@
   calls and escaped/raw literals; missing arguments still highlight the directive.
 - Workspace folders with dynamic refresh; open buffers override disk contents and
   closing restores the saved declarations.
+- In live-diagnostics mode, a first open of a mounted Go SDK or module-cache document outside the
+  workspace defers its single-file diagnostics until queries have been idle
+  for one second so a follow-up navigation request can run first. Up to eight
+  deferred opens are pending at once. If the document version changes or the
+  document closes, the pending refresh is discarded.
 - External-edit freshness: when the client supports dynamic registration (Zed
   does), the server watches `**/*.go`, `**/go.mod`, `**/go.sum` and `**/go.work`.
   A watched batch reindexes changed/created/deleted files with one dependency and
   SDK discovery pass, refreshes the module plan for manifest events, and
-  republishes diagnostics for open documents in the changed package and its
-  direct importers. When the client/agent produces no editor events at all, a
+  republishes live diagnostics for open documents in the changed package and
+  its direct importers when live diagnostics are enabled. When the client/agent produces no editor events at all, a
   file watcher (default `fileWatch: true`) triggers bounded disk reconciliation
   after a 100 ms burst debounce. There is no idle scan timer, request-triggered
   poll or polling fallback. Errors are logged. Registration budgets can be raised

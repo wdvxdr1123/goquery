@@ -12,7 +12,7 @@ impl RegionChecker<'_, '_> {
         &mut self,
         name: &str,
         span: Range<usize>,
-    ) {
+    ) -> bool {
         if name == "_"
             || name.len() > 1024
             || self.source.get(span.clone()) != Some(name)
@@ -32,11 +32,11 @@ impl RegionChecker<'_, '_> {
                 FileSymbolLookup::NotFound
             )
         {
-            return;
+            return false;
         }
         let workspace = self.arena.workspace();
         let Some(stub) = workspace.files.get(self.file) else {
-            return;
+            return false;
         };
         if stub
             .imports
@@ -44,7 +44,7 @@ impl RegionChecker<'_, '_> {
             .any(|import| import.is_dot() || import.path == "C")
             || self.arena.resolver().imported_name(self.file, name)
         {
-            return;
+            return false;
         }
         self.region.push_diagnostic(Diagnostic {
             span,
@@ -53,6 +53,7 @@ impl RegionChecker<'_, '_> {
             unnecessary: false,
             related: Vec::new(),
         });
+        true
     }
 
     /// Imported metadata must prove a unique visible package and an absent
@@ -63,7 +64,7 @@ impl RegionChecker<'_, '_> {
         name: &str,
         qualifier_start: usize,
         span: Range<usize>,
-    ) {
+    ) -> bool {
         if name.len() + qualifier.len() > 1024
             || self.source.get(span.clone()) != Some(name)
             || !crate::syntax::is_exported_name(name)
@@ -85,18 +86,18 @@ impl RegionChecker<'_, '_> {
                 FileSymbolLookup::NotFound
             )
         {
-            return;
+            return false;
         }
         let workspace = self.arena.workspace();
         let Some(stub) = workspace.files.get(self.file) else {
-            return;
+            return false;
         };
         if stub
             .imports
             .iter()
             .any(|import| import.is_dot() || import.path == "C")
         {
-            return;
+            return false;
         }
         let mut imports = stub.imports.iter().filter(|import| {
             !import.is_dot()
@@ -104,7 +105,7 @@ impl RegionChecker<'_, '_> {
                 && self.arena.resolver().import_name(self.file, import) == Some(qualifier)
         });
         let Some(import) = imports.next() else {
-            return;
+            return false;
         };
         if imports.next().is_some()
             || self
@@ -118,7 +119,7 @@ impl RegionChecker<'_, '_> {
                 .imported_symbol_iter(self.file, qualifier)
                 .any(|(_, symbol)| symbol.name == name)
         {
-            return;
+            return false;
         }
         self.region.push_diagnostic(Diagnostic {
             span,
@@ -127,5 +128,6 @@ impl RegionChecker<'_, '_> {
             unnecessary: false,
             related: Vec::new(),
         });
+        true
     }
 }

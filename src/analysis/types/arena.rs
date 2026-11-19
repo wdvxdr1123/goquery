@@ -1,4 +1,5 @@
 //! Bounded, query-local structural types. No closed source is retained.
+use super::syntax::TypeNames;
 use super::ty::SliceRef;
 use super::{BasicKind, Direction, Field, Method, Qualifier, Ty, TypeId};
 
@@ -121,6 +122,7 @@ pub(crate) struct TypeArena<'a> {
     pub(super) pkg_methods:
         HashMap<(&'a Path, &'a str, bool), Option<super::methods::PkgMethodIndex<'a>>>,
     pub(super) concrete_methods: HashMap<DeclId<'a>, super::methods::ConcreteMethodMemo>,
+    pub(super) type_names: TypeNames<'a>,
     pub(super) invalid_type: bool,
     pub(super) symbolic: bool,
 }
@@ -253,6 +255,7 @@ impl<'a> TypeArena<'a> {
             signature_name_bytes: String::new(),
             pkg_methods: HashMap::new(),
             concrete_methods: HashMap::new(),
+            type_names: TypeNames::default(),
             invalid_type: false,
             symbolic: false,
         }

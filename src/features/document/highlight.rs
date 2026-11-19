@@ -2,10 +2,15 @@
 use crate::analysis::query::Context;
 use crate::analysis::query::highlight::HighlightKind;
 use serde_json::{Value, json};
+use std::sync::atomic::AtomicBool;
 use tower_lsp::lsp_types::DocumentHighlightKind as LspHighlightKind;
 
-pub(crate) fn execute(context: &Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
-    let Some(rows) = context.document_highlights(offset)? else {
+pub(crate) fn execute(
+    context: &Context<'_>,
+    offset: usize,
+    cancellation: Option<&AtomicBool>,
+) -> Result<Value, (i32, String)> {
+    let Some(rows) = context.document_highlights(offset, cancellation)? else {
         return Ok(Value::Null);
     };
     Ok(Value::Array(

@@ -23,6 +23,11 @@
 }
 ```
 
+工作区更新和查询由一个后台线程按顺序处理，stdio 运行时可以同时接收取消通知。
+已接收消息达到 8 条或消息体累计达到 1 MiB 时，暂停预读。触发字节上限的单条消息可以跨过阈值，
+下一条已解码消息可以等待入队。文档高亮在扫描区域和匹配候选之间检查取消状态。
+其他执行中的查询会完成当前计算，再丢弃已取消的结果。这些上限固定。
+
 ## 选项
 
 | 键 | 类型 | 说明 |
@@ -35,11 +40,18 @@
 | `usePlaceholders` | bool | 客户端支持 snippet 时，在函数/方法补全中插入参数占位符。默认 `false`。 |
 | `completeFunctionCalls` | bool | 函数/方法补全时插入调用语法。默认 `true`。 |
 | `completionDocumentation` | bool | 给补全项附加文档。默认 `true`。 |
+| `semanticTokens` | bool | 启用整文件和范围语义 token，默认 `true`。设为 `false` 时，初始化响应省略 `semanticTokensProvider`，语义 token 请求返回 `null`。更改后重启服务器。 |
+| `documentHighlight` | bool | 启用当前文档中同一符号的出现位置高亮，默认 `true`。设为 `false` 时，初始化响应省略 `documentHighlightProvider`，文档高亮请求返回 `null`。更改后重启服务器。 |
+| `diagnostics.onSave` | bool | 收到 `textDocument/didSave` 时计算并推送诊断，默认 `true`。设为 `false` 时恢复打开、编辑及文件事件触发的实时诊断。更改后重启服务器。 |
 | `fileWatch` | bool | 启用服务器文件监控（Windows 目录通知、Linux inotify、macOS FSEvents），默认 `true`。设为 `false` 关闭监控，不启用轮询。 |
 | `fileWatchMaxRoots` | integer | 合并重叠根目录后的文件监控根目录预算，默认 `128`；`0` 取消这项应用层限制。 |
 | `fileWatchMaxDirectories` | integer | Linux 等非递归后端的目录监控预算，默认 `4096`；`0` 取消这项应用层限制。Windows/macOS 不使用。 |
 | `fileWatchMaxEntries` | integer | Linux 等非递归后端发现监控目录时的遍历条目预算，默认 `20000`；`0` 取消这项应用层限制。Windows/macOS 不使用。 |
 | `fileWatchExcludeDirectories` | string[] | 排除目录的正则数组，匹配使用 `/` 分隔的相对目录祖先路径。匹配目录后排除整棵子树的文件事件和事件触发的磁盘核对，默认 `[]`。 |
+
+保存时诊断使用嵌套选项 `"diagnostics": {"onSave": true}`。自动保存也会发送
+`didSave`。在 Zed 的顶层编辑器设置中设为 `"autosave": "off"`，即可关闭定时或焦点变化触发的自动保存。
+`GOQUERY_DISABLE_DIAG` 的优先级高于诊断触发设置。
 
 文件事件唤醒后台任务，并合并为一个待检查标志，收到事件后延迟 100 ms 合并连续写入。
 没有定时扫描、请求触发的按需轮询或轮询回退。错误只记录日志，调整配置或系统限制后重启服务器重新注册。

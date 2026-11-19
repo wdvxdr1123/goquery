@@ -2,6 +2,12 @@
 use super::operand;
 use super::{BasicKind, Constant, Direction, Mode, Operand, Tags, Ty, TypeArena, TypeId};
 
+#[derive(Clone, Copy)]
+pub(crate) enum ConversionError {
+    Overflow(i128),
+    InvalidConstant,
+}
+
 impl TypeArena<'_> {
     pub(crate) fn convert(
         &mut self,
@@ -9,26 +15,35 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<Operand> {
+        self.checked_conversion(input, target, int_bits)?.ok()
+    }
+
+    pub(crate) fn checked_conversion(
+        &mut self,
+        input: Operand,
+        target: TypeId,
+        int_bits: u32,
+    ) -> Option<Result<Operand, ConversionError>> {
         self.underlying(target)?;
         self.underlying(input.ty)?;
         let source_kind = self.basic_kind(input.ty);
         if source_kind == Some(BasicKind::UntypedNil) {
             self.nilable(target)?.then_some(())?;
-            return Some(Operand {
+            return Some(Ok(Operand {
                 mode: Mode::Value,
                 ty: target,
                 value: None,
-            });
+            }));
         }
         if self.is_interface(target)? {
             if !self.assignable(input, target, int_bits)? && !self.convertible(input.ty, target)? {
                 return None;
             }
-            return Some(Operand {
+            return Some(Ok(Operand {
                 mode: Mode::Value,
                 ty: target,
                 value: None,
-            });
+            }));
         }
         let target_kind = self.basic_kind(target);
         if input.mode == Mode::Constant
@@ -47,20 +62,35 @@ impl TypeArena<'_> {
                     length: Some(rune.len_utf8() as u64),
                 }
             } else {
-                operand::representable(input.value?, kind, int_bits).then_some(())?;
-                constant_value(input.value?, kind)?
+                let value = input.value?;
+                if !operand::representable(value, kind, int_bits) {
+                    let error = if kind.integer() && source.integer() {
+                        ConversionError::Overflow(value.integer_value()?)
+                    } else if kind != BasicKind::UnsafePointer
+                        && (kind.integer()
+                            && (value.integer_value().is_some() || value.definitely_fractional())
+                            || source.boolean() != kind.boolean()
+                            || source.string() != kind.string())
+                    {
+                        ConversionError::InvalidConstant
+                    } else {
+                        return None;
+                    };
+                    return Some(Err(error));
+                }
+                constant_value(value, kind)?
             };
-            return Some(Operand {
+            return Some(Ok(Operand {
                 mode: Mode::Constant,
                 ty: target,
                 value: Some(value),
-            });
+            }));
         }
-        self.convertible(input.ty, target)?.then_some(Operand {
+        self.convertible(input.ty, target)?.then_some(Ok(Operand {
             mode: Mode::Value,
             ty: target,
             value: None,
-        })
+        }))
     }
 
     pub(super) fn nilable(&mut self, target: TypeId) -> Option<bool> {
@@ -172,19 +202,14 @@ pub(super) fn constant_value(mut value: Constant, target: BasicKind) -> Option<C
         value = super::complex::real(value)?.constant();
     }
     if target.integer() {
-        return match value {
-            Constant::Float {
-                integral: Some(value),
-                ..
-            } => Some(Constant::Int(value)),
-            value => Some(value),
-        };
+        return value.integer_value().map(Constant::Int);
     }
     if matches!(
         target,
         BasicKind::Float32 | BasicKind::Float64 | BasicKind::Complex64 | BasicKind::Complex128
     ) {
         let narrow = matches!(target, BasicKind::Float32 | BasicKind::Complex64);
+        let fractional = value.definitely_fractional();
         let value = match value {
             Constant::Int(value) => {
                 if narrow {
@@ -213,6 +238,7 @@ pub(super) fn constant_value(mut value: Constant, target: BasicKind) -> Option<C
             approximate: value,
             integral: binary_integer(value),
             rounded32: Some(value as f32).filter(|value| value.is_finite()),
+            fractional: fractional && value.fract() != 0.0,
         });
     }
     Some(value)

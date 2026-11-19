@@ -51,7 +51,7 @@ impl<'a> Evaluator<'a, '_> {
         let expr = nodes.get(id.index())?;
         let bits = self.arena.integer_bits()?;
         match &expr.kind {
-            ExprKind::Literal => self.arena.literal(source.get(expr.span.clone())?),
+            ExprKind::Literal(kind) => self.arena.literal(*kind, source.get(expr.span.clone())?),
             ExprKind::Name => {
                 let name = source.get(expr.span.clone())?;
                 if let Some((file, symbol)) = self.arena.resolver().unqualified_symbol(origin, name)
@@ -134,6 +134,7 @@ impl<'a> Evaluator<'a, '_> {
                 function,
                 arguments,
                 variadic: false,
+                ..
             } => {
                 if arguments.len() > 256 {
                     return None;

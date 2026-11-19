@@ -13,9 +13,12 @@
 //! differentials may call `parse_with_token_budget` with an explicit larger
 //! token budget for a few oversized generated files; the server always uses
 //! `parse`.
+mod edits;
+pub(crate) use edits::variable_removal;
+
 use crate::syntax::ast::declarations::{ImportName, SymbolKind};
 use crate::syntax::ast::expression::ExprKind;
-use crate::syntax::ast::statement::{BlockTree, StmtKind};
+use crate::syntax::ast::statement::{BlockTree, StmtId, StmtKind};
 use crate::syntax::lexer::Lexer;
 use crate::syntax::token::{Token, TokenKind};
 use std::ops::Range;
@@ -23,6 +26,26 @@ use std::ops::Range;
 const MAX_SOURCE_BYTES: usize = 8 << 20;
 const MAX_TOKENS: usize = 600_000;
 const MAX_NODES: usize = 262_144;
+
+/// A cgo lens requires a string literal that decodes to the import path `C`.
+/// Callers still need the syntax index to establish the import declaration.
+pub(crate) fn has_cgo_path_literal(source: &str) -> bool {
+    source.len() <= MAX_SOURCE_BYTES
+        && Lexer::new(source).take(MAX_TOKENS).any(|token| {
+            if token.kind != TokenKind::String {
+                return false;
+            }
+            let text = &source[token.span];
+            if let Some(raw) = text
+                .strip_prefix('`')
+                .and_then(|text| text.strip_suffix('`'))
+            {
+                return raw.bytes().filter(|&byte| byte != b'\r').eq([b'C']);
+            }
+            // The longest interpreted spelling is "\U00000043".
+            text.len() <= 12 && crate::syntax::decode_import_path(text).as_deref() == Some("C")
+        })
+}
 
 /// Folding-relevant bracket groups whose spans the existing parsers do not
 /// expose: parameter/field lists, declaration groups and import groups.
@@ -280,21 +303,6 @@ impl Scan<'_, '_> {
             .iter()
             .position(|token| token.kind == kind)
             .map(|position| start + position)
-    }
-    /// First token index at or after `offset` that is not inside a bracket
-    /// group and matches `kind`.
-    fn find_top_level(&self, offset: usize, kind: TokenKind) -> Option<usize> {
-        let mut index = self.token_index(offset);
-        while index < self.tokens.len() {
-            match self.tokens[index].kind {
-                TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => {
-                    index = self.skip_group(index);
-                }
-                found if found == kind => return Some(index),
-                _ => index += 1,
-            }
-        }
-        None
     }
     fn push_node(&mut self, node: FoldNode) {
         if self.exhausted() {
@@ -769,7 +777,7 @@ impl Scan<'_, '_> {
     }
 
     fn body_nodes(&mut self, tree: &BlockTree, base: usize) {
-        for statement in &tree.statements {
+        for (index, statement) in tree.statements.iter().enumerate() {
             let span = base + statement.span.start..base + statement.span.end;
             match &statement.kind {
                 StmtKind::Block { .. } => {
@@ -790,59 +798,30 @@ impl Scan<'_, '_> {
                         });
                     }
                 }
-                StmtKind::Case { .. } | StmtKind::CommunicationCase { .. } => {
-                    self.clause(tree, statement, base);
+                StmtKind::Case { statements, .. }
+                | StmtKind::CommunicationCase { statements, .. } => {
+                    let Some(start) = tree.clause_body_start(StmtId(index)) else {
+                        continue;
+                    };
+                    let body_start = base + start;
+                    let kind = if matches!(statement.kind, StmtKind::Case { .. }) {
+                        FoldNodeKind::Case
+                    } else {
+                        FoldNodeKind::Comm
+                    };
+                    let end = statements.last().map_or(body_start, |statement| {
+                        base + tree.statements[statement.0].span.end
+                    });
+                    self.push_node(FoldNode {
+                        kind,
+                        open: body_start - 1,
+                        close: end,
+                    });
                 }
                 _ => {}
             }
         }
         self.expression_nodes(&tree.expressions, base);
-    }
-
-    fn clause(&mut self, tree: &BlockTree, statement: &crate::syntax::Statement, base: usize) {
-        let span = base + statement.span.start..base + statement.span.end;
-        match &statement.kind {
-            StmtKind::Case {
-                values, statements, ..
-            } => {
-                let after = values.last().map_or(span.start, |value| {
-                    base + tree.expressions[value.0].span.end
-                });
-                let colon = self
-                    .find_top_level(after, TokenKind::Colon)
-                    .map(|index| self.span_at(index).start)
-                    .unwrap_or(after);
-                let end = statements.last().map_or(colon + 1, |statement| {
-                    base + tree.statements[statement.0].span.end
-                });
-                self.push_node(FoldNode {
-                    kind: FoldNodeKind::Case,
-                    open: colon,
-                    close: end,
-                });
-            }
-            StmtKind::CommunicationCase {
-                communication,
-                statements,
-            } => {
-                let after = communication.map_or(span.start, |communication| {
-                    base + tree.statements[communication.0].span.end
-                });
-                let colon = self
-                    .find_top_level(after, TokenKind::Colon)
-                    .map(|index| self.span_at(index).start)
-                    .unwrap_or(after);
-                let end = statements.last().map_or(colon + 1, |statement| {
-                    base + tree.statements[statement.0].span.end
-                });
-                self.push_node(FoldNode {
-                    kind: FoldNodeKind::Comm,
-                    open: colon,
-                    close: end,
-                });
-            }
-            _ => {}
-        }
     }
 
     /// Opening brace of a switch/select body whose closing brace is `close`.

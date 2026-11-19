@@ -1,6 +1,11 @@
 //! min/max match every argument before folding bounded constant metadata.
 use super::{BasicKind, Constant, Mode, Operand, Ty, TypeArena, TypeId};
 
+pub(crate) enum MinMaxError {
+    Unordered(usize),
+    Mismatch { index: usize, previous: TypeId },
+}
+
 impl TypeArena<'_> {
     pub(crate) fn builtin_minmax(
         &mut self,
@@ -8,19 +13,33 @@ impl TypeArena<'_> {
         maximum: bool,
         int_bits: u32,
     ) -> Option<Operand> {
+        self.checked_builtin_minmax(arguments, maximum, int_bits)?
+            .ok()
+    }
+
+    pub(crate) fn checked_builtin_minmax(
+        &mut self,
+        arguments: &[Operand],
+        maximum: bool,
+        int_bits: u32,
+    ) -> Option<Result<Operand, MinMaxError>> {
         if arguments.is_empty() || arguments.len() > 256 {
             return None;
         }
         let mut target = None;
-        for argument in arguments {
+        for (index, argument) in arguments.iter().enumerate() {
             self.step()?;
-            self.ordered_type(argument.ty)?;
+            if !self.ordered_type(argument.ty)? {
+                return Some(Err(MinMaxError::Unordered(index)));
+            }
             if self
                 .basic_kind(argument.ty)
                 .is_none_or(|kind| !kind.untyped())
             {
                 if let Some(previous) = target {
-                    self.identical(previous, argument.ty)?.then_some(())?;
+                    if !self.identical(previous, argument.ty)? {
+                        return Some(Err(MinMaxError::Mismatch { index, previous }));
+                    }
                 } else {
                     target = Some(argument.ty);
                 }
@@ -130,10 +149,11 @@ impl TypeArena<'_> {
                     approximate,
                     integral,
                     rounded32,
+                    fractional: false,
                 })
             }
         };
-        Some(Operand {
+        Some(Ok(Operand {
             mode: if constant {
                 Mode::Constant
             } else {
@@ -141,24 +161,28 @@ impl TypeArena<'_> {
             },
             ty: target,
             value,
-        })
+        }))
     }
 
-    fn ordered_type(&mut self, input: TypeId) -> Option<()> {
+    fn ordered_type(&mut self, input: TypeId) -> Option<bool> {
         let root = self.underlying(input)?;
         if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
-            let terms = self.parameter_set(root)?.terms?;
+            let Some(terms) = self.parameter_set(root)?.terms else {
+                return Some(false);
+            };
             if terms.is_empty() {
                 return None;
             }
             for term in terms {
                 self.step()?;
-                let kind = self.basic_kind(term.ty)?;
-                ordered(kind).then_some(())?;
+                let root = self.underlying(term.ty)?;
+                if !matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if ordered(kind)) {
+                    return Some(false);
+                }
             }
-            Some(())
+            Some(true)
         } else {
-            ordered(self.basic_kind(root)?).then_some(())
+            Some(matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if ordered(kind)))
         }
     }
 }
@@ -178,6 +202,7 @@ fn numeric(value: Constant) -> Option<(f64, Option<f32>, Option<i128>)> {
             approximate,
             rounded32,
             integral,
+            ..
         } => Some((approximate, rounded32, integral)),
         _ => None,
     }

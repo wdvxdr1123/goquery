@@ -3,7 +3,7 @@ use crate::analysis::scope::{
     self as locals, Binding, DeclarationKind, Initializer, InitializerKind, Locals, ObjectKind,
     SwitchCase,
 };
-use crate::syntax::{BlockTree, ExprKind, Lexer, StmtId, StmtKind, TokenKind};
+use crate::syntax::{BlockTree, ExprKind, StmtId, StmtKind};
 use std::ops::Range;
 
 impl Locals {
@@ -271,8 +271,8 @@ impl BodyScopes<'_> {
                 communication,
                 statements,
             } => {
-                if let Some(id) = communication {
-                    let statement = &self.tree.statements[id.0];
+                if let Some(comm_id) = communication {
+                    let statement = &self.tree.statements[comm_id.0];
                     if let StmtKind::Assignment {
                         left,
                         right,
@@ -280,14 +280,19 @@ impl BodyScopes<'_> {
                     } = &statement.kind
                         && &self.source[self.span(operator)] == ":="
                     {
-                        let received = right.len() == 1 && self.receive_expression(right[0]);
-                        let visible =
-                            self.clause_body_start(Some(self.offset + statement.span.end), own.end);
+                        let received = right.len() == 1
+                            && self
+                                .tree
+                                .is_receive(right[0], |span| &self.source[self.span(span)] == "<-");
+                        let visible = self
+                            .tree
+                            .clause_body_start(id)
+                            .map_or(own.end, |start| self.offset + start);
                         if received {
                             self.names(left, right, own.clone(), visible);
                         }
                     } else {
-                        self.statement(*id, own.clone());
+                        self.statement(*comm_id, own.clone());
                     }
                 }
                 for &child in statements {
@@ -326,15 +331,10 @@ impl BodyScopes<'_> {
         }
         let selection = self.span(&name.span);
         // The implicit variable starts in the clause body, never in its types.
-        let header_end = values.last().map_or_else(
-            || {
-                Lexer::new(&self.source[scope.clone()])
-                    .next()
-                    .map(|token| scope.start + token.span.end)
-            },
-            |value| Some(self.offset + self.tree.expressions[value.0].span.end),
-        );
-        let visible = self.clause_body_start(header_end, scope.end);
+        let visible = self
+            .tree
+            .clause_body_start(case)
+            .map_or(scope.end, |start| self.offset + start);
         if self
             .bind(
                 selection.clone(),
@@ -369,28 +369,6 @@ impl BodyScopes<'_> {
                 .map(|id| self.span(&self.tree.expressions[id.0].span))
                 .collect(),
         });
-    }
-
-    fn clause_body_start(&self, header_end: Option<usize>, end: usize) -> usize {
-        header_end
-            .and_then(|start| {
-                let colon = Lexer::new(self.source.get(start..end)?).next()?;
-                (colon.kind == TokenKind::Colon).then_some(start + colon.span.end)
-            })
-            .unwrap_or(end)
-    }
-
-    fn receive_expression(&self, mut id: crate::syntax::ExprId) -> bool {
-        for _ in 0..32 {
-            match &self.tree.expressions[id.0].kind {
-                ExprKind::Parenthesized { expression } => id = *expression,
-                ExprKind::Unary { operator, .. } => {
-                    return &self.source[self.span(operator)] == "<-";
-                }
-                _ => return false,
-            }
-        }
-        false
     }
 
     fn initializer(

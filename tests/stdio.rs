@@ -267,8 +267,68 @@ fn check_tower_transport() {
         replies[0]["result"]["capabilities"]["typeHierarchyProvider"],
         true
     );
+    assert_eq!(
+        replies[0]["result"]["capabilities"]["documentHighlightProvider"],
+        true
+    );
+    assert_eq!(
+        replies[0]["result"]["capabilities"]["textDocumentSync"],
+        serde_json::json!({"openClose": true, "change": 1, "save": true})
+    );
     assert_eq!(replies[1]["id"], 2);
     assert!(replies[1]["result"].is_null());
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/methods");
+    let root_uri = url::Url::from_directory_path(&root).unwrap();
+    let file_uri = url::Url::from_file_path(root.join("main.go")).unwrap();
+    let disabled_highlights: Vec<u8> = [
+        serde_json::json!({
+            "jsonrpc":"2.0", "id":1, "method":"initialize",
+            "params":{
+                "rootUri":root_uri,
+                "capabilities":{"textDocument":{"semanticTokens":{
+                    "requests":{"full":true,"range":true}, "tokenTypes":["function"],
+                    "tokenModifiers":[], "formats":["relative"]
+                }}},
+                "initializationOptions":{
+                    "goroot":"","fileWatch":false,"semanticTokens":false,"documentHighlight":false
+                }
+            }
+        }),
+        serde_json::json!({"jsonrpc":"2.0","method":"initialized","params":{}}),
+        serde_json::json!({
+            "jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full",
+            "params":{"textDocument":{"uri":file_uri}}
+        }),
+        serde_json::json!({
+            "jsonrpc":"2.0","id":3,"method":"textDocument/semanticTokens/range",
+            "params":{"textDocument":{"uri":file_uri},"range":{
+                "start":{"line":0,"character":0},"end":{"line":1,"character":0}
+            }}
+        }),
+        serde_json::json!({
+            "jsonrpc":"2.0","id":4,"method":"textDocument/documentHighlight",
+            "params":{"textDocument":{"uri":file_uri},"position":{"line":0,"character":0}}
+        }),
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"shutdown"}),
+        serde_json::json!({"jsonrpc":"2.0","method":"exit"}),
+    ]
+    .into_iter()
+    .flat_map(frame)
+    .collect();
+    let replies = exchange(&disabled_highlights, 0);
+    assert_eq!(replies.len(), 5);
+    let capabilities = &replies[0]["result"]["capabilities"];
+    assert_eq!(capabilities["definitionProvider"], true);
+    assert!(capabilities.get("semanticTokensProvider").is_none());
+    assert!(capabilities.get("documentHighlightProvider").is_none());
+    for id in 2..=4 {
+        assert_eq!(
+            replies[id - 1],
+            serde_json::json!({"jsonrpc":"2.0","id":id,"result":null}),
+        );
+    }
+
     let mut malformed = b"Content-Length: 1\r\n\r\n{".to_vec();
     malformed.extend(lifecycle);
     let replies = exchange(&malformed, 0);
@@ -962,13 +1022,16 @@ fn run_case(case: &str) {
         replace_string(&mut messages, placeholder, uri);
     }
     for message in messages.as_array_mut().unwrap() {
-        if message["method"] == "initialize"
-            && !matches!(
+        if message["method"] == "initialize" {
+            // The existing goldens record the live-diagnostics session.
+            let options = &mut message["params"]["initializationOptions"];
+            options["diagnostics"]["onSave"] = false.into();
+            if !matches!(
                 case,
                 "module-sdk" | "module-sdk-scope" | "module-sdk-vendor"
-            )
-        {
-            message["params"]["initializationOptions"]["goroot"] = Value::String(String::new());
+            ) {
+                options["goroot"] = Value::String(String::new());
+            }
         }
     }
     let mut child = Command::new(env!("CARGO_BIN_EXE_goquery"))
@@ -2632,7 +2695,7 @@ fn watched_file_changes_refresh_cross_package_state() {
                 },
                 "textDocument": {},
             },
-            "initializationOptions": {"goroot": ""},
+            "initializationOptions": {"goroot": "", "diagnostics": {"onSave": false}},
         }),
     );
     assert!(reply.get("result").is_some(), "{reply}");
@@ -2955,6 +3018,7 @@ fn watched_file_changes_refresh_cross_package_state() {
                 "workspaceFolders": [{"uri": poll_root_uri, "name": "polled"}],
                 "capabilities": {"textDocument": {}},
                 "initializationOptions": {"goroot": "", "fileWatch": file_watch,
+                    "diagnostics": {"onSave": false},
                     "fileWatchExcludeDirectories": ["(^|/)generated$", "^cache-[0-9]+$"]},
             }),
         );
@@ -4939,7 +5003,7 @@ fn watched_file_changes_refresh_cross_package_state() {
 mod sema_e2e {
     use super::jsonrpc2;
     use serde_json::{Value, json};
-    use std::io::BufReader;
+    use std::io::{BufReader, Write};
     use std::path::PathBuf;
     use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
     use std::time::{Duration, Instant};
@@ -4950,6 +5014,119 @@ mod sema_e2e {
         stdin: Option<ChildStdin>,
         stdout: BufReader<ChildStdout>,
         next_id: i64,
+    }
+
+    #[test]
+    fn cancels_queued_highlight_and_reads_the_next_buffer_version() {
+        let mut server = SemaTestServer::start_session(
+            "cancel-highlight",
+            &[("go.mod", "module example.com/cancel\n\ngo 1.27.3\n")],
+            ".",
+            false,
+            |_| json!({"goroot":"", "fileWatch":false}),
+        );
+        let uri = server.uri("main.go");
+        let mut original = String::from("package p\nvar X = 1\nvar _ = X\n");
+        // Keep didOpen on the worker while the bounded ingress reads the rest
+        // of this burst. A single write puts cancellation behind the request.
+        original.push_str(&"// padding for the initial full buffer\n".repeat(12_000));
+        let updated = "package p\n// moved\nvar X = 2\nvar _ = X\n";
+        let mut burst = Vec::new();
+        for message in [
+            json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{
+                "textDocument":{"uri":uri,"version":1,"languageId":"go","text":original}
+            }}),
+            json!({"jsonrpc":"2.0","id":"obsolete","method":"textDocument/documentHighlight","params":{
+                "textDocument":{"uri":uri},"position":{"line":2,"character":8}
+            }}),
+            json!({"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":"obsolete"}}),
+            json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{
+                "textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":updated}]
+            }}),
+            json!({"jsonrpc":"2.0","id":20,"method":"textDocument/definition","params":{
+                "textDocument":{"uri":uri},"position":{"line":3,"character":8}
+            }}),
+        ] {
+            jsonrpc2::send(&mut burst, message).unwrap();
+        }
+        server.stdin.as_mut().unwrap().write_all(&burst).unwrap();
+        let cancelled = jsonrpc2::read_message(&mut server.stdout).unwrap().unwrap();
+        assert_eq!(cancelled["id"], "obsolete");
+        assert_eq!(cancelled["error"]["code"], -32800);
+        let definition = jsonrpc2::read_message(&mut server.stdout).unwrap().unwrap();
+        assert_eq!(definition["id"], 20);
+        assert_eq!(
+            definition["result"],
+            json!([{"uri":uri,"range":{
+                "start":{"line":2,"character":4},"end":{"line":2,"character":5}
+            }}])
+        );
+    }
+
+    #[test]
+    fn code_lens_preflight_preserves_escaped_cgo_imports() {
+        let source = "package p\nimport \"\\U00000043\"\n";
+        let mut server = SemaTestServer::start_session(
+            "cgo-import-spelling",
+            &[("main.go", source)],
+            ".",
+            false,
+            |_| json!({"goroot":"", "fileWatch":false}),
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, source);
+        let params = json!({"textDocument":{"uri":uri}});
+        let reply = server.request("textDocument/codeLens", params.clone());
+        assert_eq!(
+            reply["result"],
+            json!([{
+                "range":{"start":{"line":1,"character":7},"end":{"line":1,"character":19}},
+                "command":{"title":"regenerate cgo definitions","command":"gopls.regenerate_cgo",
+                    "arguments":[{"URI":uri},{"source":"codelens"}]}
+            }])
+        );
+        server.did_change(&uri, 2, "package p\nvar text = \"\\U00000043\"\n");
+        let reply = server.request("textDocument/codeLens", params);
+        assert!(
+            reply["result"].is_null(),
+            "string literal is not an import: {reply}"
+        );
+    }
+
+    #[test]
+    fn highlights_concrete_methods_across_single_and_multiple_candidate_bodies() {
+        let source = concat!(
+            "package p\n",
+            "type A struct{}\nfunc (A) Mark() {}\n",
+            "type B struct{ Mark func() }\n",
+            "func many(a A, b B) { a.Mark(); b.Mark(); a.Mark() }\n",
+            "func single(a A) { a.Mark() }\n",
+        );
+        let mut server = SemaTestServer::start("highlight-method-prefix", &[("main.go", source)]);
+        let uri = server.uri("main.go");
+        server.did_open(&uri, source);
+        let uses: Vec<_> = source
+            .match_indices("a.Mark()")
+            .map(|(i, _)| i + 2)
+            .collect();
+        let declaration = source.find("Mark()").unwrap();
+        let expected: Vec<_> = std::iter::once(declaration)
+            .chain(uses.iter().copied())
+            .map(|offset| {
+                json!({"kind":1,"range":{
+                    "start":pos(source,offset),"end":pos(source,offset+4)
+                }})
+            })
+            .collect();
+        for &offset in [&uses[0], &uses[2]] {
+            let reply = server.request(
+                "textDocument/documentHighlight",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(source,offset)
+                }),
+            );
+            assert_eq!(reply["result"], json!(expected));
+        }
     }
 
     impl SemaTestServer {
@@ -4970,6 +5147,36 @@ mod sema_e2e {
             files: &[(&str, &str)],
             target: Option<(&str, &str)>,
             snippets: bool,
+        ) -> Self {
+            Self::start_with_sdk(name, files, target, snippets, None, ".")
+        }
+
+        fn start_with_sdk(
+            name: &str,
+            files: &[(&str, &str)],
+            target: Option<(&str, &str)>,
+            snippets: bool,
+            sdk: Option<&str>,
+            workspace: &str,
+        ) -> Self {
+            Self::start_session(name, files, workspace, snippets, |root| {
+                json!({
+                    "goroot": sdk.map_or_else(PathBuf::new, |sdk| root.join(sdk)),
+                    "fileWatch": false,
+                    "diagnostics": {"onSave": false},
+                    "usePlaceholders": snippets,
+                    "goos": target.map(|(goos, _)| goos),
+                    "goarch": target.map(|(_, goarch)| goarch),
+                })
+            })
+        }
+
+        fn start_session(
+            name: &str,
+            files: &[(&str, &str)],
+            workspace: &str,
+            snippets: bool,
+            options: impl FnOnce(&std::path::Path) -> Value,
         ) -> Self {
             let root =
                 std::env::temp_dir().join(format!("goquery-sema-{name}-{}", std::process::id()));
@@ -5001,22 +5208,17 @@ mod sema_e2e {
                 stdout,
                 next_id: 0,
             };
-            let root_uri = url::Url::from_directory_path(&server.root)
+            let root_uri = url::Url::from_directory_path(server.root.join(workspace))
                 .expect("root dir uri")
                 .to_string();
+            let initialization_options = options(&server.root);
             let init = server.request(
                 "initialize",
                 json!({
                     "processId": std::process::id(),
                     "rootUri": root_uri,
                     "capabilities": if snippets { json!({"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}) } else { json!({}) },
-                    "initializationOptions": {
-                        "goroot": "",
-                        "fileWatch": false,
-                        "usePlaceholders": snippets,
-                        "goos": target.map(|(goos, _)| goos),
-                        "goarch": target.map(|(_, goarch)| goarch),
-                    },
+                    "initializationOptions": initialization_options,
                 }),
             );
             assert!(init.get("result").is_some(), "initialize failed: {init}");
@@ -5044,6 +5246,25 @@ mod sema_e2e {
         }
 
         fn request(&mut self, method: &str, params: Value) -> Value {
+            self.request_observing(method, params, |_| {})
+        }
+
+        fn request_before_diagnostics(&mut self, method: &str, params: Value, uri: &str) -> Value {
+            self.request_observing(method, params, |message| {
+                assert!(
+                    message["method"] != "textDocument/publishDiagnostics"
+                        || message["params"]["uri"] != uri,
+                    "dependency diagnostics arrived before the follow-up request: {message}"
+                );
+            })
+        }
+
+        fn request_observing(
+            &mut self,
+            method: &str,
+            params: Value,
+            mut observe: impl FnMut(&Value),
+        ) -> Value {
             self.next_id += 1;
             let id = self.next_id;
             let mut msg = json!({
@@ -5059,6 +5280,7 @@ mod sema_e2e {
                 let incoming = jsonrpc2::read_message(&mut self.stdout)
                     .expect("read lsp response")
                     .expect("unexpected eof waiting for response");
+                observe(&incoming);
                 if incoming.get("method").is_some()
                     && let Some(req_id) = incoming.get("id")
                 {
@@ -5103,6 +5325,27 @@ mod sema_e2e {
             );
         }
 
+        fn published_diagnostics(&mut self, uri: &str, version: i64) -> Vec<Value> {
+            for _ in 0..64 {
+                let message = jsonrpc2::read_message(&mut self.stdout)
+                    .expect("read diagnostics")
+                    .expect("server closed before diagnostics");
+                if message["method"] == "textDocument/publishDiagnostics"
+                    && message["params"]["uri"] == uri
+                    && message["params"]["version"] == version
+                {
+                    return message["params"]["diagnostics"]
+                        .as_array()
+                        .expect("diagnostics array")
+                        .clone();
+                }
+                if let Some(id) = message.get("id") {
+                    self.send(&json!({"jsonrpc": "2.0", "id": id, "result": null}));
+                }
+            }
+            panic!("diagnostic notification budget exceeded");
+        }
+
         fn shutdown(mut self) {
             let reply = self.request("shutdown", Value::Null);
             assert!(reply.get("result").is_some(), "shutdown failed: {reply}");
@@ -5142,6 +5385,51 @@ mod sema_e2e {
             "line": prefix.matches('\n').count(),
             "character": prefix.rsplit('\n').next().unwrap_or_default().encode_utf16().count(),
         })
+    }
+
+    #[test]
+    fn default_diagnostics_wait_for_save() {
+        let initial = "package p\nfunc f() { _ = openMissing }\n";
+        let edited = "package p\nfunc f() { _ = savedMissing }\n";
+        let fixed = "package p\nfunc f() { _ = 1 }\n";
+        let mut server = SemaTestServer::start_session(
+            "save-diagnostics",
+            &[
+                ("go.mod", "module example.test/save\n\ngo 1.27\n"),
+                ("p.go", initial),
+            ],
+            ".",
+            false,
+            |_| json!({"goroot": "", "fileWatch": false}),
+        );
+        let uri = server.uri("p.go");
+        server.did_open(&uri, initial);
+        server.request_before_diagnostics("workspace/symbol", json!({"query": "f"}), &uri);
+        server.did_change(&uri, 2, edited);
+        server.notify(
+            "workspace/didChangeWatchedFiles",
+            json!({"changes": [{"uri": uri, "type": 2}]}),
+        );
+        server.request_before_diagnostics("workspace/symbol", json!({"query": "f"}), &uri);
+
+        std::fs::write(server.root.join("p.go"), edited).expect("save the edited fixture");
+        server.notify(
+            "textDocument/didSave",
+            json!({"textDocument": {"uri": uri}}),
+        );
+        let diagnostics = server.published_diagnostics(&uri, 2);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["message"], "undefined: savedMissing");
+
+        server.did_change(&uri, 3, fixed);
+        server.request_before_diagnostics("workspace/symbol", json!({"query": "f"}), &uri);
+        std::fs::write(server.root.join("p.go"), fixed).expect("save the fixed fixture");
+        server.notify(
+            "textDocument/didSave",
+            json!({"textDocument": {"uri": uri}}),
+        );
+        assert!(server.published_diagnostics(&uri, 3).is_empty());
+        server.shutdown();
     }
 
     #[test]
@@ -5288,26 +5576,6 @@ mod sema_e2e {
 
     #[test]
     fn sema_assignment_diagnostics_follow_unsaved_regions() {
-        fn published(server: &mut SemaTestServer, uri: &str, version: i64) -> Vec<Value> {
-            for _ in 0..64 {
-                let message = jsonrpc2::read_message(&mut server.stdout)
-                    .expect("read diagnostics")
-                    .expect("server closed before diagnostics");
-                if message["method"] == "textDocument/publishDiagnostics"
-                    && message["params"]["uri"] == uri
-                    && message["params"]["version"] == version
-                {
-                    return message["params"]["diagnostics"]
-                        .as_array()
-                        .expect("diagnostics array")
-                        .clone();
-                }
-                if let Some(id) = message.get("id") {
-                    server.send(&json!({"jsonrpc": "2.0", "id": id, "result": null}));
-                }
-            }
-            panic!("diagnostic notification budget exceeded");
-        }
         let source = "package main\nfunc f() int {\n\tvar 数 int\n\tvar text string\n\t数 = text\n\treturn 数\n}\n";
         let mut server = SemaTestServer::start(
             "assignment-diagnostics",
@@ -5318,7 +5586,7 @@ mod sema_e2e {
         );
         let uri = server.uri("main.go");
         server.did_open(&uri, source);
-        let diagnostics = published(&mut server, &uri, 1);
+        let diagnostics = server.published_diagnostics(&uri, 1);
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0]["code"], "IncompatibleAssign");
         assert_eq!(diagnostics[0]["source"], "compiler");
@@ -5332,7 +5600,772 @@ mod sema_e2e {
             json!({"start": pos(source, start), "end": pos(source, start + 4)})
         );
         server.did_change(&uri, 2, &source.replace("var text string", "var text int"));
-        assert!(published(&mut server, &uri, 2).is_empty());
+        assert!(server.published_diagnostics(&uri, 2).is_empty());
+        server.shutdown();
+    }
+
+    #[test]
+    fn diagnostics_follow_parsed_statement_shapes() {
+        let valid = concat!(
+            "package p\n",
+            "func f(ch chan int) {\n",
+            "    type count = int\n",
+            "    select {\n",
+            "    case x := (<-ch) /* receive */ :\n",
+            "        var value count = x\n",
+            "        _ = value\n",
+            "    default:\n",
+            "    }\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "statement-diagnostics",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.24\n"),
+                ("main.go", valid),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, valid);
+        assert!(server.published_diagnostics(&uri, 1).is_empty());
+
+        for (index, (body, code, message, highlighted)) in [
+            (
+                "select { case x := 4: _ = x }",
+                Some("InvalidSelectCase"),
+                "select case must be send or receive (possibly with assignment)",
+                "x := 4",
+            ),
+            (
+                "for ; ; i := 0 { break }",
+                Some("InvalidPostDecl"),
+                "cannot declare in post statement",
+                "i := 0",
+            ),
+            (
+                "if 17 {}",
+                Some("InvalidCond"),
+                "non-boolean condition in if statement",
+                "17",
+            ),
+            (
+                "_ = func() { /* 😀 */ go (f(ch)) }; missing()",
+                None,
+                "expression in go must not be parenthesized",
+                "(f(ch))",
+            ),
+            (
+                "f(ch\n)",
+                None,
+                "missing ',' before newline in argument list",
+                "\n)",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let source = format!("package p\nfunc f(ch chan int) {{ {body} }}\n");
+            let version = index as i64 + 2;
+            server.did_change(&uri, version, &source);
+            let diagnostics = server.published_diagnostics(&uri, version);
+            assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:?}");
+            assert_eq!(diagnostics[0]["message"], message);
+            assert_eq!(diagnostics[0]["code"].as_str(), code);
+            let start = source.find(highlighted).expect("diagnostic source");
+            let end = if code.is_some() {
+                start + highlighted.len()
+            } else {
+                start
+            };
+            assert_eq!(
+                diagnostics[0]["range"],
+                json!({"start": pos(&source, start), "end": pos(&source, end)})
+            );
+        }
+        let renamed_import = "package p\nimport (\n\t_ \"strings\"\n\tunused \"os\"\n)\n";
+        server.did_change(&uri, 7, renamed_import);
+        let diagnostics = server.published_diagnostics(&uri, 7);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["code"], "UnusedImport");
+        assert_eq!(
+            diagnostics[0]["message"],
+            "\"os\" imported as unused and not used"
+        );
+        let alias = renamed_import.find("unused").unwrap();
+        assert_eq!(
+            diagnostics[0]["range"],
+            json!({"start": pos(renamed_import, alias), "end": pos(renamed_import, alias + "unused".len())})
+        );
+        server.did_change(&uri, 8, valid);
+        assert!(server.published_diagnostics(&uri, 8).is_empty());
+        server.shutdown();
+    }
+
+    #[test]
+    fn diagnostics_match_go_types_operand_counts() {
+        // Reduced cases from stmt0.go, decls0.go, expr3.go and conversions0.go
+        // in Go 1.27.3's internal/types/testdata/check corpus.
+        let cases: &[DiagnosticCase<'_>] = &[
+            (
+                concat!(
+                    "func f(x int, a []int) {\n",
+                    " x := 1; _ := 2; y, y := 1, 2; _ = y\n",
+                    " a[0] := 2\n",
+                    " const n = 1; n := 2\n",
+                    "}\n",
+                ),
+                &[
+                    ("NoNewVar", "no new variables on left side of :=", "x := 1"),
+                    ("NoNewVar", "no new variables on left side of :=", "_ := 2"),
+                    ("RepeatedDecl", "y repeated on left side of :=", "y"),
+                    ("BadDecl", "non-name a[0] on left side of :=", "a[0]"),
+                    ("UnassignableOperand", "cannot assign to n", "n"),
+                ],
+            ),
+            (
+                concat!(
+                    "func pair() (int, int) { return 0, 0 }\n",
+                    "func noValue(...int) {}\n",
+                    "func f(a, b, c int) {\n",
+                    " a,b,c = 1,2\n",
+                    " a,b,c = pair()\n",
+                    " a = pair()\n",
+                    " a,b += 1,2\n",
+                    " var d,e,f = 1,2; _,_,_ = d,e,f\n",
+                    " x,y,z := 1,2; _,_,_ = x,y,z\n",
+                    " const i, j = 1\n",
+                    " a = noValue /* ERROR \"used as value\" */ (1, 2)\n",
+                    "}\n",
+                ),
+                &[
+                    (
+                        "WrongAssignCount",
+                        "assignment mismatch: 3 variables but 2 values",
+                        "1",
+                    ),
+                    (
+                        "WrongAssignCount",
+                        "assignment mismatch: 3 variables but pair returns 2 values",
+                        "pair()",
+                    ),
+                    (
+                        "WrongAssignCount",
+                        "assignment mismatch: 1 variable but pair returns 2 values",
+                        "pair()",
+                    ),
+                    (
+                        "MultiValAssignOp",
+                        "assignment operation += requires single-valued expressions",
+                        "a,b += 1,2",
+                    ),
+                    ("WrongAssignCount", "missing init expr for f", "f"),
+                    (
+                        "WrongAssignCount",
+                        "assignment mismatch: 3 variables but 2 values",
+                        "1",
+                    ),
+                    ("WrongAssignCount", "missing init expr for j", "j"),
+                    (
+                        "TooManyValues",
+                        "noValue(1, 2) (no value) used as value",
+                        "noValue /* ERROR \"used as value\" */ (1, 2)",
+                    ),
+                ],
+            ),
+            (
+                concat!(
+                    "func f() (int, int) { return 1 }\n",
+                    "func g() int { return 1, 2 }\n",
+                    "func h() int { return }\n",
+                    "func i() (x int) { return }\n",
+                    "func pair() (int, int) { return 0, 0 }\n",
+                    "func j() int { return pair() }\n",
+                ),
+                &[
+                    (
+                        "WrongResultCount",
+                        "not enough return values\n\thave (number)\n\twant (int, int)",
+                        "1",
+                    ),
+                    (
+                        "WrongResultCount",
+                        "too many return values\n\thave (number, number)\n\twant (int)",
+                        "2",
+                    ),
+                    (
+                        "WrongResultCount",
+                        "not enough return values\n\thave ()\n\twant (int)",
+                        "return",
+                    ),
+                    (
+                        "WrongResultCount",
+                        "too many return values\n\thave (int, int)\n\twant (int)",
+                        "pair()",
+                    ),
+                ],
+            ),
+            (
+                concat!(
+                    "func f1(int) {}\n",
+                    "func g2() (float32, string) { return 0, \"\" }\n",
+                    "func variadic(int, ...string) {}\n",
+                    "func f(x int, xs []int) {\n",
+                    " f1()\n",
+                    " f1(x, x)\n",
+                    " f1(g2())\n",
+                    " variadic()\n",
+                    " f1(xs...)\n",
+                    " _ = int()\n",
+                    " _ = int(1, 2)\n",
+                    "}\n",
+                ),
+                &[
+                    (
+                        "WrongArgCount",
+                        "not enough arguments in call to f1\n\thave ()\n\twant (int)",
+                        "",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "too many arguments in call to f1\n\thave (int, int)\n\twant (int)",
+                        "x",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "too many arguments in call to f1\n\thave (float32, string)\n\twant (int)",
+                        "g2()",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "not enough arguments in call to variadic\n\thave ()\n\twant (int, ...string)",
+                        "",
+                    ),
+                    (
+                        "NonVariadicDotDotDot",
+                        "cannot use ... in call to non-variadic f1",
+                        "f1(xs...)",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "missing argument in conversion to int",
+                        "int()",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "too many arguments in conversion to int",
+                        "2",
+                    ),
+                ],
+            ),
+            (
+                concat!(
+                    "func pair() (int, int) { return 0, 0 }\n",
+                    "func sink(...int) {}\n",
+                    "func genericSink[T any](...T) {}\n",
+                    "func f(m map[string]int, ch chan int, x any) (int, int) {\n",
+                    " a,b := pair(); c,d := (m[\"x\"]); e,f := (<-ch); g,h := (x.(int))\n",
+                    " _,_,_,_,_,_,_,_ = a,b,c,d,e,f,g,h\n",
+                    " sink(); sink(1, 2); sink([]int{1}...)\n",
+                    " genericSink(1); genericSink[int]([]int{1}...)\n",
+                    " a, more := 2, 3; _,_ = a,more\n",
+                    " return pair()\n",
+                    "}\n",
+                ),
+                &[],
+            ),
+            (
+                "func f() { a,b := Missing,0,1; _,_ = a,b }\n",
+                &[("UndeclaredName", "undefined: Missing", "Missing")],
+            ),
+        ];
+        assert_diagnostic_cases("go-types-count-diagnostics", cases);
+    }
+
+    #[test]
+    fn diagnostics_match_go_types_builtins_indices_and_constants() {
+        // Reduced from Go's builtins0.go, expr3.go, const0.go and shifts.go.
+        let cases: &[DiagnosticCase<'_>] = &[
+            (
+                r#"func pair() (int, int) { return 1, 2 }
+func f(s []int, n int, in <-chan int, x float32, y float64) {
+ _ = len()
+ _ = cap(pair())
+ _ = len(n)
+ _ = cap("x")
+ _ = len(s /* ... inside a comment */ ...)
+ _ = append(nil, 1)
+ _ = append(s, "x")
+ _ = append(s, 1.5)
+ _ = append(s...)
+ _ = append(s, 1, s...)
+ _ = copy(s, []string{})
+ _ = make(int)
+ _ = make([]int)
+ _ = make([]int, 2, 1)
+ _ = make([]int, -1)
+ _ = make([]int, -2, -3)
+ _ = new(nil)
+ close(in)
+ clear(n)
+ delete(n, 0)
+ _ = complex(n, n)
+ _ = complex(x, y)
+ _ = imag(x)
+ _ = real(n)
+ _ = min(false)
+ _ = max(x, y)
+}
+"#,
+                &[
+                    (
+                        "WrongArgCount",
+                        "invalid operation: not enough arguments for len() (expected 1, found 0)",
+                        "len()",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "invalid operation: too many arguments for cap(pair()) (expected 1, found 2)",
+                        "cap(pair())",
+                    ),
+                    (
+                        "InvalidLen",
+                        "invalid argument: n (variable of type int) for built-in len",
+                        "n",
+                    ),
+                    (
+                        "InvalidCap",
+                        "invalid argument: \"x\" (untyped string constant) for built-in cap",
+                        "\"x\"",
+                    ),
+                    (
+                        "InvalidDotDotDot",
+                        "invalid operation: invalid use of ... with built-in len",
+                        "...",
+                    ),
+                    (
+                        "InvalidAppend",
+                        "invalid append: argument must be a slice; have untyped nil",
+                        "nil",
+                    ),
+                    (
+                        "IncompatibleAssign",
+                        "cannot use \"x\" (untyped string constant) as int value in argument to append",
+                        "\"x\"",
+                    ),
+                    (
+                        "TruncatedFloat",
+                        "cannot use 1.5 (untyped float constant) as int value in argument to append (truncated)",
+                        "1.5",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "not enough arguments in call to append\n\thave ([]int...)\n\twant ([]int, ...int)",
+                        "",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "too many arguments in call to append\n\thave ([]int, number, []int...)\n\twant ([]int, ...int)",
+                        "s",
+                    ),
+                    (
+                        "InvalidCopy",
+                        "invalid copy: arguments s (variable of type []int) and []string{} (value of type []string) have different element types int and string",
+                        "s",
+                    ),
+                    (
+                        "InvalidMake",
+                        "invalid argument: cannot make int: type must be slice, map, or channel",
+                        "int",
+                    ),
+                    (
+                        "WrongArgCount",
+                        "invalid operation: make([]int) expects 2 or 3 arguments; found 1",
+                        "make([]int)",
+                    ),
+                    (
+                        "SwappedMakeArgs",
+                        "invalid argument: length and capacity swapped",
+                        "2",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index -1 (constant of type int) must not be negative",
+                        "-1",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index -2 (constant of type int) must not be negative",
+                        "-2",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index -3 (constant of type int) must not be negative",
+                        "-3",
+                    ),
+                    (
+                        "UntypedNilUse",
+                        "use of untyped nil in argument to new",
+                        "nil",
+                    ),
+                    (
+                        "InvalidClose",
+                        "invalid operation: cannot close receive-only channel in (variable of type <-chan int)",
+                        "in",
+                    ),
+                    (
+                        "InvalidClear",
+                        "invalid argument: cannot clear n (variable of type int): argument must be (or constrained by) map or slice",
+                        "n",
+                    ),
+                    (
+                        "InvalidDelete",
+                        "invalid argument: n (variable of type int) is not a map",
+                        "n",
+                    ),
+                    (
+                        "InvalidComplex",
+                        "invalid argument: arguments have type int, expected floating-point",
+                        "n",
+                    ),
+                    (
+                        "InvalidComplex",
+                        "invalid operation: complex(x, y) (mismatched types float32 and float64)",
+                        "x",
+                    ),
+                    (
+                        "InvalidImag",
+                        "invalid argument: argument has type float32, expected complex type",
+                        "x",
+                    ),
+                    (
+                        "InvalidReal",
+                        "invalid argument: argument has type int, expected complex type",
+                        "n",
+                    ),
+                    (
+                        "InvalidMinMaxOperand",
+                        "invalid argument: false (untyped bool constant) cannot be ordered",
+                        "false",
+                    ),
+                    (
+                        "MismatchedTypes",
+                        "invalid argument: mismatched types float32 (previous argument) and float64 (type of y)",
+                        "y",
+                    ),
+                ],
+            ),
+            (
+                r#"func f(a [2]int, s []int, m map[int]bool, text string, f float64, n int) {
+ _ = a[2]
+ _ = (&a)[-1]
+ _ = "a"[1]
+ _ = s[1.5]
+ _ = s[f]
+ _ = s[true]
+ _ = n[0]
+ _ = s[0, int]
+ _ = m[text]
+ _ = m[1 << 100]
+ _, _ = m["x"]
+}
+"#,
+                &[
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index 2 out of bounds [0:2]",
+                        "2",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index -1 (constant of type int) must not be negative",
+                        "-1",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index 1 out of bounds [0:1]",
+                        "1",
+                    ),
+                    (
+                        "TruncatedFloat",
+                        "1.5 (untyped float constant) truncated to int",
+                        "1.5",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index f (variable of type float64) must be integer",
+                        "f",
+                    ),
+                    (
+                        "InvalidConstVal",
+                        "cannot convert true (untyped bool constant) to type int",
+                        "true",
+                    ),
+                    (
+                        "NonIndexableOperand",
+                        "cannot index n (variable of type int)",
+                        "n",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid operation: more than one index",
+                        "int",
+                    ),
+                    (
+                        "IncompatibleAssign",
+                        "cannot use text (variable of type string) as int value in map index",
+                        "text",
+                    ),
+                    (
+                        "NumericOverflow",
+                        "cannot use 1 << 100 (untyped int constant 1267650600228229401496703205376) as int value in map index (overflows)",
+                        "1 << 100",
+                    ),
+                    (
+                        "IncompatibleAssign",
+                        "cannot use \"x\" (untyped string constant) as int value in map index",
+                        "\"x\"",
+                    ),
+                ],
+            ),
+            (
+                r#"func f(a [2]int, s []int, f float64, n int) {
+ _ = a[:3]
+ _ = s[2:1]
+ _ = "x"[0:1:1]
+ _ = [2]int{}[:]
+ _ = n[:]
+ _ = a[-1:f]
+}
+"#,
+                &[
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index 3 out of bounds [0:3]",
+                        "3",
+                    ),
+                    ("SwappedSliceIndices", "invalid slice indices: 1 < 2", "1"),
+                    (
+                        "InvalidSliceExpr",
+                        "invalid operation: 3-index slice of string",
+                        "1",
+                    ),
+                    (
+                        "NonSliceableOperand",
+                        "cannot slice unaddressable value [2]int{} (value of type [2]int)",
+                        "[2]int{}",
+                    ),
+                    (
+                        "NonSliceableOperand",
+                        "cannot slice n (variable of type int)",
+                        "n",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index -1 (constant of type int) must not be negative",
+                        "-1",
+                    ),
+                    (
+                        "InvalidIndex",
+                        "invalid argument: index f (variable of type float64) must be integer",
+                        "f",
+                    ),
+                ],
+            ),
+            (
+                r#"const _ = 1 / 0
+const _ = 1 / 0.0
+const _ = 1 << -1
+const _ = 1 << 1.5
+const _ = 1 << 1075
+const _ = uint8(256)
+const _ = int(1.5)
+const _ = int8(127) + 1
+const _ uint8 = 256
+func f(n int, x float64) {
+ _ = n % 0
+ n /= 0
+ _ = x / 0
+ _ = x << 2
+ _ = n << x
+ var m uint8 = 256
+ _ = m
+}
+"#,
+                &[
+                    ("DivByZero", "invalid operation: division by zero", "0"),
+                    ("DivByZero", "invalid operation: division by zero", "0.0"),
+                    (
+                        "InvalidShiftCount",
+                        "invalid operation: negative shift count -1 (untyped int constant)",
+                        "-1",
+                    ),
+                    (
+                        "TruncatedFloat",
+                        "1.5 (untyped float constant) truncated to uint",
+                        "1.5",
+                    ),
+                    (
+                        "InvalidShiftCount",
+                        "invalid operation: invalid shift count 1075 (untyped int constant)",
+                        "1075",
+                    ),
+                    ("InvalidConversion", "constant 256 overflows uint8", "256"),
+                    (
+                        "InvalidConversion",
+                        "cannot convert 1.5 (untyped float constant) to type int",
+                        "1.5",
+                    ),
+                    (
+                        "NumericOverflow",
+                        "int8(127) + 1 (constant 128 of type int8) overflows int8",
+                        "int8(127) + 1",
+                    ),
+                    (
+                        "NumericOverflow",
+                        "cannot use 256 (untyped int constant) as uint8 value in constant declaration (overflows)",
+                        "256",
+                    ),
+                    (
+                        "InvalidShiftOperand",
+                        "invalid operation: shifted operand x (variable of type float64) must be integer",
+                        "x",
+                    ),
+                    (
+                        "InvalidShiftCount",
+                        "invalid operation: shift count x (variable of type float64) must be integer",
+                        "x",
+                    ),
+                    ("DivByZero", "invalid operation: division by zero", "0"),
+                    ("DivByZero", "invalid operation: division by zero", "0"),
+                    (
+                        "NumericOverflow",
+                        "cannot use 256 (untyped int constant) as uint8 value in variable declaration (overflows)",
+                        "256",
+                    ),
+                ],
+            ),
+            (
+                r#"func pair() ([]int, []int) { return nil, nil }
+func f[T ~[2]int | ~[]int](a T, m map[string]int, s []byte, in chan<- int, n float64) {
+ _, _ = m["x"]
+ _, _ = a[1.0], a[1+0i]
+ _ = "a"[:1]
+ _ = s[0:1:2]
+ _ = len(a)
+ _ = append(s, "x"...)
+ _ = copy(pair())
+ _ = make([]int, 1, 2)
+ _ = new(1)
+ _ = n / 0
+ const _ = 1 << 127
+ const _ = 1.0 << 5
+ close(in)
+ clear(m)
+ delete(m, "x")
+}
+"#,
+                &[],
+            ),
+        ];
+        assert_diagnostic_cases("go-types-operand-diagnostics", cases);
+    }
+
+    type DiagnosticCase<'a> = (&'a str, &'a [(&'a str, &'a str, &'a str)]);
+
+    fn assert_diagnostic_cases(name: &str, cases: &[DiagnosticCase<'_>]) {
+        let first = format!("package p\n{}", cases[0].0);
+        let mut server = SemaTestServer::start(
+            name,
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.27\n"),
+                ("main.go", &first),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, &first);
+        for (index, &(body, expected)) in cases.iter().enumerate() {
+            let source = format!("package p\n{body}");
+            let version = index as i64 + 1;
+            if index != 0 {
+                server.did_change(&uri, version, &source);
+            }
+            let diagnostics = server.published_diagnostics(&uri, version);
+            let lines: Vec<_> = source.lines().collect();
+            let mut actual: Vec<_> = diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    let start = &diagnostic["range"]["start"];
+                    let end = &diagnostic["range"]["end"];
+                    assert_eq!(start["line"], end["line"]);
+                    let line = lines[start["line"].as_u64().unwrap() as usize];
+                    let start = start["character"].as_u64().unwrap() as usize;
+                    let end = end["character"].as_u64().unwrap() as usize;
+                    (
+                        diagnostic["code"].as_str().unwrap(),
+                        diagnostic["message"].as_str().unwrap(),
+                        &line[start..end],
+                    )
+                })
+                .collect();
+            actual.sort_unstable();
+            let mut expected = expected.to_vec();
+            expected.sort_unstable();
+            assert_eq!(actual, expected, "{source}\n{diagnostics:?}");
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn diagnostics_track_reads_when_an_imported_callee_is_invalid() {
+        let source = concat!(
+            "package p\n",
+            "import \"example.com/m/dep\"\n",
+            "func f() {\n",
+            "    var gate, up, nested *dep.MissingType\n",
+            "    _ = dep.Broken(gate)\n",
+            "    _, _ = dep.Broken(up)\n",
+            "    consume(dep.Broken(nested))\n",
+            "    read := 1\n",
+            "    _ = dep.MissingCall(read)\n",
+            "}\n",
+            "func consume(...int) {}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "imported-callee-diagnostics",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.27\n"),
+                ("main.go", source),
+                ("dep/dep.go", "package dep\nvar Broken = excluded()\n"),
+                (
+                    "dep/excluded.go",
+                    "//go:build never_tag\n\npackage dep\nfunc excluded() func(...any) int { return nil }\n",
+                ),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, source);
+        let rows = server.published_diagnostics(&uri, 1);
+        let mut messages: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                (
+                    row["code"].as_str().unwrap(),
+                    row["message"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        messages.sort_unstable();
+        assert_eq!(
+            messages,
+            [
+                ("UndeclaredImportedName", "undefined: dep.MissingCall"),
+                ("UndeclaredImportedName", "undefined: dep.MissingType"),
+                ("UnusedVar", "declared and not used: gate"),
+                ("UnusedVar", "declared and not used: nested"),
+                ("UnusedVar", "declared and not used: up"),
+            ],
+            "{rows:?}"
+        );
         server.shutdown();
     }
 
@@ -6128,6 +7161,120 @@ mod sema_e2e {
     }
 
     #[test]
+    fn sema_definition_and_declaration_share_builtin_and_assembly_locations() {
+        let go = concat!(
+            "package p\n",
+            "func Asm()\n",
+            "func NoText()\n",
+            "func f() { Asm(); NoText(); _ = len(\"abc\"); missing() }\n",
+        );
+        let assembly = "TEXT ·Asm(SB), $0-0\n    RET\n";
+        let builtin = "package builtin\n\nfunc len(v Type) int\n";
+        let sdk_file = ".sdk/src/builtin/builtin.go";
+        let mut server = SemaTestServer::start_with_sdk(
+            "definition-locations",
+            &[
+                ("go.mod", "module example.com/definitions\n\ngo 1.27\n"),
+                ("main.go", go),
+                ("main.s", assembly),
+                (sdk_file, builtin),
+            ],
+            Some(("linux", "amd64")),
+            false,
+            Some(".sdk"),
+            ".",
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, go);
+        let location = |file: &str, source: &str, name: &str| {
+            let start = source.find(name).unwrap();
+            json!([{
+                "uri": server.uri(file),
+                "range": {"start": pos(source, start), "end": pos(source, start + name.len())},
+            }])
+        };
+        for (name, expected) in [
+            ("Asm(", location("main.s", assembly, "Asm")),
+            ("NoText(", location("main.go", go, "NoText")),
+            ("len(", location(sdk_file, builtin, "len")),
+            ("missing(", Value::Null),
+        ] {
+            for method in ["textDocument/definition", "textDocument/declaration"] {
+                let reply = server.request(
+                    method,
+                    json!({
+                        "textDocument": {"uri": uri},
+                        "position": pos(go, go.rfind(name).unwrap()),
+                    }),
+                );
+                assert!(reply.get("error").is_none(), "{method} {name}: {reply}");
+                assert_eq!(reply["result"], expected, "{method} {name}: {reply}");
+            }
+        }
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_type_definition_returns_source_locations_in_result_order() {
+        let named = "package dep\n\ntype Remote struct{}\n";
+        let builtin = "package builtin\n\ntype int int\n";
+        let disk = concat!(
+            "package p\n",
+            "import \"example.com/m/dep\"\n",
+            "var Mixed func() (dep.Remote, int, dep.Remote)\n",
+            "func f() {\n",
+            "    type 本地 struct{}\n",
+            "    var local 本地\n",
+            "    _ = local\n",
+            "}\n",
+        );
+        let edited = disk.replace("type 本地", "type /* 😀 */ 本地");
+        let sdk_file = ".sdk/src/builtin/builtin.go";
+        let mut server = SemaTestServer::start_with_sdk(
+            "type-definition-locations",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.27\n"),
+                ("main.go", disk),
+                ("dep/dep.go", named),
+                (sdk_file, builtin),
+            ],
+            None,
+            false,
+            Some(".sdk"),
+            ".",
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, disk);
+        server.did_change(&uri, 2, &edited);
+
+        let location = |file: &str, source: &str, declaration: &str, name: &str| {
+            let start = source.find(declaration).unwrap() + declaration.len() - name.len();
+            json!({
+                "uri": server.uri(file),
+                "range": {"start": pos(source, start), "end": pos(source, start + name.len())},
+            })
+        };
+        let remote = location("dep/dep.go", named, "type Remote", "Remote");
+        let int = location(sdk_file, builtin, "type int", "int");
+        let local = location("main.go", &edited, "type /* 😀 */ 本地", "本地");
+
+        for (name, expected) in [
+            ("Mixed", json!([remote, int, remote])),
+            ("local\n", json!([local])),
+        ] {
+            let reply = server.request(
+                "textDocument/typeDefinition",
+                json!({
+                    "textDocument": {"uri": uri},
+                    "position": pos(&edited, edited.rfind(name).unwrap()),
+                }),
+            );
+            assert_eq!(reply["result"], expected, "{name}: {reply}");
+        }
+        server.shutdown();
+    }
+
+    #[test]
     fn sema_unimported_transitive_type_hover_and_completion() {
         let a_src = concat!(
             "package a\n\n",
@@ -6462,6 +7609,179 @@ mod sema_e2e {
             "f1 assigned to raw func() int should retain signature modifier: {f1_in_raw:?}"
         );
 
+        server.shutdown();
+    }
+
+    #[test]
+    fn sdk_navigation_follows_private_functions_and_promoted_methods() {
+        let client = "package main\nimport \"stdnav\"\nfunc main() { stdnav.Start(nil) }\n";
+        let entry = concat!(
+            "package stdnav\n",
+            "type Runner interface { run(); Ready() }\n",
+            "type Partial interface { run() }\n",
+            "func Start(r Runner) {\n",
+            "\tvalidate()\n\tr.run()\n\tgoto done\ndone:\n\tundefinedName()\n}\n",
+        );
+        let helpers = concat!(
+            "package stdnav\nfunc validate() {}\ntype worker struct{}\n",
+            "func (worker) run() {}\nfunc (worker) Ready() {}\n",
+        );
+        let mut server = SemaTestServer::start_with_sdk(
+            "private-sdk-navigation",
+            &[
+                ("app/go.mod", "module example.com/private\n\ngo 1.27\n"),
+                ("app/main.go", client),
+                ("_sdk/src/builtin/builtin.go", "package builtin\n"),
+                ("_sdk/src/stdnav/entry.go", entry),
+                ("_sdk/src/stdnav/helpers.go", helpers),
+                (
+                    "app/bridge/bridge.go",
+                    "package bridge\nimport \"stdnav\"\ntype Middle struct { stdnav.Partial }\n",
+                ),
+                (
+                    "app/wrap/wrap.go",
+                    concat!(
+                        "package wrap\nimport \"example.com/private/bridge\"\n",
+                        "type Wrapper struct { bridge.Middle }\n",
+                        "func (Wrapper) Ready() {}\n",
+                    ),
+                ),
+                (
+                    "app/rival/rival.go",
+                    concat!(
+                        "package rival\ntype Other struct{}\n",
+                        "func (Other) run() {}\nfunc (Other) Ready() {}\n",
+                    ),
+                ),
+            ],
+            None,
+            false,
+            Some("_sdk"),
+            "app",
+        );
+        let client_uri = server.uri("app/main.go");
+        let entry_uri = server.uri("_sdk/src/stdnav/entry.go");
+        let helper_uri = server.uri("_sdk/src/stdnav/helpers.go");
+        let definition = server.request(
+            "textDocument/definition",
+            json!({"textDocument":{"uri":client_uri},"position":pos(client,client.find("Start").unwrap())}),
+        );
+        assert_eq!(definition["result"][0]["uri"], entry_uri, "{definition}");
+        server.did_open(&entry_uri, entry);
+        let follow_up = json!({
+            "textDocument":{"uri":entry_uri},"position":pos(entry,entry.find("validate").unwrap()),
+        });
+        let second = server.request_before_diagnostics(
+            "textDocument/definition",
+            follow_up.clone(),
+            &entry_uri,
+        );
+        let diagnostics = server.published_diagnostics(&entry_uri, 1);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|row| row["code"] == "UndeclaredName"),
+            "{diagnostics:?}"
+        );
+        let declaration = server.request("textDocument/declaration", follow_up);
+        for reply in [second, declaration] {
+            assert_eq!(reply["result"][0]["uri"], helper_uri, "{reply}");
+            assert_eq!(
+                reply["result"][0]["range"]["start"],
+                pos(helpers, helpers.find("validate").unwrap()),
+                "{reply}"
+            );
+        }
+        let label = server.request(
+            "textDocument/definition",
+            json!({"textDocument":{"uri":entry_uri},"position":pos(entry,entry.find("done").unwrap())}),
+        );
+        assert_eq!(
+            label["result"][0]["range"]["start"],
+            pos(entry, entry.find("done:").unwrap()),
+            "{label}"
+        );
+
+        let implementations = server.request(
+            "textDocument/implementation",
+            json!({"textDocument":{"uri":entry_uri},"position":pos(entry,entry.find(".run").unwrap()+1)}),
+        );
+        let rows = implementations["result"]
+            .as_array()
+            .expect("method implementations");
+        for (uri, start) in [
+            (&helper_uri, pos(helpers, helpers.find("run()").unwrap())),
+            (&entry_uri, pos(entry, entry.find("run() }").unwrap())),
+        ] {
+            assert!(
+                rows.iter()
+                    .any(|row| row["uri"] == *uri && row["range"]["start"] == start),
+                "missing implementation at {uri} {start}: {implementations}"
+            );
+        }
+        assert_eq!(rows.len(), 2, "{implementations}");
+        server.shutdown();
+    }
+
+    #[test]
+    fn module_cache_open_defers_diagnostics_for_follow_up_definition() {
+        let client = "package p\nimport \"example.test/dep\"\nfunc run() { dep.Public() }\n";
+        let generated = "package dep\nfunc Public() { hidden(); missing() }\n";
+        let helper = "package dep\nfunc hidden() {}\n";
+        let dependency = "_gomodcache/example.test/dep@v1.0.0";
+        let generated_path = format!("{dependency}/api_gen.go");
+        let helper_path = format!("{dependency}/helper.go");
+        let mut server = SemaTestServer::start_with_sdk(
+            "module-cache-navigation",
+            &[
+                (
+                    "app/go.mod",
+                    "module example.test/app\n\ngo 1.27\n\nrequire example.test/dep v1.0.0\n",
+                ),
+                ("app/main.go", client),
+                (
+                    "_gomodcache/cache/download/example.test/dep/@v/v1.0.0.mod",
+                    "module example.test/dep\n\ngo 1.27\n",
+                ),
+                (&generated_path, generated),
+                (&helper_path, helper),
+            ],
+            None,
+            false,
+            None,
+            "app",
+        );
+        let generated_uri = server.uri(&generated_path);
+        let first = server.request(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":server.uri("app/main.go")},
+                "position":pos(client,client.find("Public").unwrap()),
+            }),
+        );
+        assert_eq!(first["result"][0]["uri"], generated_uri, "{first}");
+
+        server.did_open(&generated_uri, generated);
+        let second = server.request_before_diagnostics(
+            "textDocument/definition",
+            json!({
+                "textDocument":{"uri":generated_uri},
+                "position":pos(generated,generated.find("hidden").unwrap()),
+            }),
+            &generated_uri,
+        );
+        assert_eq!(second["result"][0]["uri"], server.uri(&helper_path));
+        assert_eq!(
+            second["result"][0]["range"]["start"],
+            pos(helper, helper.find("hidden").unwrap())
+        );
+        let diagnostics = server.published_diagnostics(&generated_uri, 1);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|row| row["code"] == "UndeclaredName"),
+            "{diagnostics:?}"
+        );
         server.shutdown();
     }
 
@@ -7709,7 +9029,7 @@ mod ast_shape_differential {
             };
             match &expression.kind {
                 ExprKind::Name => push(nodes, "name".to_owned()),
-                ExprKind::Literal => push(nodes, "literal".to_owned()),
+                ExprKind::Literal(_) => push(nodes, "literal".to_owned()),
                 ExprKind::Missing => {}
                 ExprKind::Type => {
                     let within = inline_type_shape(source, span);
@@ -7765,6 +9085,7 @@ mod ast_shape_differential {
                     function,
                     arguments,
                     variadic,
+                    ..
                 } => {
                     push(
                         nodes,
@@ -10818,7 +12139,7 @@ mod recovered_structure_differential {
                 truncate_name(&source[expression.span.clone()]),
                 Vec::new(),
             )),
-            ExprKind::Literal => node("lit"),
+            ExprKind::Literal(_) => node("lit"),
             ExprKind::Missing => node("bad"),
             ExprKind::Type => node("type"),
             ExprKind::Composite {
@@ -10866,6 +12187,7 @@ mod recovered_structure_differential {
                 function,
                 arguments,
                 variadic,
+                ..
             } => {
                 let mut children = vec![*function];
                 children.extend(arguments);

@@ -106,12 +106,9 @@ fn help_in_expressions(
     if !trigger.explicit
         && !trigger.retrigger
         && expressions.iter().any(|expression| {
-            matches!(expression.kind, ExprKind::Literal)
+            matches!(expression.kind, ExprKind::Literal(TokenKind::String))
                 && base + expression.span.start <= offset
                 && offset <= base + expression.span.end
-                && Lexer::new(&source[base + expression.span.start..base + expression.span.end])
-                    .next()
-                    .is_some_and(|token| token.kind == TokenKind::String)
         })
     {
         return None;

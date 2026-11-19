@@ -1,14 +1,11 @@
 //! Resource admission around tower-lsp's codec; JSON-RPC decoding stays upstream.
-use futures::future::BoxFuture;
 use futures::task::AtomicWaker;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, ReadBuf};
-use tower::Service;
-use tower_lsp::jsonrpc::{Request, Response};
 
 const MAX_HEADER_BYTES: usize = 8192;
 const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
@@ -20,6 +17,7 @@ pub(super) struct ProcessStatus {
     exited: AtomicBool,
     input_error: AtomicBool,
     input_waker: AtomicWaker,
+    pub(super) frame_bytes: AtomicUsize,
 }
 
 impl ProcessStatus {
@@ -27,7 +25,7 @@ impl ProcessStatus {
         self.shutdown.store(true, Ordering::Relaxed);
     }
 
-    fn exit(&self) {
+    pub(super) fn exit(&self) {
         self.exited.store(true, Ordering::Relaxed);
         self.input_waker.wake();
     }
@@ -37,58 +35,6 @@ impl ProcessStatus {
             self.input_error.load(Ordering::Relaxed)
                 || self.exited.load(Ordering::Relaxed) && !self.shutdown.load(Ordering::Relaxed),
         )
-    }
-}
-
-pub(super) struct ProtocolExtensions<S> {
-    inner: S,
-    status: Arc<ProcessStatus>,
-}
-
-impl<S> ProtocolExtensions<S> {
-    pub(super) fn new(inner: S, status: Arc<ProcessStatus>) -> Self {
-        Self { inner, status }
-    }
-}
-
-impl<S> Service<Request> for ProtocolExtensions<S>
-where
-    S: Service<Request, Response = Option<Response>>,
-    S::Future: Send + 'static,
-    S::Error: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: Request) -> Self::Future {
-        let initialize = request.method() == "initialize";
-        if request.method() == "exit" {
-            self.status.exit();
-        }
-        let future = self.inner.call(request);
-        Box::pin(async move {
-            let response = future.await?;
-            Ok(response.map(|response| {
-                if !initialize {
-                    return response;
-                }
-                let (id, result) = response.into_parts();
-                // lsp-types 0.94.1 has type-hierarchy requests but omits this
-                // standard capability. Keep advertising the implemented feature.
-                Response::from_parts(
-                    id,
-                    result.map(|mut result| {
-                        result["capabilities"]["typeHierarchyProvider"] = true.into();
-                        result
-                    }),
-                )
-            }))
-        })
     }
 }
 
@@ -173,7 +119,10 @@ impl<I: AsyncRead + Unpin> AsyncRead for LimitedInput<I> {
                 this.header.push(byte[0]);
                 if this.header.ends_with(b"\r\n\r\n") || this.header.ends_with(b"\n\n") {
                     match this.length() {
-                        Ok(length) => this.remaining = Some(length),
+                        Ok(length) => {
+                            this.status.frame_bytes.store(length, Ordering::Relaxed);
+                            this.remaining = Some(length);
+                        }
                         Err(error) => return Poll::Ready(Err(error)),
                     }
                 }

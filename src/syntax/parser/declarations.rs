@@ -73,45 +73,16 @@ impl Parser<'_> {
     /// before a `)`/`;` so grouped recovery can continue at the next spec instead
     /// of swallowing subsequent declarations.
     fn import_spec(&mut self) {
-        let Some(first) = self.tokens.peek().cloned() else {
+        let Some(spec) = super::imports::import_spec(&mut self.tokens) else {
             return;
         };
-        let name = match first.kind {
-            TokenKind::String => {
-                self.tokens.next();
-                if let Some(path) = literal::import_path(self.spelling(&first)) {
-                    self.result.imports.push(Import {
-                        name: ImportName::Package,
-                        path,
-                    });
-                }
-                return;
-            }
-            TokenKind::Period => {
-                self.tokens.next();
-                ImportName::Dot
-            }
-            TokenKind::Ident => {
-                let name = if self.spelling(&first) == "_" {
-                    ImportName::Blank
-                } else {
-                    ImportName::Alias(self.spelling(&first).to_owned())
-                };
-                self.tokens.next();
-                name
-            }
-            _ => return,
-        };
-        let Some(path) = self
-            .tokens
-            .peek()
-            .filter(|token| token.kind == TokenKind::String)
-            .cloned()
-        else {
-            return;
-        };
-        self.tokens.next();
-        if let Some(path) = literal::import_path(self.spelling(&path)) {
+        if let Some(path) = literal::import_path(&self.source[spec.path]) {
+            let name = match spec.alias.map(|span| &self.source[span]) {
+                None => ImportName::Package,
+                Some(".") => ImportName::Dot,
+                Some("_") => ImportName::Blank,
+                Some(alias) => ImportName::Alias(alias.to_owned()),
+            };
             self.result.imports.push(Import { name, path });
         }
     }

@@ -1,8 +1,8 @@
 //! Protocol locations adapt Context reference searches with bounded allocation.
+use super::query::source_location;
 use crate::analysis::query::{Context, ReferenceTarget, SourceLocation, SourceRange};
 use crate::text::SourceMap;
-use crate::workspace;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::time::Instant;
 
 pub(super) fn execute(
@@ -29,7 +29,9 @@ pub(super) fn execute(
                     range: SourceRange::new(&map, span),
                 })
                 .collect();
-            return Ok(Value::Array(rows.into_iter().map(location).collect()));
+            return Ok(Value::Array(
+                rows.into_iter().map(source_location).collect(),
+            ));
         }
         ReferenceTarget::Global(target_file, symbol) => {
             drop(source);
@@ -66,7 +68,7 @@ pub(super) fn execute(
             )
         }
     };
-    let mut locations: Vec<_> = locations.into_iter().map(location).collect();
+    let mut locations: Vec<_> = locations.into_iter().map(source_location).collect();
     locations.sort_by(|a, b| {
         a["uri"]
             .as_str()
@@ -88,7 +90,4 @@ pub(super) fn execute(
     // A resolved query returns an allocated list, including [] for no uses.
     // Unavailable targets return null before this path.
     Ok(Value::Array(locations))
-}
-fn location(location: SourceLocation<'_>) -> Value {
-    json!({"uri":workspace::uri(location.file),"range":super::query::source_range(location.range)})
 }

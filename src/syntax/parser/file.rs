@@ -1,10 +1,13 @@
 //! Full-file acceptance with declaration-local arenas and on-demand body traversal.
-use crate::syntax::ast::expression::{Diagnostic, ExprKind};
+use crate::syntax::ast::expression::{Diagnostic, Expr, ExprKind};
 use crate::syntax::parser::expression::{MAX_DIAGNOSTICS, Parser};
-use crate::syntax::parser::signature::ParameterContext;
+use crate::syntax::parser::imports::{self, ImportSpec};
+use crate::syntax::parser::signature::HeaderKind;
 use crate::syntax::parser::statement;
 use crate::syntax::token::TokenKind;
 use std::ops::Range;
+
+const MAX_PENDING_BODIES: usize = 4096;
 
 /// Validate file syntax without returning or retaining a whole-file syntax tree.
 /// Bodies are checked one at a time, including nested function literals. The
@@ -12,7 +15,18 @@ use std::ops::Range;
 /// Output is limited to 4,096 diagnostics; body worklists allow 4,096 pending
 /// bodies and 128 nested literal scopes, reporting excess as a syntax error.
 pub fn validate_file(source: &str) -> Vec<Diagnostic> {
+    validate_file_with_imports(source, |_, _, _, _| {})
+}
+
+/// Visit import specs as part of file validation. Spans belong to `source`;
+/// the visitor controls how many specs it retains for its request.
+pub(crate) fn validate_file_with_imports(
+    source: &str,
+    mut visit_import: impl FnMut(ImportSpec, usize, Option<usize>, Option<usize>),
+) -> Vec<Diagnostic> {
     let mut parser = Parser::new(source);
+    // Validation consumes syntax and diagnostics without projecting type shapes.
+    parser.record_type_nodes = false;
     parser.expect_kind(TokenKind::Package, "expected package clause");
     parser.expect_kind(TokenKind::Ident, "expected package name");
     separator(&mut parser, None);
@@ -25,7 +39,7 @@ pub fn validate_file(source: &str) -> Vec<Diagnostic> {
                 if declarations {
                     parser.error(token.span.clone(), "imports must precede declarations");
                 }
-                imports(&mut parser);
+                import_declaration(&mut parser, &mut visit_import);
             }
             TokenKind::Var | TokenKind::Const | TokenKind::Type => {
                 declarations = true;
@@ -40,12 +54,11 @@ pub fn validate_file(source: &str) -> Vec<Diagnostic> {
                 parser.error(token.span.clone(), "expected top-level declaration");
             }
         }
-        for expression in &parser.nodes {
-            if let ExprKind::FunctionLiteral { body, .. } = &expression.kind {
-                bodies.push((body.clone(), 0));
-            }
-        }
         append_diagnostics(&mut diagnostics, parser.diagnostics.drain(..), 0);
+        if let Some(span) = enqueue_literal_bodies(&mut bodies, &parser.nodes, 0, 0) {
+            body_limit(&mut diagnostics, span);
+            return diagnostics;
+        }
         // Release the declaration arena before visiting its literal bodies.
         parser.nodes = Vec::new();
         parser.type_references = Vec::new();
@@ -77,27 +90,32 @@ fn separator(parser: &mut Parser<'_>, closing: Option<TokenKind>) {
         .is_some_and(|token| token.kind == TokenKind::Semicolon)
     {
         parser.tokens.next();
-    } else if let Some(token) = parser
+    } else if parser
         .tokens
         .peek()
-        .filter(|token| Some(token.kind) != closing)
+        .is_some_and(|token| Some(token.kind) != closing)
     {
-        let span = token.span.clone();
-        parser.error(span, "expected declaration separator");
+        parser.error_here("expected declaration separator", Some("expected ';'"));
     }
 }
 
-fn imports(parser: &mut Parser<'_>) {
-    parser.tokens.next();
-    let grouped = parser
+fn import_declaration(
+    parser: &mut Parser<'_>,
+    visit: &mut impl FnMut(ImportSpec, usize, Option<usize>, Option<usize>),
+) {
+    let start = parser.tokens.next().expect("import keyword").span.start;
+    let group_start = if parser
         .tokens
         .peek()
-        .is_some_and(|token| token.kind == TokenKind::LParen);
-    if grouped {
-        parser.tokens.next();
-    }
+        .is_some_and(|token| token.kind == TokenKind::LParen)
+    {
+        parser.tokens.next().map(|token| token.span.end)
+    } else {
+        None
+    };
+    let mut previous_end = None;
     loop {
-        if grouped
+        if group_start.is_some()
             && parser
                 .tokens
                 .peek()
@@ -105,54 +123,57 @@ fn imports(parser: &mut Parser<'_>) {
         {
             break;
         }
-        if parser
-            .tokens
-            .peek()
-            .is_some_and(|token| matches!(token.kind, TokenKind::Ident | TokenKind::Period))
-        {
-            parser.tokens.next();
-        }
-        let start = parser
+        let before = parser
             .tokens
             .peek()
             .map_or(parser.source.len(), |token| token.span.start);
-        parser.expect_kind(TokenKind::String, "expected import path string");
-        if !grouped {
+        if let Some(spec) = imports::import_spec(&mut parser.tokens) {
+            let end = spec.path.end;
+            visit(spec, start, group_start, previous_end);
+            previous_end = Some(end);
+        } else if parser.tokens.peek().is_some_and(|token| {
+            matches!(
+                token.kind,
+                TokenKind::Int | TokenKind::Float | TokenKind::Imag | TokenKind::Char
+            )
+        }) {
+            parser.error_here("import path must be a string", None);
+            parser.tokens.next();
+        } else {
+            parser.error_here("missing import path", None);
+        }
+        if group_start.is_none() {
             break;
         }
         separator(parser, Some(TokenKind::RParen));
         if parser
             .tokens
             .peek()
-            .is_some_and(|token| token.span.start == start)
+            .is_some_and(|token| token.span.start == before)
         {
             parser.tokens.next();
         }
     }
-    if grouped {
+    if group_start.is_some() {
         parser.expect_kind(TokenKind::RParen, "expected ')' after imports");
     }
 }
 
 fn function(parser: &mut Parser<'_>, bodies: &mut Vec<(Range<usize>, usize)>) {
-    parser.tokens.next();
+    parser.signature_header(HeaderKind::Named);
     if parser
         .tokens
         .peek()
-        .is_some_and(|token| token.kind == TokenKind::LParen)
+        .is_some_and(|t| t.kind == TokenKind::Semicolon)
+        && parser
+            .tokens
+            .clone()
+            .nth(1)
+            .is_some_and(|t| t.kind == TokenKind::LBrace)
     {
-        parser.parameter_list(ParameterContext::Inputs, 0);
+        parser.tokens.next();
+        parser.error_here("unexpected semicolon or newline before {", None);
     }
-    parser.expect_kind(TokenKind::Ident, "expected function name");
-    if parser
-        .tokens
-        .peek()
-        .is_some_and(|token| token.kind == TokenKind::LBrack)
-    {
-        parser.parameter_list(ParameterContext::TypeParameters, 0);
-    }
-    let (_, end) = parser.parameter_list(ParameterContext::Inputs, 0);
-    parser.result_parameters(0, end);
     if let Some(token) = parser
         .tokens
         .peek()
@@ -173,35 +194,46 @@ fn validate_bodies(
         if diagnostics.len() == MAX_DIAGNOSTICS {
             return;
         }
-        if depth >= 128 || bodies.len() >= 4096 {
-            append_diagnostics(
-                diagnostics,
-                [Diagnostic {
-                    span,
-                    message: "file body validation limit exceeded",
-                }],
-                0,
-            );
+        if depth >= 128 {
+            body_limit(diagnostics, span);
             return;
         }
         let parsed = statement::parse_block(&source[span.clone()]);
         append_diagnostics(diagnostics, parsed.diagnostics, span.start);
-        for expression in parsed.expressions {
-            if let ExprKind::FunctionLiteral { body, .. } = expression.kind {
-                if bodies.len() == 4096 {
-                    append_diagnostics(
-                        diagnostics,
-                        [Diagnostic {
-                            span,
-                            message: "file body validation limit exceeded",
-                        }],
-                        0,
-                    );
-                    return;
-                }
-                bodies.push((span.start + body.start..span.start + body.end, depth + 1));
-            }
+        if let Some(span) =
+            enqueue_literal_bodies(&mut bodies, &parsed.expressions, span.start, depth + 1)
+        {
+            body_limit(diagnostics, span);
+            return;
         }
+    }
+}
+
+fn enqueue_literal_bodies(
+    bodies: &mut Vec<(Range<usize>, usize)>,
+    expressions: &[Expr],
+    base: usize,
+    depth: usize,
+) -> Option<Range<usize>> {
+    for expression in expressions {
+        if let ExprKind::FunctionLiteral { body, .. } = &expression.kind {
+            let span = base + body.start..base + body.end;
+            if bodies.len() == MAX_PENDING_BODIES {
+                return Some(span);
+            }
+            bodies.push((span, depth));
+        }
+    }
+    None
+}
+
+fn body_limit(diagnostics: &mut Vec<Diagnostic>, span: Range<usize>) {
+    if diagnostics.len() < MAX_DIAGNOSTICS {
+        diagnostics.push(Diagnostic {
+            span,
+            message: "file body validation limit exceeded",
+            expected: None,
+        });
     }
 }
 
@@ -211,7 +243,7 @@ fn append_diagnostics(
     base: usize,
 ) {
     for mut diagnostic in diagnostics.into_iter().take(MAX_DIAGNOSTICS - target.len()) {
-        diagnostic.span = base + diagnostic.span.start..base + diagnostic.span.end;
+        diagnostic.rebase(base);
         target.push(diagnostic);
     }
 }

@@ -37,6 +37,25 @@ impl<'a> Semantics<'a> {
         source: &str,
         span: [u32; 2],
     ) -> Option<ObjectRef<'a>> {
+        self.object_for_span(file, source, span, None)
+    }
+
+    pub(crate) fn resolve_navigation_offset(
+        &mut self,
+        file: &Path,
+        source: &str,
+        span: [u32; 2],
+    ) -> Option<ObjectRef<'a>> {
+        self.object_for_span(file, source, span, Some(span[0] as usize))
+    }
+
+    fn object_for_span(
+        &mut self,
+        file: &Path,
+        source: &str,
+        span: [u32; 2],
+        cursor: Option<usize>,
+    ) -> Option<ObjectRef<'a>> {
         let file = self.intern_file(file)?;
         if !self.arena.resolver().file_visible(file) {
             return None;
@@ -49,7 +68,7 @@ impl<'a> Semantics<'a> {
         }) {
             return Some(crate::analysis::check::decl_object(DeclId { file, symbol }));
         }
-        let (region, _) = self.region_and_arena_at(file, source, span[0], None)?;
+        let (region, _) = self.region_and_arena_at(file, source, span[0], cursor)?;
         region
             .def_by_span(span)
             .or_else(|| region.use_by_span(span))

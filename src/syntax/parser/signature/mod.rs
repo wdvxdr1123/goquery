@@ -2,6 +2,7 @@
 mod header;
 mod parameters;
 
+pub(in crate::syntax::parser) use header::HeaderKind;
 pub use header::{
     parse_literal_signature, parse_method_signature, parse_signature, parse_type_parameters,
 };

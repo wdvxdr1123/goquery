@@ -1,5 +1,6 @@
 //! Bounded query results own coordinates, never candidate source/AST buffers.
 use crate::text::SourceMap;
+use std::borrow::Cow;
 use std::ops::Range;
 use std::path::Path;
 
@@ -41,12 +42,22 @@ impl SourceRange {
             },
         }
     }
+
+    pub(super) fn indexed_selection(range: &tower_lsp::lsp_types::Range) -> Self {
+        Self::coordinates(
+            (range.start.line, range.start.character),
+            (range.end.line, range.end.character),
+        )
+    }
 }
 #[derive(PartialEq, Eq)]
-pub(crate) struct SourceLocation<'a> {
-    pub(crate) file: &'a Path,
+pub(crate) struct Location<File> {
+    pub(crate) file: File,
     pub(crate) range: SourceRange,
 }
+
+pub(crate) type SourceLocation<'a> = Location<&'a Path>;
+pub(crate) type NavigationLocation<'a> = Location<Cow<'a, Path>>;
 
 pub(super) fn push<'a>(
     locations: &mut Vec<SourceLocation<'a>>,
