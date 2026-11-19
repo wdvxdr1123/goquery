@@ -52,7 +52,7 @@ pub(crate) fn execute(
     let scope = match context.cursor_scope(offset) {
         Ok(scope) => scope,
         Err(_) => {
-            if let Ok(target) = context.navigation_target(offset) {
+            if let Ok(target) = context.navigation_target_for_identifier(offset, &span) {
                 match target {
                     Target::Member(member) => {
                         let content = render::member_id(context, member, &span, range);
@@ -104,7 +104,7 @@ pub(crate) fn execute(
     if let Some(hover) = package::import_alias(context, &span, range) {
         return Ok(Some(hover));
     }
-    let target = match context.navigation_target(offset) {
+    let target = match context.navigation_target_for_identifier(offset, &span) {
         Ok(target) => target,
         Err(_) => return Ok(None),
     };

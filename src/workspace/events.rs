@@ -155,12 +155,12 @@ fn stub_declarations_fingerprint(stub: &IndexedFile) -> u64 {
     hasher.finish()
 }
 
-pub(crate) enum WorkspaceEvent<'a> {
+pub(crate) enum WorkspaceEvent {
     /// `dirty` distinguishes editor edits from the initial `didOpen` snapshot;
     /// external disk reconciliation never overwrites a dirty buffer.
     SetBuffer {
         file: PathBuf,
-        source: &'a str,
+        source: String,
         dirty: bool,
     },
     Close(PathBuf),
@@ -171,7 +171,7 @@ pub(crate) enum WorkspaceEvent<'a> {
 }
 
 /// Compact mutation label for `GOQUERY_TRACE_EDITS`; built only when enabled.
-fn event_description(event: &WorkspaceEvent<'_>) -> String {
+fn event_description(event: &WorkspaceEvent) -> String {
     match event {
         WorkspaceEvent::SetBuffer { file, .. } => format!("buffer {}", file.display()),
         WorkspaceEvent::Close(file) => format!("close {}", file.display()),
@@ -185,10 +185,7 @@ impl Workspace {
     /// Apply one mutation and return the open documents whose diagnostics may
     /// have become stale. A watched batch is indexed with at most one dependency
     /// and SDK discovery pass instead of one pass per file.
-    pub(crate) fn apply(
-        &mut self,
-        event: WorkspaceEvent<'_>,
-    ) -> Result<ChangeOutcome, (i32, String)> {
+    pub(crate) fn apply(&mut self, event: WorkspaceEvent) -> Result<ChangeOutcome, (i32, String)> {
         let trace = self
             .trace
             .edits
@@ -205,7 +202,12 @@ impl Workspace {
                         "file exceeds 15 MiB limit".into(),
                     ));
                 }
-                let previous = self.files.get(&file).map(declaration_snapshot);
+                let live = !self.diagnostics_on_save;
+                let previous = self
+                    .files
+                    .get(&file)
+                    .filter(|_| live)
+                    .map(declaration_snapshot);
                 // Full-sync edits usually have similar sizes. Reuse an overlay
                 // allocation instead of replacing it on every keystroke, but
                 // release it when a large deletion leaves more than 2x slack.
@@ -214,9 +216,9 @@ impl Workspace {
                     && buffer.capacity() <= source.len().saturating_mul(2)
                 {
                     buffer.clear();
-                    buffer.push_str(source);
+                    buffer.push_str(&source);
                 } else {
-                    self.open.insert(file.clone(), source.to_owned());
+                    self.open.insert(file.clone(), source);
                 }
                 let disk_stamp = index::DiskStamp::of(&file);
                 let state = self.open_state.entry(file.clone()).or_default();
@@ -238,7 +240,11 @@ impl Workspace {
                     // would only rescan; saves and watched events refresh it.
                     if file.file_name().is_some_and(|name| name == "go.work") {
                         self.refresh_modules(std::slice::from_ref(&file));
-                        self.all_open_documents()
+                        if live {
+                            self.all_open_documents()
+                        } else {
+                            Vec::new()
+                        }
                     } else {
                         Vec::new()
                     }
@@ -251,7 +257,9 @@ impl Workspace {
                     // waiting for a save. Importers are narrowed by the changed
                     // declaration names; saves and watched batches use the same
                     // bounded rule.
-                    if previous.as_ref().map(|previous| previous.fingerprint)
+                    if !live {
+                        Vec::new()
+                    } else if previous.as_ref().map(|previous| previous.fingerprint)
                         == self.files.get(&file).map(stub_declarations_fingerprint)
                     {
                         self.file_documents(&file)

@@ -135,7 +135,7 @@ as the semantic reference, for editors and AI-assisted development.
   Unicode and malformed editor input without panicking.
 - Advertise only implemented capabilities. Keep logs and diagnostics on stderr;
   stdout carries only LSP framing.
-- Sample `GOQUERY_TRACE_*` switches once during workspace construction. Keep new
+- Sample `GOQUERY_TRACE_*` switches once during server startup. Keep new
   resources bounded and document any new limit.
 
 ## Verification

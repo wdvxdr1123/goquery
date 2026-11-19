@@ -7,6 +7,7 @@ use std::future::poll_fn;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
+use std::time::Instant;
 use tower::Service;
 use tower_lsp::jsonrpc::{Id, Request, Response};
 
@@ -48,6 +49,39 @@ pub(super) struct ProtocolExtensions<S> {
     status: Arc<ProcessStatus>,
     admission: Arc<Admission>,
     pending: Vec<(Id, Weak<AtomicBool>)>,
+    trace: bool,
+}
+
+struct RequestTiming {
+    admitted: Instant,
+    method: String,
+    id: Option<String>,
+}
+
+impl RequestTiming {
+    fn new(request: &Request, cancelled: Option<&Id>) -> Self {
+        Self {
+            admitted: Instant::now(),
+            method: request.method().chars().take(80).collect(),
+            id: cancelled.or(request.id()).map(|id| match id {
+                Id::String(id) => id.chars().take(64).collect(),
+                Id::Number(id) => id.to_string(),
+                Id::Null => "null".into(),
+            }),
+        }
+    }
+
+    fn finish(self, started: Instant, response: Option<&Response>) {
+        let queued = (started - self.admitted).as_secs_f64() * 1000.0;
+        let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+        let error = response
+            .and_then(Response::error)
+            .map(|error| error.code.code());
+        eprintln!(
+            "lsp method={:?} id={:?} queue_ms={queued:.3} handler_ms={elapsed:.3} error={error:?}",
+            self.method, self.id
+        );
+    }
 }
 
 impl<S> ProtocolExtensions<S> {
@@ -57,6 +91,7 @@ impl<S> ProtocolExtensions<S> {
             status,
             admission: Arc::new(Admission::default()),
             pending: Vec::new(),
+            trace: std::env::var_os("GOQUERY_TRACE_LSP").is_some(),
         }
     }
 }
@@ -83,12 +118,16 @@ where
 
     fn call(&mut self, request: Request) -> Self::Future {
         self.pending.retain(|(_, flag)| flag.strong_count() != 0);
-        if request.method() == "$/cancelRequest"
-            && request.id().is_none()
-            && let Some(id) = request.params().and_then(|params| params.get("id"))
-            && let Ok(id) = Id::deserialize(id)
-        {
-            for (_, flag) in self.pending.iter().filter(|(pending, _)| *pending == id) {
+        let cancelled = if request.method() == "$/cancelRequest" && request.id().is_none() {
+            request
+                .params()
+                .and_then(|params| params.get("id"))
+                .and_then(|id| Id::deserialize(id).ok())
+        } else {
+            None
+        };
+        if let Some(id) = &cancelled {
+            for (_, flag) in self.pending.iter().filter(|(pending, _)| pending == id) {
                 if let Some(flag) = flag.upgrade() {
                     flag.store(true, Ordering::Relaxed);
                 }
@@ -100,6 +139,9 @@ where
             flag
         });
         let initialize = request.method() == "initialize";
+        let timing = self
+            .trace
+            .then(|| RequestTiming::new(&request, cancelled.as_ref()));
         if request.method() == "exit" {
             self.status.exit();
         }
@@ -116,11 +158,15 @@ where
         let inner = self.inner.clone();
         Box::pin(CANCELLATION.scope(cancellation, async move {
             let _slot = slot;
+            let started = timing.as_ref().map(|_| Instant::now());
             // Defer tower-lsp routing until this handler reaches the head of
             // the queue, including lifecycle transitions performed by call().
             poll_fn(|cx| inner.lock().unwrap().poll_ready(cx)).await?;
             let future = inner.lock().unwrap().call(request);
             let response = future.await?;
+            if let Some((timing, started)) = timing.zip(started) {
+                timing.finish(started, response.as_ref());
+            }
             Ok(response.map(|response| {
                 if !initialize {
                     return response;

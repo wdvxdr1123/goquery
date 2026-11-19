@@ -16,7 +16,7 @@ pub use declarations::stub;
 pub use expression::parse_expression;
 pub use file::validate_file;
 pub(crate) use file::validate_file_with_imports;
-pub(crate) use imports::qualified_prefixes;
+pub(crate) use imports::{qualified_prefixes, visit_import_spans};
 pub use signature::{
     parse_literal_signature, parse_method_signature, parse_signature, parse_type_parameters,
 };

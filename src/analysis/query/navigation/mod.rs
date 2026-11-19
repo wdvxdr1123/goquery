@@ -36,23 +36,27 @@ pub(crate) enum ReferenceTarget<'a> {
 }
 
 /// One import spec, in source order, paired with its package metadata name.
-struct ImportSite {
+struct ImportSite<'a> {
     alias: Option<Range<usize>>,
     path: Range<usize>,
-    name: Option<String>,
-    import_path: String,
+    name: Option<&'a str>,
+    import_path: &'a str,
 }
 
 /// gopls links a qualifier to the import path literal when the local name equals
 /// the imported package's declared name; otherwise to the explicit alias name.
 /// The equal-name form mirrors gopls' `PkgName` range heuristic: range start at
 /// the spec's name position (the alias when written) and length `len(path)+2`.
-fn import_qualifier_target(context: &Context<'_>, site: &ImportSite, source: &str) -> Range<usize> {
+fn import_qualifier_target(
+    context: &Context<'_>,
+    site: &ImportSite<'_>,
+    source: &str,
+) -> Range<usize> {
     match &site.alias {
         Some(alias) => {
             let declared = context
                 .resolver()
-                .declared_package_name(context.file(), &site.import_path);
+                .declared_package_name(context.file(), site.import_path);
             if declared.is_some_and(|name| name == &source[alias.clone()]) {
                 let end = (alias.start + site.import_path.len() + 2).min(source.len());
                 alias.start..end
@@ -67,67 +71,24 @@ fn import_qualifier_target(context: &Context<'_>, site: &ImportSite, source: &st
 /// Import specs in source order. `path` is the quoted literal span; `name` is
 /// the package identifier the file uses for it (explicit alias or the imported
 /// package's declared name from indexed metadata, never a path suffix guess).
-fn import_sites(context: &Context<'_>, source: &str) -> Vec<ImportSite> {
+fn import_sites<'a>(context: &Context<'a>, source: &str) -> Vec<ImportSite<'a>> {
     let workspace = context.workspace();
     let file = context.file();
     let mut sites = Vec::new();
-    let mut tokens = Lexer::new(source);
-    while let Some(token) = tokens.next() {
-        if token.kind != TokenKind::Import {
-            continue;
-        }
-        match tokens.next().map(|token| (token.kind, token.span)) {
-            Some((TokenKind::String, path)) => sites.push(ImportSite {
-                alias: None,
-                path,
-                name: None,
-                import_path: String::new(),
-            }),
-            Some((TokenKind::LParen, _)) => {
-                while let Some(token) = tokens.next() {
-                    match token.kind {
-                        TokenKind::RParen => break,
-                        TokenKind::String => sites.push(ImportSite {
-                            alias: None,
-                            path: token.span,
-                            name: None,
-                            import_path: String::new(),
-                        }),
-                        TokenKind::Ident | TokenKind::Period => {
-                            let Some(path) = tokens.next() else { break };
-                            if path.kind == TokenKind::String {
-                                sites.push(ImportSite {
-                                    alias: Some(token.span),
-                                    path: path.span,
-                                    name: None,
-                                    import_path: String::new(),
-                                });
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Some((TokenKind::Ident | TokenKind::Period, alias)) => {
-                let Some(path) = tokens.next() else { continue };
-                if path.kind == TokenKind::String {
-                    sites.push(ImportSite {
-                        alias: Some(alias),
-                        path: path.span,
-                        name: None,
-                        import_path: String::new(),
-                    });
-                }
-            }
-            _ => {}
-        }
-    }
+    crate::syntax::visit_import_spans(source, |spec| {
+        sites.push(ImportSite {
+            alias: spec.alias,
+            path: spec.path,
+            name: None,
+            import_path: "",
+        });
+    });
     let imports = workspace
         .files
         .get(file)
         .map_or(&[][..], |stub| stub.imports.as_slice());
     for (site, import) in sites.iter_mut().zip(imports) {
-        site.import_path = import.path.clone();
+        site.import_path = &import.path;
         if let Some(alias) = &site.alias
             && matches!(&source[alias.clone()], "_" | ".")
         {
@@ -135,8 +96,7 @@ fn import_sites(context: &Context<'_>, source: &str) -> Vec<ImportSite> {
         }
         site.name = import
             .explicit_name()
-            .or_else(|| context.resolver().declared_package_name(file, &import.path))
-            .map(str::to_owned);
+            .or_else(|| context.resolver().declared_package_name(file, &import.path));
     }
     sites
 }
@@ -296,13 +256,19 @@ impl<'a> Context<'a> {
         self.navigation_target_at(offset, false)
     }
 
+    pub(super) fn navigation_target_for_identifier(
+        &self,
+        offset: usize,
+        selection: &Range<usize>,
+    ) -> Result<Target<'a>, (i32, String)> {
+        self.navigation_target_from_selection(offset, false, Some(selection.clone()))
+    }
+
     fn navigation_target_at(
         &self,
         offset: usize,
         at_cursor: bool,
     ) -> Result<Target<'a>, (i32, String)> {
-        let workspace = self.workspace;
-        let file = self.view.file;
         let source = self.source();
         let selection = crate::syntax::Lexer::new(source)
             .take_while(|token| token.span.start <= offset)
@@ -312,6 +278,18 @@ impl<'a> Context<'a> {
                     && offset <= token.span.end
             })
             .map(|token| token.span);
+        self.navigation_target_from_selection(offset, at_cursor, selection)
+    }
+
+    fn navigation_target_from_selection(
+        &self,
+        offset: usize,
+        at_cursor: bool,
+        selection: Option<Range<usize>>,
+    ) -> Result<Target<'a>, (i32, String)> {
+        let workspace = self.workspace;
+        let file = self.view.file;
+        let source = self.source();
         // `package name`: the package clause name links to itself in gopls.
         if let Some(name) = package_clause_name(source)
             && selection.as_ref() == Some(&name)
@@ -338,7 +316,7 @@ impl<'a> Context<'a> {
             return Ok(Target::Local(selection.clone()));
         }
         if let Some(selection) = &selection
-            && let Some(target) = self.sema_navigation_target(selection, at_cursor)
+            && let Some(target) = self.sema_navigation_target(selection, at_cursor, &sites)
         {
             return Ok(target);
         }
@@ -362,6 +340,7 @@ impl<'a> Context<'a> {
         &self,
         selection: &Range<usize>,
         at_cursor: bool,
+        sites: &[ImportSite<'_>],
     ) -> Option<Target<'a>> {
         let sel = [
             u32::try_from(selection.start).ok()?,
@@ -379,10 +358,7 @@ impl<'a> Context<'a> {
         match obj {
             ObjectRef::PkgName { .. } => {
                 let name = source.get(selection.clone())?;
-                let sites = import_sites(self, source);
-                let site = sites
-                    .iter()
-                    .find(|site| site.name.as_deref() == Some(name))?;
+                let site = sites.iter().find(|site| site.name == Some(name))?;
                 Some(Target::Local(import_qualifier_target(self, site, source)))
             }
             ObjectRef::Var {

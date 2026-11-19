@@ -178,4 +178,5 @@ Read once at startup:
 | `GOQUERY_TRACE_QUERIES` | Log reference/call candidate and file counts to stderr. |
 | `GOQUERY_TRACE_MODULES` | Log module-graph planning. |
 | `GOQUERY_TRACE_EDITS` | Log each workspace mutation, its affected-document count and elapsed milliseconds to stderr (useful for diagnosing stale feedback after agent/editor changes). |
+| `GOQUERY_TRACE_LSP` | Log the method, request or cancellation ID, queue wait after admission, handler time, and response error code to stderr. The handler time ends before writing the response to stdout. |
 | `GOQUERY_DISABLE_DIAG` | Disable pushed diagnostics. |

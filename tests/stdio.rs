@@ -6464,6 +6464,54 @@ func f[T ~[2]int | ~[]int](a T, m map[string]int, s []byte, in chan<- int, n flo
     }
 
     #[test]
+    fn definition_reuses_grouped_import_spans_with_escapes() {
+        let path = r#""example.test/im\x70orts/dep""#;
+        let source = format!(
+            "package p\nimport (\n\tπdep {path}\n)\n\nfunc f() {{ _ = \"🧪\"; _ = πdep.T(0) }}\nconst marker = \"import\"\n"
+        );
+        let dependency = "package dep\ntype T int\n";
+        let mut server = SemaTestServer::start(
+            "grouped-import-navigation",
+            &[
+                ("go.mod", "module example.test/imports\n\ngo 1.27.3\n"),
+                ("main.go", &source),
+                ("dep/dep.go", dependency),
+            ],
+        );
+        let uri = server.uri("main.go");
+        let dep_uri = server.uri("dep/dep.go");
+        server.did_open(&uri, &source);
+        let written_path = source.find(path).unwrap();
+        let alias = source.find("πdep").unwrap();
+        let usage = source.find("πdep.T").unwrap();
+        let target = dependency.find("T int").unwrap();
+        for (offset, target_uri, target_source, selection, length) in [
+            (
+                written_path + 1,
+                &uri,
+                source.as_str(),
+                written_path,
+                path.len(),
+            ),
+            (usage, &uri, source.as_str(), alias, "πdep".len()),
+            (usage + "πdep.".len(), &dep_uri, dependency, target, 1),
+        ] {
+            let reply = server.request(
+                "textDocument/definition",
+                json!({
+                    "textDocument":{"uri":uri},"position":pos(&source,offset),
+                }),
+            );
+            assert_eq!(
+                reply["result"],
+                json!([{"uri":target_uri,"range":{
+                    "start":pos(target_source,selection),"end":pos(target_source,selection+length)
+                }}])
+            );
+        }
+    }
+
+    #[test]
     fn sema_navigation_uses_checked_header_and_selector_identities() {
         let source = concat!(
             "package p\nimport alias \"example.com/navigation/dep\"\n",

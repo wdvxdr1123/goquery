@@ -21,7 +21,10 @@ pub(super) fn calls_at(
     source: &str,
     offset: usize,
 ) -> Vec<PrintfCall> {
-    context.with_sema(|sema| calls(context.workspace(), sema, file, source, Some(offset)))
+    let workspace = context.workspace();
+    let scan = super::super::cursor_function(workspace, file, source, offset)
+        .map_or(0..source.len(), |(start, body)| start..body.end);
+    context.with_sema(|sema| calls(workspace, sema, file, source, offset, scan))
 }
 
 fn calls(
@@ -29,19 +32,29 @@ fn calls(
     sema: &mut Semantics<'_>,
     file: &Path,
     source: &str,
-    cursor: Option<usize>,
+    cursor: usize,
+    scan: Range<usize>,
 ) -> Vec<PrintfCall> {
     let trace = workspace.trace.queries.then(std::time::Instant::now);
     let mut region_time = std::time::Duration::ZERO;
     let mut signature_time = std::time::Duration::ZERO;
-    let tokens: Vec<_> = Lexer::new(source).collect();
+    let Some(text) = source.get(scan.clone()) else {
+        return Vec::new();
+    };
+    let tokens: Vec<_> = Lexer::new(text)
+        .map(|mut token| {
+            token.span.start += scan.start;
+            token.span.end += scan.start;
+            token
+        })
+        .collect();
     let mut last_region: Option<[u32; 2]> = None;
     let mut scopes = 0usize;
     let mut candidates = 0usize;
     let mut out = Vec::new();
     let mut argument_visits = MAX_ARGUMENT_TOKEN_VISITS;
     for (open, token) in tokens.iter().enumerate() {
-        if cursor.is_some_and(|offset| token.span.start > offset) {
+        if token.span.start > cursor {
             break;
         }
         if candidates >= MAX_PRINTF_CALLS || scopes >= MAX_SCOPES || argument_visits == 0 {
@@ -61,7 +74,7 @@ fn calls(
         };
         // Highlighting needs only enclosing calls. Do not build scopes or
         // resolve signatures for unrelated format calls elsewhere in the file.
-        if cursor.is_some_and(|offset| offset >= tokens[close].span.end) {
+        if cursor >= tokens[close].span.end {
             continue;
         }
         // This is only a cost prefilter. The literal's position comes from the

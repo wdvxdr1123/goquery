@@ -444,3 +444,70 @@ Go files, with type-definition and type-shape probes. Root OS peak working set
 was 58,368,000 B and sampled private bytes peaked at 48,336,896 B. Separately,
 the observed `gofmt` child reached 6,402,048 B working set and 12,029,952 B
 private in 50 ms samples.
+
+### Import scans and parsed method headers
+
+Navigation visits import spans once per query. The last textual `import`
+spelling bounds the lexer while preserving the parser's handling of misplaced
+imports. Hover passes its existing identifier selection into navigation.
+Format highlighting can scan just the enclosing function declaration. Method
+lookup keeps at most 64 parsed headers and 32 KiB of header text per type arena.
+The memo survives region rewinds and is dropped when the request ends.
+In the default save-only diagnostic mode, `didOpen` transfers its text to the
+workspace and skips computing a live diagnostic invalidation set.
+
+Three Windows release replays per build used `be8fd0a` as the baseline and the
+same 54-response sequence above. All full replies matched across runs. Times
+below are medians in milliseconds. The final definition at the `node` token
+still returned `ui/frame.go:97` with its complete LSP selection range.
+
+| Operation | `be8fd0a` | Follow-up |
+| --- | ---: | ---: |
+| Generated-file open through the first highlight reply (503) | 9.91 | 9.72 |
+| Definition before the burst (504) | 11.92 | 10.41 |
+| `Opacity` highlight (505) | 18.84 | 18.98 |
+| Empty quick fix before the burst (518) | 0.09 | 0.14 |
+| CodeLens (519) | 1.93 | 2.10 |
+| `node` hover (520) | 14.23 | 11.18 |
+| Uncancelled `node` highlight (522) | 98.98 | 72.11 |
+| Cancelled hover behind the highlight (523) | 98.92 | 72.10 |
+| Empty quick fix behind the highlight (524) | 98.92 | 72.09 |
+| Added `node` definition behind the highlight (525) | 102.77 | 74.86 |
+
+`GOQUERY_TRACE_LSP` put the generated-file open handler at 4.28–4.60 ms,
+the uncancelled highlight handler at 71.34–71.58 ms, and the final definition
+handler at 2.94–3.07 ms after 71.66–71.99 ms of queue wait. The queued quick
+fix used 0.04–0.05 ms of handler time. Cancellation of highlight 521 finished
+in 0.20–6.54 ms across the three replays, depending on whether its handler had
+started. Editor rendering and the editor's decision to issue a definition
+request sit outside this stdio replay.
+
+The Go 1.27.3 and gopls v0.24.0 differential retained the previous complete
+response totals. SDK definition matched 18/18 and SDK hover matched 336/351.
+Highlights matched SDK 120/120, Tile38 109/109, Ollama 120/120, typescript-go
+118/118 and Prometheus 119/120. All compared goquery replies matched the prior
+build, including the Prometheus result with the two missing reads and the SDK
+hover residuals listed above. The concurrent SDK run reached 117.3 ms for
+`cmd/asm/internal/arch/ppc64.go:jumpPPC64@409` and 470.3 ms for hover at
+`cmd/link/internal/ld/elf.go:uint16@46498`.
+
+The external requests above 100 ms in the concurrent comparison were all
+Prometheus highlights.
+
+| Request | Milliseconds |
+| --- | ---: |
+| `model/histogram/histogram_test.go:CustomBucketsSchema@18874` | 124.7 |
+| `model/histogram/histogram_test.go:Histogram@30039` | 110.7 |
+| `model/histogram/histogram_test.go:PositiveBuckets@42176` | 117.5 |
+| `promql/engine_test.go:Unix@38189` | 320.7 |
+| `promql/engine_test.go:Second@65161` | 258.1 |
+| `promql/engine_test.go:Query@95132` | 172.3 |
+| `promql/engine_test.go:F@110291` | 126.8 |
+| `promql/engine_test.go:T@124006` | 101.7 |
+| `promql/engine_test.go:parser@139323` | 165.4 |
+| `promql/engine_test.go:Close@201079` | 169.3 |
+
+The Windows release completed one pinned Ollama cycle over all 1,068 Go
+files with type-definition and type-shape probes. The root peaked at
+58,363,904 B working set and 48,553,984 B sampled private bytes. The separate
+50 ms child-process sampler captured zero children during this run.

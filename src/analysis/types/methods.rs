@@ -5,7 +5,9 @@ use crate::analysis::obj::{DeclId, MemberDeclId, MethodOrigin, ObjectRef};
 use crate::analysis::scope as locals;
 use crate::workspace::Workspace;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct MemberName<'a> {
@@ -15,6 +17,56 @@ struct MemberName<'a> {
 
 const MAX_PKG_METHOD_INDICES: usize = 64;
 const MAX_PKG_METHODS: usize = 4096;
+const MAX_METHOD_HEADERS: usize = 64;
+const MAX_METHOD_HEADER_BYTES: usize = 32 * 1024;
+
+struct MethodHeader {
+    start: usize,
+    text: String,
+    parsed: crate::syntax::Signature,
+    receiver_names: Vec<Range<usize>>,
+}
+
+/// Header syntax contains no TypeIds and stays valid when a region rewinds.
+#[derive(Default)]
+pub(super) struct MethodHeaders<'a> {
+    entries: HashMap<DeclId<'a>, Arc<MethodHeader>>,
+    bytes: usize,
+}
+
+impl<'a> TypeArena<'a> {
+    fn method_header(&mut self, declaration: DeclId<'a>) -> Option<Arc<MethodHeader>> {
+        if let Some(header) = self.method_headers.entries.get(&declaration) {
+            return Some(Arc::clone(header));
+        }
+        let method = declaration.symbol;
+        let span = method.declaration()?;
+        let end = method.body().map_or(span.end, |body| body.start);
+        let text = self
+            .workspace
+            .source_slice(declaration.file, span.start..end)?;
+        let parsed = crate::syntax::parse_signature(&text);
+        if !parsed.diagnostics.is_empty() || !parsed.type_parameters.is_empty() {
+            return None;
+        }
+        let receiver_names =
+            locals::receiver_parameters(&text, &parsed.receiver.first()?.annotation);
+        let header = Arc::new(MethodHeader {
+            start: span.start,
+            text,
+            parsed,
+            receiver_names,
+        });
+        let cache = &mut self.method_headers;
+        if cache.entries.len() < MAX_METHOD_HEADERS
+            && cache.bytes + header.text.len() <= MAX_METHOD_HEADER_BYTES
+        {
+            cache.bytes += header.text.len();
+            cache.entries.insert(declaration, Arc::clone(&header));
+        }
+        Some(header)
+    }
+}
 
 pub(super) struct PkgMethodIndex<'a> {
     by_recv_and_name: HashMap<(&'a str, &'a str), Vec<DeclId<'a>>>,
@@ -630,27 +682,20 @@ impl<'a> TypeArena<'a> {
                         {
                             (memo.pointer_receiver, memo.signature)
                         } else {
-                            let span = method.declaration()?;
-                            let end = method.body().map_or(span.end, |body| body.start);
-                            let header = self.workspace.source_slice(file, span.start..end)?;
-                            let parsed = crate::syntax::parse_signature(&header);
-                            if !parsed.diagnostics.is_empty() || !parsed.type_parameters.is_empty()
-                            {
+                            let header = self.method_header(method_decl)?;
+                            if header.receiver_names.len() != arguments.len() {
                                 return None;
                             }
-                            let receiver = parsed.receiver.first()?;
-                            let names = locals::receiver_parameters(&header, &receiver.annotation);
-                            if names.len() != arguments.len() {
-                                return None;
-                            }
-                            let environment: Vec<_> = names
+                            let receiver = header.parsed.receiver.first()?;
+                            let environment: Vec<_> = header
+                                .receiver_names
                                 .iter()
                                 .zip(&arguments)
-                                .map(|(name, ty)| (&header[name.clone()], *ty))
+                                .map(|(name, ty)| (&header.text[name.clone()], *ty))
                                 .collect();
                             let receiver = self.parse_in(
                                 file,
-                                &header[receiver.annotation.clone()],
+                                &header.text[receiver.annotation.clone()],
                                 &environment,
                             )?;
                             let receiver = self.unalias(receiver)?;
@@ -660,9 +705,9 @@ impl<'a> TypeArena<'a> {
                             let signature = if need_sig {
                                 Some(self.signature(
                                     file,
-                                    &header,
-                                    Some(span.start),
-                                    &parsed,
+                                    &header.text,
+                                    Some(header.start),
+                                    &header.parsed,
                                     &environment,
                                     0,
                                 )?)
@@ -1164,28 +1209,35 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
         }
-        let span = method.declaration()?;
-        let end = method.body().map_or(span.end, |body| body.start);
-        let header = self.workspace.source_slice(file, span.start..end)?;
-        let parsed = crate::syntax::parse_signature(&header);
-        if !parsed.diagnostics.is_empty() || !parsed.type_parameters.is_empty() {
+        let header = self.method_header(DeclId {
+            file,
+            symbol: method,
+        })?;
+        if header.receiver_names.len() != arguments.len() {
             return None;
         }
-        let receiver = parsed.receiver.first()?;
-        let names = locals::receiver_parameters(&header, &receiver.annotation);
-        if names.len() != arguments.len() {
-            return None;
-        }
-        let environment: Vec<_> = names
+        let receiver = header.parsed.receiver.first()?;
+        let environment: Vec<_> = header
+            .receiver_names
             .iter()
             .zip(arguments)
-            .map(|(name, ty)| (&header[name.clone()], *ty))
+            .map(|(name, ty)| (&header.text[name.clone()], *ty))
             .collect();
-        let receiver = self.parse_in(file, &header[receiver.annotation.clone()], &environment)?;
+        let receiver = self.parse_in(
+            file,
+            &header.text[receiver.annotation.clone()],
+            &environment,
+        )?;
         let receiver = self.unalias(receiver)?;
         let pointer_receiver = matches!(self.nodes[usize::from(receiver.0)], Ty::Pointer(_));
-        let signature =
-            self.signature(file, &header, Some(span.start), &parsed, &environment, 0)?;
+        let signature = self.signature(
+            file,
+            &header.text,
+            Some(header.start),
+            &header.parsed,
+            &environment,
+            0,
+        )?;
         Some((signature, pointer_receiver))
     }
 }

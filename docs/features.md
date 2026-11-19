@@ -14,6 +14,9 @@
   `includeDeclaration`. Resolved targets with no references return `[]`;
   unavailable targets return `null`.
   Definition and declaration check the enclosing region up to the cursor.
+  Navigation reuses one import-span scan and stops lexing after the final
+  possible import keyword. Format argument highlights inside a function scan
+  that declaration's source range.
   Unexported method implementation search limits native checks to packages
   that can inherit the declaring package's method through embedding. Its
   reverse-import graph is request-local and falls back to ordinary search

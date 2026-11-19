@@ -140,4 +140,5 @@ Hover 常量文本展开限制为 4,096 步、64 KiB 声明读取、深度 16 �
 | `GOQUERY_TRACE_QUERIES` | 向 stderr 输出引用/调用候选与文件计数。 |
 | `GOQUERY_TRACE_MODULES` | 输出模块图规划日志。 |
 | `GOQUERY_TRACE_EDITS` | 向 stderr 输出每次工作区变更、受影响文档数与耗时（毫秒），用于诊断 agent/编辑器改动后的反馈延迟。 |
+| `GOQUERY_TRACE_LSP` | 向 stderr 输出方法、请求或取消 ID、入队后等待时间、处理耗时和响应错误码。处理耗时截至结果交给 stdout 之前。 |
 | `GOQUERY_DISABLE_DIAG` | 禁用推送诊断。 |

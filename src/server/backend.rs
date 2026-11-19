@@ -330,7 +330,7 @@ impl Backend {
 
     /// Apply one workspace mutation and return the open documents whose
     /// diagnostics may now be stale. The mutation owns index/module updates.
-    fn update(workspace: &mut Workspace, event: WorkspaceEvent<'_>) -> Vec<PathBuf> {
+    fn update(workspace: &mut Workspace, event: WorkspaceEvent) -> Vec<PathBuf> {
         let outcome = workspace.apply(event);
         workspace.refresh_file_watch(false);
         match outcome {
@@ -491,7 +491,7 @@ impl LanguageServer for Backend {
                         workspace,
                         WorkspaceEvent::SetBuffer {
                             file: opened,
-                            source: &params.text_document.text,
+                            source: params.text_document.text,
                             dirty: false,
                         },
                     )
@@ -515,7 +515,7 @@ impl LanguageServer for Backend {
                         workspace,
                         WorkspaceEvent::SetBuffer {
                             file,
-                            source: &change.text,
+                            source: change.text,
                             dirty: true,
                         },
                     )
