@@ -1,5 +1,6 @@
 //! Count diagnostics from checked operand lists.
 use super::{Code, RegionChecker};
+use crate::analysis::engine::check::region::RecordMask;
 use crate::analysis::engine::types::{BasicKind, Operand, TypeId};
 use crate::syntax::{ExprId, ExprKind};
 use std::ops::Range;
@@ -11,6 +12,9 @@ impl RegionChecker<'_, '_> {
         variables: usize,
         values: usize,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let Some(first) = rhs.first().and_then(|&id| self.body.expression(id)) else {
             return;
         };
@@ -41,6 +45,9 @@ impl RegionChecker<'_, '_> {
         names: &[Range<usize>],
         values: &[ExprId],
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         if let Some(extra) = values
             .get(names.len())
             .and_then(|&id| self.body.expression(id))
@@ -71,6 +78,9 @@ impl RegionChecker<'_, '_> {
         expressions: &[ExprId],
         actual: &[Operand],
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let expected = self.env.result_types.len();
         let too_many = actual.len() > expected;
         let site = if expressions.len() == 1 {
@@ -108,6 +118,9 @@ impl RegionChecker<'_, '_> {
         spread: bool,
         span: &Range<usize>,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let Some(call) = self.call_description(function, arguments, spread, span) else {
             return;
         };
@@ -162,6 +175,9 @@ impl RegionChecker<'_, '_> {
         let too_many = (!variadic || spread) && actual.len() > params.len();
         if (variadic || !spread) && actual.len() >= min && !too_many {
             return true;
+        }
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return false;
         }
         let Some(callee) = self.body.expression(function) else {
             return false;

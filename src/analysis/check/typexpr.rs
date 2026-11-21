@@ -3,6 +3,7 @@
 use std::ops::Range;
 
 use crate::analysis::engine::check::RegionChecker;
+use crate::analysis::engine::check::region::RecordMask;
 use crate::analysis::engine::obj::{MemberDeclId, MethodOrigin, ObjectRef};
 use crate::analysis::engine::scope::tree::LocalBindingKind;
 use crate::analysis::engine::types::{LocalTypeDefinition, Mode, Operand, TypeId};
@@ -360,7 +361,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 (abs_offset + field.name.start) as u32,
                 (abs_offset + field.name.end) as u32,
             ];
-            self.region.defs.push((
+            self.record_def(
                 abs_span,
                 ObjectRef::Field(MemberDeclId {
                     file: self.file,
@@ -369,8 +370,10 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     embedded: false,
                     builtin: false,
                 }),
-            ));
-            if let Some(raw_ann) = text.get(field.annotation.clone()) {
+            );
+            if self.record_mask.contains(RecordMask::TYPES)
+                && let Some(raw_ann) = text.get(field.annotation.clone())
+            {
                 let ann_text = raw_ann.trim();
                 if !ann_text.is_empty() {
                     let lead = raw_ann.len() - raw_ann.trim_start().len();
@@ -378,14 +381,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         ann_text,
                         abs_offset + field.annotation.start + lead,
                     ) {
-                        self.region.expr_types.push((
+                        self.record_type_and_value(
                             abs_span,
                             Operand {
                                 mode: Mode::Variable,
                                 ty,
                                 value: None,
                             },
-                        ));
+                        );
                     }
                 }
             }
@@ -402,7 +405,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 (abs_offset + name_r.start) as u32,
                 (abs_offset + name_r.end) as u32,
             ];
-            self.region.defs.push((
+            self.record_def(
                 abs_span,
                 ObjectRef::Method(MethodOrigin::Interface(MemberDeclId {
                     file: self.file,
@@ -411,7 +414,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     embedded: false,
                     builtin: false,
                 })),
-            ));
+            );
         }
 
         for sig_name in &parsed.signature_names {
@@ -432,7 +435,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             };
             self.region.extend_binding_storage();
             if let Some(object) = self.local_object(local_id) {
-                self.region.defs.push((abs_span, object));
+                self.record_def(abs_span, object);
             }
             let Some(raw_ann) = text.get(sig_name.annotation.clone()) else {
                 continue;
@@ -464,14 +467,14 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         value: None,
                     },
                 );
-                self.region.expr_types.push((
+                self.record_type_and_value(
                     abs_span,
                     Operand {
                         mode: Mode::Variable,
                         ty,
                         value: None,
                     },
-                ));
+                );
             }
         }
     }

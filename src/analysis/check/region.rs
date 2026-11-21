@@ -8,6 +8,46 @@ use crate::analysis::engine::types::{Operand, Selection, TypeId};
 pub(super) const MAX_REGION_DIAGNOSTICS: usize = 128;
 const MAX_REGION_DIAGNOSTIC_BYTES: usize = 16 * 1024;
 
+/// Opt-in bitmask controlling which semantic tables [`RegionChecker`] populates
+/// in [`RegionInfo`], mirroring `go/types.Info` nil-map skipping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RecordMask(u16);
+
+impl RecordMask {
+    pub(crate) const DEFS: Self = Self(1 << 0);
+    pub(crate) const USES: Self = Self(1 << 1);
+    pub(crate) const IMPLICITS: Self = Self(1 << 2);
+    pub(crate) const TYPES: Self = Self(1 << 3);
+    pub(crate) const SELECTIONS: Self = Self(1 << 4);
+    pub(crate) const INSTANCES: Self = Self(1 << 5);
+    pub(crate) const WRITES: Self = Self(1 << 6);
+    pub(crate) const EXPECTED: Self = Self(1 << 7);
+    pub(crate) const LITERALS: Self = Self(1 << 8);
+    pub(crate) const CALLS: Self = Self(1 << 9);
+    pub(crate) const DIAGNOSTICS: Self = Self(1 << 10);
+    pub(crate) const ALL: Self = Self((1 << 11) - 1);
+
+    pub(crate) const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    pub(crate) const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub(crate) const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl std::ops::BitOr for RecordMask {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        self.union(rhs)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct CallSiteInfo<'a> {
     pub(crate) span: [u32; 2],
@@ -36,12 +76,16 @@ pub(crate) struct InstanceInfo<'a> {
 pub(crate) struct RegionInfo<'a> {
     pub(crate) owner: Option<DeclId<'a>>,
     pub(crate) span: [u32; 2],
+    pub(crate) mask: RecordMask,
     pub(crate) scopes: ScopeTree,
     pub(crate) local_types: Vec<Option<Operand>>,
     pub(crate) local_inits: Vec<Option<[u32; 2]>>,
     pub(crate) expr_types: Vec<([u32; 2], Operand)>,
     pub(crate) defs: Vec<([u32; 2], ObjectRef<'a>)>,
     pub(crate) uses: Vec<([u32; 2], ObjectRef<'a>)>,
+    /// Lightweight local-variable use tracking for `UnusedVar` diagnostics when
+    /// `RecordMask::DIAGNOSTICS` is requested without `RecordMask::USES`.
+    pub(super) local_var_uses: Vec<([u32; 2], LocalId)>,
     /// Bare identifiers assigned without reading their previous value.
     pub(crate) writes: Vec<[u32; 2]>,
     /// False when recovery, cursor filtering, or budgets can omit reads.
@@ -61,16 +105,27 @@ pub(crate) struct RegionInfo<'a> {
 
 impl<'a> RegionInfo<'a> {
     pub(crate) fn new(owner: Option<DeclId<'a>>, span: [u32; 2], scopes: ScopeTree) -> Self {
+        Self::with_mask(owner, span, scopes, RecordMask::ALL)
+    }
+
+    pub(crate) fn with_mask(
+        owner: Option<DeclId<'a>>,
+        span: [u32; 2],
+        scopes: ScopeTree,
+        mask: RecordMask,
+    ) -> Self {
         let binding_count = scopes.bindings.len();
         Self {
             owner,
             span,
+            mask,
             scopes,
             local_types: vec![None; binding_count],
             local_inits: vec![None; binding_count],
             expr_types: Vec::new(),
             defs: Vec::new(),
             uses: Vec::new(),
+            local_var_uses: Vec::new(),
             writes: Vec::new(),
             uses_complete: true,
             implicits: Vec::new(),
@@ -86,7 +141,20 @@ impl<'a> RegionInfo<'a> {
         }
     }
 
+    pub(crate) fn push_def(&mut self, span: [u32; 2], obj: ObjectRef<'a>) {
+        if self.mask.contains(RecordMask::DEFS) {
+            self.defs.push((span, obj));
+        }
+    }
+
     pub(crate) fn finalize(&mut self) {
+        self.local_var_uses = Vec::new();
+        if !self.mask.contains(RecordMask::CALLS) {
+            self.calls.clear();
+        }
+        if self.mask.is_empty() {
+            return;
+        }
         self.diagnostics
             .sort_by_key(|diagnostic| diagnostic.span.start);
         sort_and_dedup_last(&mut self.expr_types);
@@ -137,6 +205,9 @@ impl<'a> RegionInfo<'a> {
     }
 
     pub(super) fn record_expected(&mut self, span: [u32; 2], ty: Option<TypeId>) {
+        if !self.mask.contains(RecordMask::EXPECTED) {
+            return;
+        }
         record_context(
             &mut self.expected_types,
             &mut self.expected_overflow,
@@ -146,6 +217,9 @@ impl<'a> RegionInfo<'a> {
     }
 
     pub(super) fn record_literal(&mut self, span: [u32; 2], ty: TypeId) {
+        if !self.mask.contains(RecordMask::LITERALS) {
+            return;
+        }
         record_context(
             &mut self.literal_types,
             &mut self.literal_overflow,
@@ -171,6 +245,9 @@ impl<'a> RegionInfo<'a> {
     }
 
     pub(super) fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
+        if !self.mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         if self.diagnostics.iter().any(|existing| {
             existing.span == diagnostic.span
                 && existing.kind == diagnostic.kind
@@ -321,4 +398,31 @@ fn exact_or_smallest_token<T>(entries: &[([u32; 2], T)], offset: u32) -> Option<
         }
     }
     best.map(|(index, _)| (entries[index].0, &entries[index].1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RecordMask;
+
+    #[test]
+    fn record_mask_operations() {
+        let empty = RecordMask(0);
+        assert!(empty.is_empty());
+        assert!(!RecordMask::DIAGNOSTICS.is_empty());
+        let nav = RecordMask::DEFS | RecordMask::USES | RecordMask::IMPLICITS;
+        assert!(nav.contains(RecordMask::DEFS));
+        assert!(nav.contains(RecordMask::USES));
+        assert!(nav.contains(RecordMask::IMPLICITS));
+        assert!(!nav.contains(RecordMask::TYPES));
+        assert!(!nav.contains(RecordMask::DIAGNOSTICS));
+        assert!(RecordMask::ALL.contains(nav.union(RecordMask::DIAGNOSTICS)));
+        assert!(RecordMask::ALL.contains(
+            RecordMask::SELECTIONS
+                | RecordMask::INSTANCES
+                | RecordMask::WRITES
+                | RecordMask::EXPECTED
+                | RecordMask::LITERALS
+                | RecordMask::CALLS
+        ));
+    }
 }

@@ -8,11 +8,13 @@ mod operands;
 pub(crate) use declarations::file_diagnostics;
 
 use super::RegionChecker;
+use super::region::RecordMask;
 use std::ops::Range;
 
 impl RegionChecker<'_, '_> {
     pub(super) fn compiler_error(&mut self, span: &Range<usize>, code: Code, message: &str) {
-        if self.body.diagnostics().is_empty() {
+        if self.record_mask.contains(RecordMask::DIAGNOSTICS) && self.body.diagnostics().is_empty()
+        {
             self.region.push_diagnostic(Diagnostic {
                 span: self.abs_range(span),
                 kind: Kind::Compiler(code),

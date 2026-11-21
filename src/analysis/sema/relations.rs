@@ -71,6 +71,25 @@ impl<'r, 'a> TypeRelationQuery<'r, 'a> {
 }
 
 impl<'a> Semantics<'a> {
+    /// Run a cross-file relation probe speculatively against the current local
+    /// arena so `self.cached` survives when local headroom is sufficient. Falls
+    /// back to resetting the cached region only if there is no cached region or
+    /// the speculative projection returns `None` while local budget is shared.
+    fn with_relation_probe<R>(
+        &mut self,
+        mut probe: impl FnMut(&mut crate::analysis::engine::types::TypeArena<'a>) -> Option<R>,
+    ) -> Option<R> {
+        if self.cached.is_none() {
+            self.prepare_for_new_region();
+            return self.arena.with_projection(true, probe);
+        }
+        if let Some(result) = self.arena.with_projection(true, &mut probe) {
+            return Some(result);
+        }
+        self.prepare_for_new_region();
+        self.arena.with_projection(true, probe)
+    }
+
     pub(crate) fn direct_embedding_declarations(
         &mut self,
         declaration: DeclId<'_>,
@@ -101,10 +120,8 @@ impl<'a> Semantics<'a> {
         required: Option<&[&str]>,
     ) -> Option<(bool, Vec<NamedObject<'a>>)> {
         let declaration = self.canonical_decl(declaration)?;
-        self.prepare_for_new_region();
         let (abstract_, members) = self
-            .arena
-            .implementation_member_set(declaration, required)?;
+            .with_relation_probe(|arena| arena.implementation_member_set(declaration, required))?;
         let members = members
             .into_iter()
             .map(|(name, object)| {
@@ -133,9 +150,9 @@ impl<'a> Semantics<'a> {
         name: &str,
     ) -> Option<ObjectRef<'a>> {
         let declaration = self.canonical_decl(declaration)?;
-        self.prepare_for_new_region();
-        self.arena
-            .implementation_method_object(declaration, origin, name)
+        self.with_relation_probe(|arena| {
+            arena.implementation_method_object(declaration, origin, name)
+        })
     }
 
     /// Match one required method in the gopls implementation-search relation.
@@ -149,9 +166,9 @@ impl<'a> Semantics<'a> {
     ) -> Option<bool> {
         let left = self.canonical_decl(left)?;
         let right = self.canonical_decl(right)?;
-        self.prepare_for_new_region();
-        self.arena
-            .implementation_signatures_match(left, left_member, right, right_member)
+        self.with_relation_probe(|arena| {
+            arena.implementation_signatures_match(left, left_member, right, right_member)
+        })
     }
 
     pub(crate) fn implementation_matches(
@@ -161,13 +178,11 @@ impl<'a> Semantics<'a> {
     ) -> Option<bool> {
         let concrete = self.canonical_decl(concrete)?;
         let interface = self.canonical_decl(interface)?;
-        self.prepare_for_new_region();
-        self.arena.implementation_matches(concrete, interface)
+        self.with_relation_probe(|arena| arena.implementation_matches(concrete, interface))
     }
 
     pub(crate) fn implements_universe_error(&mut self, declaration: DeclId<'_>) -> Option<bool> {
         let declaration = self.canonical_decl(declaration)?;
-        self.prepare_for_new_region();
-        self.arena.implements_universe_error(declaration)
+        self.with_relation_probe(|arena| arena.implements_universe_error(declaration))
     }
 }

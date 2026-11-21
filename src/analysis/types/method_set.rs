@@ -125,7 +125,25 @@ impl<'a> TypeArena<'a> {
 
     /// Receiver spellings only reject impossible candidates. Alias and dot-import
     /// receivers still require exact native receiver identity during instantiation.
-    fn concrete_owner_candidates(&self, declaration: DeclId<'a>) -> Option<Vec<DeclId<'a>>> {
+    fn concrete_owner_candidates(&mut self, declaration: DeclId<'a>) -> Option<Vec<DeclId<'a>>> {
+        if let Some(index) = self
+            .env_cache
+            .pkg_method_index(self.workspace, declaration.file)
+        {
+            let decl_name = declaration.symbol.name.as_str();
+            let direct = index.by_recv.get(decl_name);
+            let mut candidates =
+                Vec::with_capacity(direct.map_or(0, Vec::len) + index.alias_methods.len());
+            if let Some(direct) = direct {
+                candidates.extend_from_slice(direct);
+            }
+            for &decl in &index.alias_methods {
+                if decl.symbol.receiver.as_deref() != Some(decl_name) {
+                    candidates.push(decl);
+                }
+            }
+            return Some(candidates);
+        }
         let mut aliases = HashSet::new();
         for (_, stub) in self
             .workspace

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MAX_ENV_CACHE_BYTES: usize = 64 * 1024;
+const MAX_IMPORT_HEADER_BYTES: usize = 16 * 1024;
 const MAX_PKG_METHOD_INDICES: usize = 64;
 const MAX_PKG_METHODS: usize = 4096;
 const MAX_METHOD_HEADERS: usize = 64;
@@ -19,6 +20,8 @@ const MAX_METHOD_HEADER_BYTES: usize = 32 * 1024;
 pub(crate) struct PkgMethodIndex<'a> {
     pub(crate) by_recv_and_name: HashMap<(&'a str, &'a str), Vec<DeclId<'a>>>,
     pub(crate) alias_methods_by_name: HashMap<&'a str, Vec<DeclId<'a>>>,
+    pub(crate) by_recv: HashMap<&'a str, Vec<DeclId<'a>>>,
+    pub(crate) alias_methods: Vec<DeclId<'a>>,
 }
 
 impl<'a> PkgMethodIndex<'a> {
@@ -29,6 +32,9 @@ impl<'a> PkgMethodIndex<'a> {
             for sym in &stub.symbols {
                 if sym.is_type() && sym.alias {
                     alias_names.insert(sym.name.as_str());
+                    if alias_names.len() > MAX_PKG_METHODS {
+                        return None;
+                    }
                 }
             }
             files.push((file, stub));
@@ -36,6 +42,8 @@ impl<'a> PkgMethodIndex<'a> {
 
         let mut by_recv_and_name: HashMap<(&'a str, &'a str), Vec<DeclId<'a>>> = HashMap::new();
         let mut alias_methods_by_name: HashMap<&'a str, Vec<DeclId<'a>>> = HashMap::new();
+        let mut by_recv: HashMap<&'a str, Vec<DeclId<'a>>> = HashMap::new();
+        let mut alias_methods: Vec<DeclId<'a>> = Vec::new();
         let mut count = 0usize;
         for (file, stub) in files {
             let has_dot = stub.imports.iter().any(|import| import.is_dot());
@@ -51,17 +59,24 @@ impl<'a> PkgMethodIndex<'a> {
                     file: file.as_path(),
                     symbol: method,
                 };
+                let non_blank = method.name != "_";
                 match method.receiver.as_deref() {
                     Some(recv) => {
                         by_recv_and_name
                             .entry((recv, method.name.as_str()))
                             .or_default()
                             .push(decl);
+                        if non_blank {
+                            by_recv.entry(recv).or_default().push(decl);
+                        }
                         if has_dot || alias_names.contains(recv) {
                             alias_methods_by_name
                                 .entry(method.name.as_str())
                                 .or_default()
                                 .push(decl);
+                            if non_blank {
+                                alias_methods.push(decl);
+                            }
                         }
                     }
                     None => {
@@ -69,6 +84,9 @@ impl<'a> PkgMethodIndex<'a> {
                             .entry(method.name.as_str())
                             .or_default()
                             .push(decl);
+                        if non_blank {
+                            alias_methods.push(decl);
+                        }
                     }
                 }
             }
@@ -76,6 +94,8 @@ impl<'a> PkgMethodIndex<'a> {
         Some(Self {
             by_recv_and_name,
             alias_methods_by_name,
+            by_recv,
+            alias_methods,
         })
     }
 }
@@ -100,7 +120,8 @@ pub(crate) type TypeNameLookup<'a> = Option<Option<DeclId<'a>>>;
 
 #[derive(Default)]
 struct FileEnvEntry<'a> {
-    imports: HashMap<Box<str>, Option<&'a Path>>,
+    imports: HashMap<Box<str>, Option<([u32; 2], &'a Path)>>,
+    import_spans: Option<Vec<[u32; 2]>>,
     imported_decls: HashMap<Box<str>, HashMap<Box<str>, Option<DeclId<'a>>>>,
     unqualified: HashMap<Box<str>, UnqualifiedLookup<'a>>,
     type_names: HashMap<Box<str>, TypeNameLookup<'a>>,
@@ -188,18 +209,23 @@ impl<'a> FileEnvCache<'a> {
         self.bytes = self.bytes.saturating_add(extra_bytes);
     }
 
-    pub(crate) fn find_import_dir(
+    pub(crate) fn find_import(
         &mut self,
         ws: &'a Workspace,
         file: &'a Path,
         alias: &str,
-    ) -> Option<&'a Path> {
+    ) -> Option<([u32; 2], &'a Path)> {
         let file = ws.files.get_key_value(file)?.0.as_path();
         if let Some(&cached) = self.files.get(file).and_then(|e| e.imports.get(alias)) {
             return cached;
         }
-        let target_dir = Self::compute_import_dir(ws, self.view, file, alias);
-        let limit_ok = if target_dir.is_some() {
+        let resolved = Self::compute_import_dir(ws, self.view, file, alias).map(
+            |(import_index, target_dir)| {
+                let import_path_span = self.import_path_span(ws, file, import_index);
+                (import_path_span, target_dir)
+            },
+        );
+        let limit_ok = if resolved.is_some() {
             self.can_insert(alias.len())
         } else {
             self.entries < MAX_DECL_CACHE / 2
@@ -210,10 +236,88 @@ impl<'a> FileEnvCache<'a> {
                 .entry(file)
                 .or_default()
                 .imports
-                .insert(alias.into(), target_dir);
+                .insert(alias.into(), resolved);
             self.record_insert(alias.len());
         }
-        target_dir
+        resolved
+    }
+
+    fn import_path_span(&mut self, ws: &'a Workspace, file: &'a Path, index: usize) -> [u32; 2] {
+        if let Some(spans) = self
+            .files
+            .get(file)
+            .and_then(|entry| entry.import_spans.as_ref())
+        {
+            return spans.get(index).copied().unwrap_or([0, 0]);
+        }
+        let Some(stub) = ws.files.get(file) else {
+            return [0, 0];
+        };
+        let spans = Self::collect_import_spans(ws, file, stub);
+        let span = spans.get(index).copied().unwrap_or([0, 0]);
+        let extra_bytes = spans.len().saturating_mul(std::mem::size_of::<[u32; 2]>());
+        if self.bytes.saturating_add(extra_bytes) <= MAX_ENV_CACHE_BYTES {
+            self.bytes = self.bytes.saturating_add(extra_bytes);
+            self.files.entry(file).or_default().import_spans = Some(spans);
+        }
+        span
+    }
+
+    fn collect_import_spans(
+        ws: &'a Workspace,
+        file: &'a Path,
+        stub: &'a crate::index::IndexedFile,
+    ) -> Vec<[u32; 2]> {
+        let expected = stub.imports.len();
+        if expected == 0 {
+            return Vec::new();
+        }
+        let first_decl = stub
+            .symbols
+            .iter()
+            .filter_map(|sym| sym.declaration().map(|decl| decl.start))
+            .chain(stub.constant_groups.iter().map(|group| group[0] as usize))
+            .min();
+        if let Some(open) = ws.open_source(file) {
+            if let Some(limit) =
+                first_decl.filter(|&end| end <= open.len() && open.is_char_boundary(end))
+            {
+                let spans = Self::scan_import_spans(&open[..limit], expected);
+                if spans.len() == expected {
+                    return spans;
+                }
+            }
+            return Self::scan_import_spans(open, expected);
+        }
+        let limit = first_decl
+            .filter(|&end| end <= MAX_IMPORT_HEADER_BYTES)
+            .unwrap_or(MAX_IMPORT_HEADER_BYTES);
+        let Some(prefix) = ws.source_prefix(file, limit) else {
+            return Vec::new();
+        };
+        Self::scan_import_spans(&prefix, expected)
+    }
+
+    fn scan_import_spans(header: &str, max_imports: usize) -> Vec<[u32; 2]> {
+        let mut spans = Vec::with_capacity(max_imports.min(64));
+        crate::syntax::visit_import_spans(header, |spec| {
+            if spans.len() >= max_imports {
+                return;
+            }
+            if header
+                .get(spec.path.clone())
+                .and_then(crate::syntax::decode_import_path)
+                .is_none()
+            {
+                return;
+            }
+            let span = match (u32::try_from(spec.path.start), u32::try_from(spec.path.end)) {
+                (Ok(start), Ok(end)) => [start, end],
+                _ => [0, 0],
+            };
+            spans.push(span);
+        });
+        spans
     }
 
     fn compute_import_dir(
@@ -221,13 +325,19 @@ impl<'a> FileEnvCache<'a> {
         view: BuildView<'a>,
         file: &'a Path,
         alias: &str,
-    ) -> Option<&'a Path> {
+    ) -> Option<(usize, &'a Path)> {
         let resolver = View::new(ws, view);
-        let imp = ws.files.get(file)?.imports.iter().find(|imp| {
-            !imp.is_dot() && !imp.is_blank() && resolver.import_name(file, imp) == Some(alias)
-        })?;
+        let (imp_idx, imp) = ws
+            .files
+            .get(file)?
+            .imports
+            .iter()
+            .enumerate()
+            .find(|(_, imp)| {
+                !imp.is_dot() && !imp.is_blank() && resolver.import_name(file, imp) == Some(alias)
+            })?;
         if let Some((p, _)) = resolver.imported_symbol_iter(file, alias).next() {
-            return p.parent();
+            return p.parent().map(|dir| (imp_idx, dir));
         }
         let import_path = imp.path.as_str();
         for (mod_root, mod_path) in &ws.modules {
@@ -255,7 +365,7 @@ impl<'a> FileEnvCache<'a> {
                     path.parent() == Some(candidate.as_path()) && view.visible(ws, path)
                 })
             {
-                return file_path.parent();
+                return file_path.parent().map(|dir| (imp_idx, dir));
             }
         }
         None

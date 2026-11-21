@@ -1,5 +1,6 @@
 //! Render established operand failures at their parsed source ranges.
 use super::{Code, RegionChecker};
+use crate::analysis::engine::check::region::RecordMask;
 use crate::analysis::engine::types::{
     AssignmentError, BasicKind, BinaryError, CheckError, ConstAssignError, Constant,
     ConversionError, IndexError, IndexValueError, Mode, Operand, TypeId,
@@ -35,7 +36,8 @@ impl RegionChecker<'_, '_> {
         context: &str,
         reason: AssignmentError,
     ) {
-        if !source.mode.is_value()
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS)
+            || !source.mode.is_value()
             || !self.body.diagnostics().is_empty()
             || self.arena.validate_type(source.ty).is_none()
             || self.arena.validate_type(target).is_none()
@@ -133,6 +135,9 @@ impl RegionChecker<'_, '_> {
         mut operand: Operand,
         error: IndexValueError,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let Some(expr) = self.body.expression(id) else {
             return;
         };
@@ -174,6 +179,9 @@ impl RegionChecker<'_, '_> {
         index: (ExprId, Operand),
         error: IndexError,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let (id, key) = index;
         match error {
             IndexError::NonIndexable => {
@@ -211,6 +219,9 @@ impl RegionChecker<'_, '_> {
         right: (ExprId, Operand),
         error: BinaryError,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         match error {
             BinaryError::Overflow(result) => {
                 let value = self.operand_description_at(span, result);
@@ -277,6 +288,9 @@ impl RegionChecker<'_, '_> {
         target: TypeId,
         error: ConversionError,
     ) {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return;
+        }
         let Some(expr) = self.body.expression(id) else {
             return;
         };

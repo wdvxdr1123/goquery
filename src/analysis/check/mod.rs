@@ -21,7 +21,7 @@ use std::path::Path;
 
 use crate::analysis::engine::check::decls::DeclTable;
 use crate::analysis::engine::check::record::UntypedTable;
-use crate::analysis::engine::check::region::RegionInfo;
+use crate::analysis::engine::check::region::{RecordMask, RegionInfo};
 use crate::analysis::engine::obj::{
     BuiltinFunction, DeclId, LocalId, Object, ObjectRef, SymbolOrigin, VarKind,
 };
@@ -119,6 +119,7 @@ pub(crate) struct RegionChecker<'a, 'b> {
     pub(crate) body_base: usize,
     pub(crate) body: &'b BlockTree,
     pub(crate) region: &'b mut RegionInfo<'a>,
+    pub(crate) record_mask: RecordMask,
     pub(crate) iota: Option<u32>,
     pub(crate) cursor_offset: Option<usize>,
     pub(in crate::analysis::engine::check) env: CheckEnv<'a>,
@@ -167,6 +168,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         env: CheckEnv<'a>,
     ) -> Self {
         region.uses_complete &= body.diagnostics().is_empty() && cursor_offset.is_none();
+        let record_mask = region.mask;
         Self {
             arena,
             decls,
@@ -175,6 +177,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             body_base,
             body,
             region,
+            record_mask,
             iota,
             cursor_offset,
             env,
@@ -435,7 +438,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     (abs_offset + qual_r.start) as u32,
                     (abs_offset + qual_r.end) as u32,
                 ];
-                self.region.uses.push((qual_span, obj));
+                self.record_use(qual_span, obj);
             }
             return false;
         }
@@ -447,7 +450,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             (abs_offset + qual_r.start) as u32,
             (abs_offset + qual_r.end) as u32,
         ];
-        self.region.uses.push((qual_span, pkg_obj));
+        self.record_use(qual_span, pkg_obj);
 
         let Some(decl) = self.resolve_imported_decl(qual, name) else {
             self.report_missing_imported_name(
@@ -465,7 +468,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             (abs_offset + name_r.start) as u32,
             (abs_offset + name_r.end) as u32,
         ];
-        self.region.uses.push((name_span, decl_object(decl)));
+        self.record_use(name_span, decl_object(decl));
         if decl.symbol.generic {
             true
         } else {
@@ -507,7 +510,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     LocalBindingKind::TypeParam => {
                         let op = self.region.local_type(local_id);
                         if let Some(obj) = self.local_object(local_id) {
-                            self.region.uses.push((name_span, obj));
+                            self.record_use(name_span, obj);
                         }
                         return op.is_some();
                     }
@@ -515,7 +518,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         // go/types records the use of a local even when it is
                         // rejected in type position.
                         if let Some(obj) = self.local_object(local_id) {
-                            self.region.uses.push((name_span, obj));
+                            self.record_use(name_span, obj);
                         }
                         return false;
                     }
@@ -536,7 +539,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 if decl.symbol.kind != SymbolKind::Type {
                     return false;
                 }
-                self.region.uses.push((name_span, decl_object(decl)));
+                self.record_use(name_span, decl_object(decl));
                 if decl.symbol.generic {
                     true
                 } else {
@@ -546,15 +549,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             FileSymbolLookup::Ambiguous => false,
             FileSymbolLookup::NotFound => {
                 if allow_comparable && name == "comparable" {
-                    self.region
-                        .uses
-                        .push((name_span, ObjectRef::BuiltinType("comparable")));
+                    self.record_use(name_span, ObjectRef::BuiltinType("comparable"));
                     true
                 } else if self.arena.builtin_type(self.file, name).is_some() {
                     if let Some(builtin_name) = builtin_type_static_name(name) {
-                        self.region
-                            .uses
-                            .push((name_span, ObjectRef::BuiltinType(builtin_name)));
+                        self.record_use(name_span, ObjectRef::BuiltinType(builtin_name));
                     }
                     true
                 } else {
@@ -567,10 +566,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
 
     pub(crate) fn find_import(&mut self, alias: &str) -> Option<(ObjectRef<'a>, &'a Path)> {
         let ws = self.arena.workspace();
-        let target_dir = self.arena.env_cache.find_import_dir(ws, self.file, alias)?;
+        let (import_path_span, target_dir) =
+            self.arena.env_cache.find_import(ws, self.file, alias)?;
         Some((
             ObjectRef::PkgName {
-                import_path_span: [0, 0],
+                import_path_span,
                 target_dir,
             },
             target_dir,

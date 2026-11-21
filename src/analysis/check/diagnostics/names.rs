@@ -1,5 +1,6 @@
 //! Missing-name errors are emitted at native expression/type reference sites.
 use super::{Code, Diagnostic, Kind};
+use crate::analysis::engine::check::region::RecordMask;
 use crate::analysis::engine::check::{FileSymbolLookup, RegionChecker};
 use crate::analysis::engine::scope::universe;
 use std::ops::Range;
@@ -13,6 +14,9 @@ impl RegionChecker<'_, '_> {
         name: &str,
         span: Range<usize>,
     ) -> bool {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return false;
+        }
         if name == "_"
             || name.len() > 1024
             || self.source.get(span.clone()) != Some(name)
@@ -70,6 +74,9 @@ impl RegionChecker<'_, '_> {
         qualifier_start: usize,
         span: Range<usize>,
     ) -> bool {
+        if !self.record_mask.contains(RecordMask::DIAGNOSTICS) {
+            return false;
+        }
         if name.len() + qualifier.len() > 1024
             || self.source.get(span.clone()) != Some(name)
             || !crate::syntax::is_exported_name(name)

@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 
 use crate::analysis::engine::budget::{MAX_DEPTH, MAX_NODES};
-use crate::analysis::engine::check::region::{CallSiteInfo, InstanceInfo};
+use crate::analysis::engine::check::region::{CallSiteInfo, InstanceInfo, RecordMask};
 use crate::analysis::engine::check::{ExprOutcome, RegionChecker};
-use crate::analysis::engine::obj::ObjectRef;
+use crate::analysis::engine::obj::{ObjectRef, SymbolOrigin};
+use crate::analysis::engine::scope::tree::LocalBindingKind;
 use crate::analysis::engine::types::{BasicKind, Operand, Selection, TypeId};
 use crate::syntax::{ExprId, ExprKind};
 
@@ -31,38 +32,82 @@ impl UntypedTable {
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
     pub(super) fn record_def(&mut self, span: [u32; 2], obj: ObjectRef<'a>) {
-        self.region.defs.push((span, obj));
+        if self.record_mask.contains(RecordMask::DEFS) {
+            self.region.defs.push((span, obj));
+        }
     }
 
     pub(super) fn record_use(&mut self, span: [u32; 2], obj: ObjectRef<'a>) {
-        self.region.uses.push((span, obj));
+        if self.record_mask.contains(RecordMask::USES) {
+            self.region.uses.push((span, obj));
+        } else if self.record_mask.contains(RecordMask::DIAGNOSTICS)
+            && self.region.uses_complete
+            && let ObjectRef::Var {
+                origin: SymbolOrigin::Local { id, .. },
+                ..
+            } = obj
+            && self
+                .region
+                .scopes
+                .bindings
+                .get(id.0 as usize)
+                .is_some_and(|binding| {
+                    matches!(
+                        binding.kind,
+                        LocalBindingKind::Var
+                            | LocalBindingKind::ShortVar
+                            | LocalBindingKind::RangeKey
+                            | LocalBindingKind::RangeVal
+                            | LocalBindingKind::TypeSwitchVar
+                    )
+                })
+        {
+            self.region.local_var_uses.push((span, id));
+        }
     }
 
     pub(super) fn record_implicit(&mut self, span: [u32; 2], obj: ObjectRef<'a>) {
-        self.region.implicits.push((span, obj));
+        if self.record_mask.contains(RecordMask::IMPLICITS) {
+            self.region.implicits.push((span, obj));
+        }
     }
 
     pub(super) fn record_selection(&mut self, span: [u32; 2], selection: Selection<'a>) {
-        self.region.selections.push((span, selection));
+        if self.record_mask.contains(RecordMask::SELECTIONS) {
+            self.region.selections.push((span, selection));
+        }
     }
 
     pub(super) fn record_instance(&mut self, span: [u32; 2], info: InstanceInfo<'a>) {
-        self.region.instances.push((span, info));
+        if self.record_mask.contains(RecordMask::INSTANCES) {
+            self.region.instances.push((span, info));
+        }
     }
 
     pub(super) fn record_call(&mut self, info: CallSiteInfo<'a>) {
-        self.region.calls.push(info);
+        if self.record_mask.contains(RecordMask::CALLS) {
+            self.region.calls.push(info);
+        }
     }
 
     pub(super) fn record_write(&mut self, span: [u32; 2]) {
-        self.region.writes.push(span);
+        if self.record_mask.contains(RecordMask::WRITES)
+            || (self.record_mask.contains(RecordMask::DIAGNOSTICS) && self.region.uses_complete)
+        {
+            self.region.writes.push(span);
+        }
     }
 
     pub(super) fn record_type_and_value(&mut self, span: [u32; 2], op: Operand) {
-        self.region.expr_types.push((span, op));
+        if self.record_mask.contains(RecordMask::TYPES) {
+            self.region.expr_types.push((span, op));
+        }
     }
 
     pub(super) fn record_expr_outcome(&mut self, id: ExprId, outcome: &ExprOutcome<'a, 'b>) {
+        if !self.record_mask.contains(RecordMask::TYPES) {
+            return;
+        }
         if let ExprOutcome::Value(op) = outcome
             && let Some(expr) = self.body.expression(id)
         {
@@ -77,6 +122,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     /// Update an untyped expression and its homogeneous untyped subexpressions
     /// once a surrounding assignment, declaration, return, or call fixes `target_ty`.
     pub(super) fn update_expr_type(&mut self, id: ExprId, target_ty: TypeId, int_bits: u32) {
+        if !self.record_mask.contains(RecordMask::TYPES) {
+            return;
+        }
         if self
             .arena
             .basic_kind(target_ty)

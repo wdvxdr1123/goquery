@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use std::ops::Range;
 
 use crate::analysis::engine::check::diagnostics::Code;
-use crate::analysis::engine::check::region::{CallSiteInfo, InstanceInfo};
+use crate::analysis::engine::check::region::{CallSiteInfo, InstanceInfo, RecordMask};
 use crate::analysis::engine::check::{ExprOutcome, RegionChecker, decl_object};
 use crate::analysis::engine::obj::{DeclId, ObjectRef};
 use crate::analysis::engine::scope::tree::ScopeKind;
@@ -189,6 +189,32 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn record_call_site(
+        &mut self,
+        call_span: &Range<usize>,
+        function: ExprId,
+        arguments: &[ExprId],
+        callee_obj: Option<ObjectRef<'a>>,
+        signature: Option<TypeId>,
+        is_conversion: bool,
+        is_const_builtin: bool,
+    ) {
+        if !self.record_mask.contains(RecordMask::CALLS) {
+            return;
+        }
+        let info = self.build_call_site_info(
+            call_span,
+            function,
+            arguments,
+            callee_obj,
+            signature,
+            is_conversion,
+            is_const_builtin,
+        );
+        self.record_call(info);
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_call_site_info(
         &self,
         call_span: &Range<usize>,
@@ -257,19 +283,24 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         call_span: &Range<usize>,
         int_bits: u32,
     ) -> ExprOutcome<'a, 'b> {
-        let info = self.build_call_site_info(
+        let callee_obj = self
+            .record_mask
+            .contains(RecordMask::CALLS)
+            .then(|| self.callee_obj_at(function))
+            .flatten();
+        self.record_call_site(
             call_span,
             function,
             arguments,
-            self.callee_obj_at(function),
+            callee_obj,
             Some(target_ty),
             true,
             false,
         );
-        self.record_call(info);
         if arguments.len() != 1 || variadic {
             self.check_exprs(arguments);
             if arguments.len() != 1
+                && self.record_mask.contains(RecordMask::DIAGNOSTICS)
                 && let Some(ty) = self.arena.render_presentation(target_ty, self.file)
             {
                 let (span, message) =
@@ -329,7 +360,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } => {
                 let Some(callee_span) = self.callee_ident_span(function) else {
                     self.check_exprs(arguments);
-                    let info = self.build_call_site_info(
+                    self.record_call_site(
                         call_span,
                         function,
                         arguments,
@@ -338,7 +369,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         false,
                         false,
                     );
-                    self.record_call(info);
                     return ExprOutcome::invalid();
                 };
                 let Some((inst_ty, actual_ops)) = self.instantiate_generic_call(
@@ -349,7 +379,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     arguments,
                     variadic,
                 ) else {
-                    let info = self.build_call_site_info(
+                    self.record_call_site(
                         call_span,
                         function,
                         arguments,
@@ -358,7 +388,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         false,
                         false,
                     );
-                    self.record_call(info);
                     return ExprOutcome::invalid();
                 };
                 self.finish_signature_call(
@@ -372,7 +401,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 )
             }
             ExprOutcome::Value(callee) if callee.mode.is_value() => {
-                let obj = self.callee_obj_at(function);
+                let obj = self
+                    .record_mask
+                    .contains(RecordMask::CALLS)
+                    .then(|| self.callee_obj_at(function))
+                    .flatten();
                 self.finish_signature_call(
                     function, callee.ty, obj, arguments, None, variadic, call_span,
                 )
@@ -401,7 +434,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         call_span: &Range<usize>,
         callee: &ExprOutcome<'a, 'b>,
     ) {
-        let obj = self.callee_obj_at(function);
+        let obj = self
+            .record_mask
+            .contains(RecordMask::CALLS)
+            .then(|| self.callee_obj_at(function))
+            .flatten();
         if matches!(callee, ExprOutcome::InvalidImportedVar) {
             // go/types stops at signature selection for this callee. A
             // skipped closure can have bindings that the scope walk seeded
@@ -419,9 +456,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             self.check_exprs(arguments);
         }
         if obj.is_some() {
-            let info =
-                self.build_call_site_info(call_span, function, arguments, obj, None, false, false);
-            self.record_call(info);
+            self.record_call_site(call_span, function, arguments, obj, None, false, false);
         }
     }
 
@@ -435,8 +470,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
     ) -> Option<(TypeId, Vec<Operand>)> {
         match callee {
             ExprOutcome::Value(op) if op.mode.is_value() => {
-                let obj = self.callee_obj_at(function);
-                let info = self.build_call_site_info(
+                let obj = self
+                    .record_mask
+                    .contains(RecordMask::CALLS)
+                    .then(|| self.callee_obj_at(function))
+                    .flatten();
+                self.record_call_site(
                     call_span,
                     function,
                     arguments,
@@ -445,7 +484,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     false,
                     false,
                 );
-                self.record_call(info);
                 let ops = self.evaluate_call_args(op.ty, arguments, variadic)?;
                 Some((op.ty, ops))
             }
@@ -456,7 +494,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } => {
                 let Some(callee_span) = self.callee_ident_span(function) else {
                     self.check_exprs(arguments);
-                    let info = self.build_call_site_info(
+                    self.record_call_site(
                         call_span,
                         function,
                         arguments,
@@ -465,7 +503,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         false,
                         false,
                     );
-                    self.record_call(info);
                     return None;
                 };
                 let Some((inst, ops)) = self.instantiate_generic_call(
@@ -476,7 +513,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     arguments,
                     variadic,
                 ) else {
-                    let info = self.build_call_site_info(
+                    self.record_call_site(
                         call_span,
                         function,
                         arguments,
@@ -485,10 +522,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         false,
                         false,
                     );
-                    self.record_call(info);
                     return None;
                 };
-                let info = self.build_call_site_info(
+                self.record_call_site(
                     call_span,
                     function,
                     arguments,
@@ -497,7 +533,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     false,
                     false,
                 );
-                self.record_call(info);
                 Some((inst, ops))
             }
             other => {
@@ -698,7 +733,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             return ExprOutcome::invalid();
         };
 
-        let info = self.build_call_site_info(
+        self.record_call_site(
             call_span,
             function,
             arguments,
@@ -707,7 +742,6 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             false,
             false,
         );
-        self.record_call(info);
 
         let Some((params, results, is_var)) = self.arena.signature_parts(callee_ty) else {
             if actual_ops.is_none() {

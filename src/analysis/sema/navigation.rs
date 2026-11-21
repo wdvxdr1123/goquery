@@ -1,7 +1,13 @@
 //! Exact cursor identities from declaration metadata and checked region facts.
 use super::Semantics;
+use crate::analysis::engine::check::region::RecordMask;
 use crate::analysis::engine::obj::{DeclId, ObjectRef};
 use std::path::Path;
+
+const NAVIGATION_MASK: RecordMask = RecordMask::DEFS
+    .union(RecordMask::USES)
+    .union(RecordMask::IMPLICITS)
+    .union(RecordMask::SELECTIONS);
 
 impl<'a> Semantics<'a> {
     pub(crate) fn alias_rhs_declaration(&mut self, declaration: DeclId<'_>) -> Option<DeclId<'a>> {
@@ -22,10 +28,21 @@ impl<'a> Semantics<'a> {
         if !self.arena.resolver().file_visible(file) {
             return false;
         }
-        self.region_and_arena_at(file, source, span[0], None).is_some_and(|(region, _)| {
-            region.implicits.iter().any(|(_, object)| matches!(object,
-                ObjectRef::Var { origin: crate::analysis::engine::obj::SymbolOrigin::Local { span: declaration, .. }, .. } if *declaration == span))
-        })
+        self.region_and_arena_at_with_mask(file, source, span[0], None, RecordMask::IMPLICITS)
+            .is_some_and(|(region, _)| {
+                region.implicits.iter().any(|(_, object)| {
+                    matches!(
+                        object,
+                        ObjectRef::Var {
+                            origin: crate::analysis::engine::obj::SymbolOrigin::Local {
+                                span: declaration,
+                                ..
+                            },
+                            ..
+                        } if *declaration == span
+                    )
+                })
+            })
     }
 
     pub(crate) fn resolve_offset(
@@ -68,7 +85,8 @@ impl<'a> Semantics<'a> {
                 symbol,
             }));
         }
-        let (region, _) = self.region_and_arena_at(file, source, span[0], cursor)?;
+        let (region, _) =
+            self.region_and_arena_at_with_mask(file, source, span[0], cursor, NAVIGATION_MASK)?;
         region
             .def_by_span(span)
             .or_else(|| region.use_by_span(span))
