@@ -207,7 +207,9 @@ impl<'a> TypeArena<'a> {
                 if !matches!(
                     store.constraint_type_set_checked(bound, 0),
                     CheckOutcome::Ok(_)
-                ) {
+                ) || (!store.mode.is_symbolic()
+                    && store.validate_constraint_args(bound, 0).is_none())
+                {
                     for &tp in tparams {
                         store.set_type_param_bound(tp, TypeId::INVALID);
                     }

@@ -136,7 +136,8 @@ impl<'a> TypeArena<'a> {
             if !matches!(
                 self.constraint_type_set_checked(bound, 0),
                 CheckOutcome::Ok(_)
-            ) {
+            ) || (!self.mode.is_symbolic() && self.validate_constraint_args(bound, 0).is_none())
+            {
                 for &(prev_ty, _) in &parsed_bounds {
                     self.set_type_param_bound(prev_ty, TypeId::INVALID);
                 }

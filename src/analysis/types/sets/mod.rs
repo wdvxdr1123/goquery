@@ -60,6 +60,23 @@ impl TypeSet {
             methods: None,
         }
     }
+
+    pub(super) fn is_decl_safe(&self) -> bool {
+        self.methods.is_none_or(TypeId::is_decl_safe)
+            && self
+                .terms
+                .as_slice()
+                .is_none_or(|terms| terms.iter().all(|term| term.ty.is_decl_safe()))
+    }
+
+    pub(super) fn retained_below(&self, node_limit: usize) -> bool {
+        let ok = |id: TypeId| !id.is_local() || id.index() < node_limit;
+        self.methods.is_none_or(ok)
+            && self
+                .terms
+                .as_slice()
+                .is_none_or(|terms| terms.iter().all(|term| ok(term.ty)))
+    }
 }
 
 impl TypeArena<'_> {
@@ -306,6 +323,26 @@ impl TypeArena<'_> {
         if let Some(cached) = self.pool_for(iface).interface_sets.get(&iface) {
             return CheckOutcome::Ok(cached.clone());
         }
+        // DeclArena interfaces must compute their cached TypeSet (including
+        // synthetic method-only interfaces) under Decl allocation so no Local
+        // TypeId can leak into DeclArena and outlive LocalArena::reset().
+        let outcome = if iface.is_decl() {
+            self.with_decl_alloc(|store| store.compute_interface_type_set(iface, depth))
+        } else {
+            self.compute_interface_type_set(iface, depth)
+        };
+        if let CheckOutcome::Ok(ref set) = outcome
+            && (!iface.is_decl() || set.is_decl_safe())
+        {
+            let pool = self.pool_for_mut(iface);
+            if pool.interface_sets.len() < pool.node_limit {
+                pool.interface_sets.insert(iface, set.clone());
+            }
+        }
+        outcome
+    }
+
+    fn compute_interface_type_set(&mut self, iface: TypeId, depth: usize) -> CheckOutcome<TypeSet> {
         let Some(data) = self.interface_data(iface).cloned() else {
             return CheckOutcome::Unknown(UnknownReason::Unsupported);
         };
@@ -347,10 +384,6 @@ impl TypeArena<'_> {
         let Some(set) = self.filter_comparable(set) else {
             return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         };
-        let pool = self.pool_for_mut(iface);
-        if pool.interface_sets.len() < pool.node_limit {
-            pool.interface_sets.insert(iface, set.clone());
-        }
         CheckOutcome::Ok(set)
     }
 

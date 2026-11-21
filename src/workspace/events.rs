@@ -10,10 +10,13 @@ use std::path::{Path, PathBuf};
 /// Bound for dynamically supplied workspace folders; keeps the module plan and
 /// root traversal bounded when a client keeps adding folders.
 const MAX_WORKSPACE_FOLDERS: usize = 128;
-/// Orphan-package siblings admitted for one detached open buffer.
-const MAX_DETACHED_SIBLINGS: usize = 64;
+/// Orphan-package siblings admitted for one detached open buffer. Covers large
+/// nested/stdlib packages (e.g. `cmd/compile/internal/ssa`) while keeping stub
+/// counts bounded; source bytes are discarded after indexing and stubs are
+/// pruned when the last detached document in the directory closes.
+const MAX_DETACHED_SIBLINGS: usize = 128;
 /// Total source bytes parsed while admitting orphan-package siblings.
-const MAX_DETACHED_SIBLING_BYTES: usize = 8 << 20;
+const MAX_DETACHED_SIBLING_BYTES: usize = 16 << 20;
 /// Open documents whose diagnostics are recomputed after one mutation. A batch
 /// edit can touch many packages, but diagnostic computation stays interactive;
 /// documents beyond this bound refresh on their next edit, save or watch event.
@@ -758,14 +761,16 @@ impl Workspace {
         let target = self.orphan_view_target(file);
         let mut bytes = 0usize;
         let mut admitted = 0usize;
-        for entry in entries
+        let mut paths: Vec<PathBuf> = entries
             .take(super::views::MAX_VIEW_DIRECTORY_ENTRIES)
             .flatten()
-        {
+            .map(|entry| entry.path())
+            .collect();
+        paths.sort();
+        for path in paths {
             if admitted >= MAX_DETACHED_SIBLINGS || bytes >= MAX_DETACHED_SIBLING_BYTES {
                 break;
             }
-            let path = entry.path();
             if path == file || self.files.contains_key(&path) || self.open.contains_key(&path) {
                 continue;
             }

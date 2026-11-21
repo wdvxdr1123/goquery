@@ -1,13 +1,13 @@
 //! Two-tier type storage (`DeclArena` + `LocalArena`) with epoch-checked [`TypeId`]s.
+mod alloc;
 
 use super::lookup::ConcreteMethodMemo;
 use super::pool::ArenaPool;
 use super::ty::{
-    AllocTier, BUILTIN_TYS, CheckMode, InterfaceData, InterfaceId, NamedCheckState,
-    NamedOriginData, OriginId, SignatureData, SignatureId, SliceRef, StepBudget, StructData,
-    StructId, Term, TypeOrigin, TypeParamData, TypeTier,
+    AllocTier, BUILTIN_TYS, CheckMode, InterfaceData, NamedOriginData, OriginId, SignatureData,
+    SliceRef, StepBudget, StructData, Term, TypeOrigin, TypeParamData, TypeTier,
 };
-use super::{BasicKind, Field, Method, Ty, TypeId};
+use super::{Field, Method, Ty, TypeId};
 use crate::analysis::engine::budget::{
     MAX_BYTES, MAX_DECL_ARENA_NODES, MAX_LOCAL_ARENA_NODES, MAX_NODES, RELATION_STEPS,
 };
@@ -19,10 +19,11 @@ use std::ops::{Deref, DerefMut, Range};
 use std::path::Path;
 
 /// Request-scoped storage for package-level declaration types (never rewound).
-pub(super) struct DeclArena<'a> {
-    pub(super) pool: ArenaPool<'a>,
-    pub(super) concrete_methods: HashMap<DeclId<'a>, ConcreteMethodMemo>,
-    pub(super) package_origins: HashMap<DeclId<'a>, OriginId>,
+pub(in crate::analysis::engine::types) struct DeclArena<'a> {
+    pub(in crate::analysis::engine::types) pool: ArenaPool<'a>,
+    pub(in crate::analysis::engine::types) concrete_methods:
+        HashMap<DeclId<'a>, ConcreteMethodMemo>,
+    pub(in crate::analysis::engine::types) package_origins: HashMap<DeclId<'a>, OriginId>,
 }
 
 impl<'a> DeclArena<'a> {
@@ -37,11 +38,11 @@ impl<'a> DeclArena<'a> {
 
 /// Compact side metadata for a local `type` declaration in [`LocalArena`].
 #[derive(Clone, Copy)]
-pub(super) struct LocalTypeMeta {
-    pub(super) name_buf: SliceRef,
-    pub(super) ann_start: u32,
-    pub(super) ann_end: u32,
-    pub(super) ann_in_buf: bool,
+pub(in crate::analysis::engine::types) struct LocalTypeMeta {
+    pub(in crate::analysis::engine::types) name_buf: SliceRef,
+    pub(in crate::analysis::engine::types) ann_start: u32,
+    pub(in crate::analysis::engine::types) ann_end: u32,
+    pub(in crate::analysis::engine::types) ann_in_buf: bool,
 }
 
 #[inline]
@@ -75,12 +76,12 @@ const _: () = assert!(std::mem::size_of::<Ty>() <= 24);
 const _: () = assert!(std::mem::size_of::<LocalWatermark>() <= 72);
 
 /// Region-scoped storage for local types, parameters, and speculative probes.
-pub(super) struct LocalArena<'a> {
-    pub(super) epoch: u16,
-    pub(super) pool: ArenaPool<'a>,
-    pub(super) local_origins: HashMap<(&'a Path, u32, u32), TypeId>,
-    pub(super) local_type_meta: HashMap<OriginId, LocalTypeMeta>,
-    pub(super) local_text: String,
+pub(in crate::analysis::engine::types) struct LocalArena<'a> {
+    pub(in crate::analysis::engine::types) epoch: u16,
+    pub(in crate::analysis::engine::types) pool: ArenaPool<'a>,
+    pub(in crate::analysis::engine::types) local_origins: HashMap<(&'a Path, u32, u32), TypeId>,
+    pub(in crate::analysis::engine::types) local_type_meta: HashMap<OriginId, LocalTypeMeta>,
+    pub(in crate::analysis::engine::types) local_text: String,
 }
 
 impl<'a> LocalArena<'a> {
@@ -289,18 +290,18 @@ impl Drop for ProjectionGuard<'_, '_> {
 
 /// Two-tier type store separating permanent declaration types from per-region locals.
 pub(crate) struct TypeStore<'a> {
-    pub(super) workspace: &'a Workspace,
-    pub(super) build_view: BuildView<'a>,
-    pub(super) decl: DeclArena<'a>,
-    pub(super) local: LocalArena<'a>,
+    pub(in crate::analysis::engine::types) workspace: &'a Workspace,
+    pub(in crate::analysis::engine::types) build_view: BuildView<'a>,
+    pub(in crate::analysis::engine::types) decl: DeclArena<'a>,
+    pub(in crate::analysis::engine::types) local: LocalArena<'a>,
     pub(crate) env_cache: FileEnvCache<'a>,
-    pub(super) alloc_tier: AllocTier,
-    pub(super) mode: CheckMode,
-    pub(super) steps: StepBudget,
-    pub(super) named_check_depth: usize,
-    pub(super) expansion_depth: usize,
-    pub(super) constant_depth: usize,
-    pub(super) constraint_depth: usize,
+    pub(in crate::analysis::engine::types) alloc_tier: AllocTier,
+    pub(in crate::analysis::engine::types) mode: CheckMode,
+    pub(in crate::analysis::engine::types) steps: StepBudget,
+    pub(in crate::analysis::engine::types) named_check_depth: usize,
+    pub(in crate::analysis::engine::types) expansion_depth: usize,
+    pub(in crate::analysis::engine::types) constant_depth: usize,
+    pub(in crate::analysis::engine::types) constraint_depth: usize,
 }
 
 impl<'a> TypeStore<'a> {
@@ -384,11 +385,11 @@ impl<'a> TypeStore<'a> {
         self.steps.reset();
     }
 
-    pub(super) fn step(&mut self) -> Option<()> {
+    pub(in crate::analysis::engine::types) fn step(&mut self) -> Option<()> {
         self.steps.step()
     }
 
-    pub(super) fn node(&self, id: TypeId) -> Option<&Ty> {
+    pub(in crate::analysis::engine::types) fn node(&self, id: TypeId) -> Option<&Ty> {
         match id.tier() {
             TypeTier::Invalid => Some(&Ty::Invalid),
             TypeTier::Builtin => id.as_basic().map(|kind| &BUILTIN_TYS[kind.index()]),
@@ -402,7 +403,10 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn origin_data(&self, id: OriginId) -> Option<&NamedOriginData<'a>> {
+    pub(in crate::analysis::engine::types) fn origin_data(
+        &self,
+        id: OriginId,
+    ) -> Option<&NamedOriginData<'a>> {
         if id.is_local() {
             self.local.pool.origins.get(id.index())
         } else {
@@ -410,7 +414,10 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn origin_data_mut(&mut self, id: OriginId) -> Option<&mut NamedOriginData<'a>> {
+    pub(in crate::analysis::engine::types) fn origin_data_mut(
+        &mut self,
+        id: OriginId,
+    ) -> Option<&mut NamedOriginData<'a>> {
         if id.is_local() {
             self.local.pool.origins.get_mut(id.index())
         } else {
@@ -418,7 +425,7 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn get_or_insert_package_origin(
+    pub(in crate::analysis::engine::types) fn get_or_insert_package_origin(
         &mut self,
         declaration: DeclId<'a>,
         alias: bool,
@@ -434,35 +441,50 @@ impl<'a> TypeStore<'a> {
         Some(id)
     }
 
-    pub(super) fn struct_data(&self, owner: TypeId) -> Option<&StructData<'a>> {
+    pub(in crate::analysis::engine::types) fn struct_data(
+        &self,
+        owner: TypeId,
+    ) -> Option<&StructData<'a>> {
         let Ty::Struct(id) = *self.node(owner)? else {
             return None;
         };
         self.pool_for(owner).structs.get(id.0 as usize)
     }
 
-    pub(super) fn interface_data(&self, owner: TypeId) -> Option<&InterfaceData<'a>> {
+    pub(in crate::analysis::engine::types) fn interface_data(
+        &self,
+        owner: TypeId,
+    ) -> Option<&InterfaceData<'a>> {
         let Ty::Interface(id) = *self.node(owner)? else {
             return None;
         };
         self.pool_for(owner).interfaces.get(id.0 as usize)
     }
 
-    pub(super) fn signature_data(&self, owner: TypeId) -> Option<&SignatureData> {
+    pub(in crate::analysis::engine::types) fn signature_data(
+        &self,
+        owner: TypeId,
+    ) -> Option<&SignatureData> {
         let Ty::Signature(id) = *self.node(owner)? else {
             return None;
         };
         self.pool_for(owner).signatures.get(id.0 as usize)
     }
 
-    pub(super) fn type_param_data(&self, owner: TypeId) -> Option<&TypeParamData<'a>> {
+    pub(in crate::analysis::engine::types) fn type_param_data(
+        &self,
+        owner: TypeId,
+    ) -> Option<&TypeParamData<'a>> {
         let Ty::TypeParam(id) = *self.node(owner)? else {
             return None;
         };
         self.pool_for(owner).type_params.get(id.0 as usize)
     }
 
-    pub(super) fn type_param_data_mut(&mut self, owner: TypeId) -> Option<&mut TypeParamData<'a>> {
+    pub(in crate::analysis::engine::types) fn type_param_data_mut(
+        &mut self,
+        owner: TypeId,
+    ) -> Option<&mut TypeParamData<'a>> {
         let Ty::TypeParam(id) = *self.node(owner)? else {
             return None;
         };
@@ -470,15 +492,25 @@ impl<'a> TypeStore<'a> {
     }
 
     #[allow(dead_code)]
-    pub(super) fn type_param_index(&self, owner: TypeId) -> Option<usize> {
+    pub(in crate::analysis::engine::types) fn type_param_index(
+        &self,
+        owner: TypeId,
+    ) -> Option<usize> {
         self.type_param_data(owner).map(|p| usize::from(p.index))
     }
 
-    pub(super) fn type_param_bound(&self, owner: TypeId) -> Option<TypeId> {
+    pub(in crate::analysis::engine::types) fn type_param_bound(
+        &self,
+        owner: TypeId,
+    ) -> Option<TypeId> {
         self.type_param_data(owner)?.bound()
     }
 
-    pub(super) fn set_type_param_bound(&mut self, owner: TypeId, bound: TypeId) -> bool {
+    pub(in crate::analysis::engine::types) fn set_type_param_bound(
+        &mut self,
+        owner: TypeId,
+        bound: TypeId,
+    ) -> bool {
         if !owner.is_local() && bound.is_local() {
             return false;
         }
@@ -489,7 +521,10 @@ impl<'a> TypeStore<'a> {
         true
     }
 
-    pub(super) fn type_param_info(&self, owner: TypeId) -> Option<(&'a Path, usize, &str)> {
+    pub(in crate::analysis::engine::types) fn type_param_info(
+        &self,
+        owner: TypeId,
+    ) -> Option<(&'a Path, usize, &str)> {
         let Ty::TypeParam(id) = *self.node(owner)? else {
             return None;
         };
@@ -503,7 +538,10 @@ impl<'a> TypeStore<'a> {
         Some((origin, data.selection as usize, name))
     }
 
-    pub(super) fn type_param_name(&self, owner: TypeId) -> Option<&str> {
+    pub(in crate::analysis::engine::types) fn type_param_name(
+        &self,
+        owner: TypeId,
+    ) -> Option<&str> {
         let Ty::TypeParam(id) = *self.node(owner)? else {
             return None;
         };
@@ -512,7 +550,7 @@ impl<'a> TypeStore<'a> {
         pool.param_names.get(data.name_range())
     }
 
-    pub(super) fn named_origin_info(
+    pub(in crate::analysis::engine::types) fn named_origin_info(
         &self,
         owner: TypeId,
     ) -> Option<(OriginId, DeclId<'a>, SliceRef, bool)> {
@@ -527,12 +565,18 @@ impl<'a> TypeStore<'a> {
         Some((origin_id, decl, arguments, alias))
     }
 
-    pub(super) fn named_info(&self, owner: TypeId) -> Option<(DeclId<'a>, SliceRef, bool)> {
+    pub(in crate::analysis::engine::types) fn named_info(
+        &self,
+        owner: TypeId,
+    ) -> Option<(DeclId<'a>, SliceRef, bool)> {
         let (_, decl, arguments, alias) = self.named_origin_info(owner)?;
         Some((decl, arguments, alias))
     }
 
-    pub(super) fn local_origin_id(&self, owner: TypeId) -> Option<OriginId> {
+    pub(in crate::analysis::engine::types) fn local_origin_id(
+        &self,
+        owner: TypeId,
+    ) -> Option<OriginId> {
         let origin_id = match *self.node(owner)? {
             Ty::Named { origin, .. } | Ty::Alias { origin, .. } => origin,
             _ => return None,
@@ -544,7 +588,7 @@ impl<'a> TypeStore<'a> {
         .then_some(origin_id)
     }
 
-    pub(super) fn local_decl_info(
+    pub(in crate::analysis::engine::types) fn local_decl_info(
         &self,
         owner: TypeId,
     ) -> Option<(OriginId, &'a Path, Range<usize>, bool)> {
@@ -559,7 +603,10 @@ impl<'a> TypeStore<'a> {
         Some((origin_id, origin, start as usize..end as usize, alias))
     }
 
-    pub(super) fn error_interface(&self, owner: TypeId) -> Option<TypeId> {
+    pub(in crate::analysis::engine::types) fn error_interface(
+        &self,
+        owner: TypeId,
+    ) -> Option<TypeId> {
         let Ty::Named { origin, .. } = *self.node(owner)? else {
             return None;
         };
@@ -569,43 +616,7 @@ impl<'a> TypeStore<'a> {
         Some(interface)
     }
 
-    pub(super) fn push_type_param(&mut self, index: usize) -> Option<TypeId> {
-        let index = u16::try_from(index).ok()?;
-        let decl_safe = self.alloc_tier == AllocTier::Decl;
-        self.target_pool_mut(decl_safe)
-            .push_type_param_data(None, u32::MAX, index, "", false, true)
-    }
-
-    pub(super) fn push_named_type_param(
-        &mut self,
-        origin: &'a Path,
-        selection: u32,
-        index: u16,
-        name: &str,
-        ready: bool,
-    ) -> Option<TypeId> {
-        let decl_safe = self.alloc_tier == AllocTier::Decl;
-        self.target_pool_mut(decl_safe).push_type_param_data(
-            Some(origin),
-            selection,
-            index,
-            name,
-            ready,
-            false,
-        )
-    }
-
-    pub(super) fn push_builtin_error(&mut self, interface: TypeId) -> Option<TypeId> {
-        let decl_safe = interface.is_decl_safe();
-        self.target_pool_mut(decl_safe)
-            .push_origin_node(
-                NamedOriginData::new(TypeOrigin::BuiltinError { interface }, false),
-                false,
-            )
-            .map(|(_, id)| id)
-    }
-
-    pub(super) fn pool_for(&self, id: TypeId) -> &ArenaPool<'a> {
+    pub(in crate::analysis::engine::types) fn pool_for(&self, id: TypeId) -> &ArenaPool<'a> {
         if id.is_local() {
             &self.local.pool
         } else {
@@ -613,7 +624,10 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn pool_for_mut(&mut self, id: TypeId) -> &mut ArenaPool<'a> {
+    pub(in crate::analysis::engine::types) fn pool_for_mut(
+        &mut self,
+        id: TypeId,
+    ) -> &mut ArenaPool<'a> {
         if id.is_local() {
             &mut self.local.pool
         } else {
@@ -621,7 +635,10 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn target_pool_mut(&mut self, decl_safe: bool) -> &mut ArenaPool<'a> {
+    pub(in crate::analysis::engine::types) fn target_pool_mut(
+        &mut self,
+        decl_safe: bool,
+    ) -> &mut ArenaPool<'a> {
         if self.alloc_tier == AllocTier::Decl && decl_safe {
             &mut self.decl.pool
         } else {
@@ -629,7 +646,7 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn active_node_limit(&self) -> usize {
+    pub(in crate::analysis::engine::types) fn active_node_limit(&self) -> usize {
         if self.alloc_tier == AllocTier::Decl {
             self.decl.pool.node_limit
         } else {
@@ -637,23 +654,39 @@ impl<'a> TypeStore<'a> {
         }
     }
 
-    pub(super) fn arguments_slice(&self, owner: TypeId, slice: SliceRef) -> &[TypeId] {
+    pub(in crate::analysis::engine::types) fn arguments_slice(
+        &self,
+        owner: TypeId,
+        slice: SliceRef,
+    ) -> &[TypeId] {
         &self.pool_for(owner).arguments[slice.range()]
     }
 
-    pub(super) fn arg_range(&self, owner: TypeId, range: Range<usize>) -> &[TypeId] {
+    pub(in crate::analysis::engine::types) fn arg_range(
+        &self,
+        owner: TypeId,
+        range: Range<usize>,
+    ) -> &[TypeId] {
         &self.pool_for(owner).arguments[range]
     }
 
-    pub(super) fn fields_slice(&self, owner: TypeId, range: Range<usize>) -> Option<&[Field]> {
+    pub(in crate::analysis::engine::types) fn fields_slice(
+        &self,
+        owner: TypeId,
+        range: Range<usize>,
+    ) -> Option<&[Field]> {
         self.pool_for(owner).fields.get(range)
     }
 
-    pub(super) fn methods_slice(&self, owner: TypeId, range: Range<usize>) -> &[Method<'a>] {
+    pub(in crate::analysis::engine::types) fn methods_slice(
+        &self,
+        owner: TypeId,
+        range: Range<usize>,
+    ) -> &[Method<'a>] {
         &self.pool_for(owner).methods[range]
     }
 
-    pub(super) fn methods_slice_mut(
+    pub(in crate::analysis::engine::types) fn methods_slice_mut(
         &mut self,
         owner: TypeId,
         range: Range<usize>,
@@ -661,261 +694,11 @@ impl<'a> TypeStore<'a> {
         &mut self.pool_for_mut(owner).methods[range]
     }
 
-    pub(super) fn terms_slice(&self, owner: TypeId, slice: SliceRef) -> &[Term] {
+    pub(in crate::analysis::engine::types) fn terms_slice(
+        &self,
+        owner: TypeId,
+        slice: SliceRef,
+    ) -> &[Term] {
         &self.pool_for(owner).terms[slice.range()]
-    }
-
-    pub(super) fn store_union(&mut self, terms: Vec<Term>) -> Option<TypeId> {
-        let decl_safe = terms.iter().all(|t| t.ty.is_decl_safe());
-        let pool = self.target_pool_mut(decl_safe);
-        if pool.terms.len() + terms.len() > pool.node_limit {
-            return None;
-        }
-        let start = pool.terms.len();
-        pool.terms.extend(terms);
-        let Some(slice) = SliceRef::from_range(start..pool.terms.len()) else {
-            pool.terms.truncate(start);
-            return None;
-        };
-        let Some(id) = pool.push_raw(Ty::Union(slice)) else {
-            pool.terms.truncate(start);
-            return None;
-        };
-        Some(id)
-    }
-
-    pub(crate) fn basic(&self, kind: BasicKind) -> Option<TypeId> {
-        Some(TypeId::basic(kind))
-    }
-
-    pub(crate) fn basic_kind(&mut self, id: TypeId) -> Option<BasicKind> {
-        let id = self.underlying(id)?;
-        match self.node(id)? {
-            Ty::Basic(kind) => Some(*kind),
-            _ => None,
-        }
-    }
-
-    pub(super) fn push(&mut self, ty: Ty) -> Option<TypeId> {
-        let decl_safe = match ty {
-            Ty::Invalid | Ty::Basic(_) => return self.local.pool.push_interned(ty),
-            Ty::Pointer(element)
-            | Ty::Slice(element)
-            | Ty::Array { element, .. }
-            | Ty::Chan { element, .. } => element.is_decl_safe(),
-            Ty::Map { key, value } => key.is_decl_safe() && value.is_decl_safe(),
-            Ty::TypeParam(_)
-            | Ty::Named { .. }
-            | Ty::Alias { .. }
-            | Ty::Tuple(_)
-            | Ty::Union(_)
-            | Ty::Struct(_)
-            | Ty::Interface(_)
-            | Ty::Signature(_) => false,
-        };
-        self.target_pool_mut(decl_safe).push_interned(ty)
-    }
-
-    pub(crate) fn push_named(
-        &mut self,
-        declaration: DeclId<'a>,
-        arguments: &[TypeId],
-        alias: bool,
-    ) -> Option<TypeId> {
-        let origin = self.get_or_insert_package_origin(declaration, alias)?;
-        let decl_safe = arguments.iter().all(|id| id.is_decl_safe());
-        self.target_pool_mut(decl_safe)
-            .push_named_instance(origin, arguments, alias)
-    }
-
-    pub(crate) fn tuple(&mut self, elements: &[TypeId]) -> Option<TypeId> {
-        let decl_safe = elements.iter().all(|id| id.is_decl_safe());
-        self.target_pool_mut(decl_safe).push_tuple(elements)
-    }
-
-    pub(crate) fn pointer(&mut self, element: TypeId) -> Option<TypeId> {
-        self.push(Ty::Pointer(element))
-    }
-
-    pub(crate) fn slice_type(&mut self, element: TypeId) -> Option<TypeId> {
-        self.push(Ty::Slice(element))
-    }
-
-    pub(crate) fn array(&mut self, element: TypeId, length: u64) -> Option<TypeId> {
-        let maximum = (1_u64 << (self.integer_bits()? - 1)) - 1;
-        (length <= maximum).then_some(())?;
-        self.push(Ty::Array { length, element })
-    }
-
-    pub(crate) fn array_length(&mut self, id: TypeId) -> Option<u64> {
-        let root = self.underlying(id)?;
-        match self.node(root)? {
-            Ty::Array { length, .. } => Some(*length),
-            _ => None,
-        }
-    }
-
-    pub(super) fn store_struct_nodes(
-        &mut self,
-        origin: &'a Path,
-        fields: Vec<Field>,
-    ) -> Option<TypeId> {
-        let decl_safe = fields.iter().all(|field| field.ty.is_decl_safe());
-        let bytes: usize = fields
-            .iter()
-            .map(|field| field.name.len() + field.tag.len())
-            .sum();
-        let pool = self.target_pool_mut(decl_safe);
-        if pool.fields.len() + fields.len() > pool.node_limit
-            || pool.structs.len() >= pool.node_limit
-            || bytes > MAX_BYTES
-            || pool.field_bytes + bytes > pool.byte_limit
-        {
-            return None;
-        }
-        let struct_idx = pool.structs.len();
-        let struct_id = StructId(u32::try_from(struct_idx).ok()?);
-        pool.field_bytes += bytes;
-        let start = pool.fields.len();
-        pool.fields.extend(fields);
-        let range = start..pool.fields.len();
-        pool.structs.push(StructData {
-            origin,
-            fields: range,
-        });
-        let Some(id) = pool.push_raw(Ty::Struct(struct_id)) else {
-            pool.structs.truncate(struct_idx);
-            return None;
-        };
-        Some(id)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn store_interface_nodes(
-        &mut self,
-        origin: &'a Path,
-        methods: Vec<Method<'a>>,
-        embeddeds: Vec<TypeId>,
-        has_type_elements: bool,
-        comparable: bool,
-        implicit: bool,
-        builtin_any: bool,
-    ) -> Option<TypeId> {
-        let decl_safe = methods
-            .iter()
-            .all(|m| m.signature.is_decl_safe() && m.declared_on.is_none_or(TypeId::is_decl_safe))
-            && embeddeds.iter().all(|id| id.is_decl_safe());
-        let bytes = methods.iter().map(|m| m.name.len()).sum::<usize>();
-        let pool = self.target_pool_mut(decl_safe);
-        if pool.methods.len() + methods.len() > pool.node_limit
-            || pool.arguments.len() + embeddeds.len() > pool.node_limit
-            || pool.interfaces.len() >= pool.node_limit
-            || bytes > MAX_BYTES
-            || pool.method_bytes + bytes > pool.byte_limit
-        {
-            return None;
-        }
-        let emb_start = pool.arguments.len();
-        pool.arguments.extend(embeddeds);
-        let Some(emb_slice) = SliceRef::from_range(emb_start..pool.arguments.len()) else {
-            pool.arguments.truncate(emb_start);
-            return None;
-        };
-        let iface_idx = pool.interfaces.len();
-        let iface_id = InterfaceId(u32::try_from(iface_idx).ok()?);
-        pool.method_bytes += bytes;
-        let start = pool.methods.len();
-        pool.methods.extend(methods);
-        let range = start..pool.methods.len();
-        pool.interfaces.push(InterfaceData {
-            origin,
-            methods: range,
-            embeddeds: emb_slice,
-            has_type_elements,
-            comparable,
-            implicit,
-            builtin_any,
-        });
-        let Some(id) = pool.push_raw(Ty::Interface(iface_id)) else {
-            pool.interfaces.truncate(iface_idx);
-            pool.arguments.truncate(emb_start);
-            return None;
-        };
-        Some(id)
-    }
-
-    pub(super) fn store_signature_nodes(
-        &mut self,
-        type_params: Vec<TypeId>,
-        parameters: Vec<TypeId>,
-        results: Vec<TypeId>,
-        variadic: bool,
-    ) -> Option<TypeId> {
-        let decl_safe = type_params
-            .iter()
-            .chain(&parameters)
-            .chain(&results)
-            .all(|id| id.is_decl_safe());
-        let pool = self.target_pool_mut(decl_safe);
-        if pool.arguments.len() + type_params.len() + parameters.len() + results.len()
-            > pool.node_limit
-            || pool.signatures.len() >= pool.node_limit
-        {
-            return None;
-        }
-        let sig_idx = pool.signatures.len();
-        let sig_id = SignatureId(u32::try_from(sig_idx).ok()?);
-        let tp_start = pool.arguments.len();
-        pool.arguments.extend(type_params);
-        let tp_end = pool.arguments.len();
-        let type_params = SliceRef::from_range(tp_start..tp_end)?;
-        let start = pool.arguments.len();
-        pool.arguments.extend(parameters);
-        let middle = pool.arguments.len();
-        pool.arguments.extend(results);
-        let end = pool.arguments.len();
-        pool.signatures.push(SignatureData {
-            type_params,
-            parameters: start..middle,
-            results: middle..end,
-            variadic,
-        });
-        let Some(id) = pool.push_raw(Ty::Signature(sig_id)) else {
-            pool.signatures.truncate(sig_idx);
-            pool.arguments.truncate(tp_start);
-            return None;
-        };
-        Some(id)
-    }
-
-    pub(super) fn expansion_get(&self, id: TypeId) -> Option<TypeId> {
-        self.pool_for(id).expansions.get(&id).copied()
-    }
-
-    pub(super) fn expansion_insert(&mut self, id: TypeId, target: TypeId) {
-        if !id.is_local() && target.is_local() {
-            return;
-        }
-        let pool = self.pool_for_mut(id);
-        if pool.expansions.len() < pool.node_limit {
-            pool.expansions.insert(id, target);
-        }
-    }
-
-    pub(super) fn named_check_state(&self, id: TypeId) -> Option<NamedCheckState> {
-        self.pool_for(id).named_checks.get(&id).copied()
-    }
-
-    pub(super) fn named_check_set(&mut self, id: TypeId, state: NamedCheckState) -> bool {
-        let pool = self.pool_for_mut(id);
-        if pool.named_checks.len() >= pool.node_limit && !pool.named_checks.contains_key(&id) {
-            return false;
-        }
-        pool.named_checks.insert(id, state);
-        true
-    }
-
-    pub(super) fn named_check_remove(&mut self, id: TypeId) {
-        self.pool_for_mut(id).named_checks.remove(&id);
     }
 }

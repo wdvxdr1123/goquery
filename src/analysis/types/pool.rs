@@ -333,8 +333,9 @@ impl<'a> ArenaPool<'a> {
         });
         self.named_checks
             .retain(|k, _| !k.is_local() || k.index() < node_limit);
-        self.interface_sets
-            .retain(|k, _| !k.is_local() || k.index() < node_limit);
+        self.interface_sets.retain(|k, set| {
+            (!k.is_local() || k.index() < node_limit) && set.retained_below(node_limit)
+        });
         self.formal_params.retain(|_, id| id.index() < node_limit);
     }
 }
