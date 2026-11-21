@@ -13,6 +13,7 @@ pub fn check_all() {
     check_lexical_tokens();
     check_signature_corpus();
     check_type_corpus();
+    check_type_tree_syntax();
     check_aggregate_limits();
 }
 
@@ -407,6 +408,658 @@ pub fn check_type_spans(source: &str, parsed: &goquery::syntax::TypeSyntax) {
             assert!(goquery::syntax::decode_string_literal(&source[tag.clone()]).is_some());
         }
     }
+}
+
+fn check_type_tree_syntax() {
+    use goquery::syntax::{
+        ChanDir, ExprKind, InterfaceMemberNode, SigNodeId, TypeNodeId, TypeNodeKind, TypeSyntax,
+        TypeTreeKind, parse_constraint, parse_type, parse_type_prefix,
+    };
+    use std::ops::Range;
+
+    const MAX_TYPE_NODES: usize = 8192;
+
+    fn slice<'a>(source: &'a str, span: &Range<u32>) -> &'a str {
+        &source[span.start as usize..span.end as usize]
+    }
+
+    fn verify_sig(source: &str, parsed: &TypeSyntax, sig_id: SigNodeId, owner: TypeNodeId) {
+        let sig = parsed.sig_node(sig_id).expect("valid SigNodeId");
+        assert!(sig.span.start <= sig.span.end && sig.span.end as usize <= source.len());
+        assert!(sig.params.start <= sig.params.end);
+        assert!(sig.params.end as usize <= parsed.param_nodes().len());
+        assert!(sig.results.start <= sig.results.end);
+        assert!(sig.results.end as usize <= parsed.param_nodes().len());
+        for param in parsed
+            .sig_params(sig.params.clone())
+            .iter()
+            .chain(parsed.sig_params(sig.results.clone()))
+        {
+            if let Some(name) = &param.name {
+                assert!(name.start <= name.end && name.end as usize <= source.len());
+            }
+            assert!(param.ty.raw() < owner.raw());
+            verify_node(source, parsed, param.ty);
+        }
+    }
+
+    fn verify_node(source: &str, parsed: &TypeSyntax, id: TypeNodeId) {
+        let node = parsed.tree_node(id).expect("valid TypeNodeId");
+        assert!(node.span.start <= node.span.end && node.span.end as usize <= source.len());
+        match &node.kind {
+            TypeTreeKind::Missing => {}
+            TypeTreeKind::Parenthesized(inner)
+            | TypeTreeKind::Pointer(inner)
+            | TypeTreeKind::Slice(inner)
+            | TypeTreeKind::Approx(inner) => {
+                assert!(inner.raw() < id.raw());
+                verify_node(source, parsed, *inner);
+            }
+            TypeTreeKind::Array { len_expr, elem } => {
+                if let Some(expr_id) = len_expr {
+                    assert!(parsed.expression(*expr_id).is_some());
+                }
+                assert!(elem.raw() < id.raw());
+                verify_node(source, parsed, *elem);
+            }
+            TypeTreeKind::Map { key, value } => {
+                assert!(key.raw() < id.raw() && value.raw() < id.raw());
+                verify_node(source, parsed, *key);
+                verify_node(source, parsed, *value);
+            }
+            TypeTreeKind::Chan { elem, .. } => {
+                assert!(elem.raw() < id.raw());
+                verify_node(source, parsed, *elem);
+            }
+            TypeTreeKind::Func(sig_id) => verify_sig(source, parsed, *sig_id, id),
+            TypeTreeKind::Struct { fields } => {
+                assert!(fields.start <= fields.end);
+                assert!(fields.end as usize <= parsed.field_nodes().len());
+                for field in parsed.struct_fields(fields.clone()) {
+                    if let Some(name) = &field.name {
+                        assert!(name.start <= name.end && name.end as usize <= source.len());
+                    }
+                    if let Some(tag) = &field.tag {
+                        assert!(tag.start <= tag.end && tag.end as usize <= source.len());
+                    }
+                    assert!(field.ty.raw() < id.raw());
+                    verify_node(source, parsed, field.ty);
+                }
+            }
+            TypeTreeKind::Interface { members } => {
+                assert!(members.start <= members.end);
+                assert!(members.end as usize <= parsed.interface_member_nodes().len());
+                for member in parsed.interface_members(members.clone()) {
+                    match member {
+                        InterfaceMemberNode::Method { name, sig } => {
+                            assert!(name.start <= name.end && name.end as usize <= source.len());
+                            verify_sig(source, parsed, *sig, id);
+                        }
+                        InterfaceMemberNode::Embedded(ty) => {
+                            assert!(ty.raw() < id.raw());
+                            verify_node(source, parsed, *ty);
+                        }
+                        other => panic!("unexpected InterfaceMemberNode variant: {other:?}"),
+                    }
+                }
+            }
+            TypeTreeKind::Union { terms } => {
+                assert!(terms.start <= terms.end);
+                for &term in parsed.type_node_list(terms.clone()) {
+                    assert!(term.raw() < id.raw());
+                    verify_node(source, parsed, term);
+                }
+            }
+            TypeTreeKind::Name { span } => {
+                assert!(span.start <= span.end && span.end as usize <= source.len());
+            }
+            TypeTreeKind::Qualified { qual, name } => {
+                assert!(qual.start <= qual.end && qual.end as usize <= source.len());
+                assert!(name.start <= name.end && name.end as usize <= source.len());
+            }
+            TypeTreeKind::Instantiation { base, args } => {
+                assert!(base.raw() < id.raw());
+                verify_node(source, parsed, *base);
+                assert!(args.start <= args.end);
+                for &arg in parsed.type_node_list(args.clone()) {
+                    assert!(arg.raw() < id.raw());
+                    verify_node(source, parsed, arg);
+                }
+            }
+            other => panic!("unexpected TypeTreeKind variant: {other:?}"),
+        }
+    }
+
+    fn assert_tree_well_formed(source: &str, parsed: &TypeSyntax) {
+        let Some(root) = parsed.root() else {
+            assert!(parsed.tree_overflowed());
+            assert!(parsed.tree_nodes().is_empty());
+            assert!(parsed.field_nodes().is_empty());
+            assert!(parsed.interface_member_nodes().is_empty());
+            assert!(parsed.sig_nodes().is_empty());
+            assert!(parsed.param_nodes().is_empty());
+            assert!(parsed.type_node_lists().is_empty());
+            return;
+        };
+        assert!(!parsed.tree_overflowed());
+        verify_node(source, parsed, root);
+    }
+
+    // 1. Compound types: parenthesized, pointer, map, channel directions, slice, qualified.
+    let src = "(*map[string]chan<- <-chan chan []pkg.Elem)";
+    let parsed = parse_type(src);
+    assert!(parsed.diagnostics().is_empty());
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Parenthesized(ptr_id) =
+        parsed.tree_node(parsed.root().unwrap()).unwrap().kind
+    else {
+        panic!("expected Parenthesized");
+    };
+    let TypeTreeKind::Pointer(map_id) = parsed.tree_node(ptr_id).unwrap().kind else {
+        panic!("expected Pointer");
+    };
+    let TypeTreeKind::Map { key, value } = parsed.tree_node(map_id).unwrap().kind else {
+        panic!("expected Map");
+    };
+    assert!(matches!(
+        &parsed.tree_node(key).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "string"
+    ));
+    let TypeTreeKind::Chan {
+        dir: ChanDir::Send,
+        elem: recv_id,
+    } = parsed.tree_node(value).unwrap().kind
+    else {
+        panic!("expected Send chan");
+    };
+    let TypeTreeKind::Chan {
+        dir: ChanDir::Recv,
+        elem: both_id,
+    } = parsed.tree_node(recv_id).unwrap().kind
+    else {
+        panic!("expected Recv chan");
+    };
+    let TypeTreeKind::Chan {
+        dir: ChanDir::Both,
+        elem: slice_id,
+    } = parsed.tree_node(both_id).unwrap().kind
+    else {
+        panic!("expected Both chan");
+    };
+    let TypeTreeKind::Slice(elem_id) = parsed.tree_node(slice_id).unwrap().kind else {
+        panic!("expected Slice");
+    };
+    assert!(matches!(
+        &parsed.tree_node(elem_id).unwrap().kind,
+        TypeTreeKind::Qualified { qual, name }
+            if slice(src, qual) == "pkg" && slice(src, name) == "Elem"
+    ));
+
+    // 2. Array length expressions and `[...]byte` inferred arrays.
+    let src = "[N+1][2*M]T";
+    let parsed = parse_type(src);
+    assert!(parsed.diagnostics().is_empty());
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Array {
+        len_expr: Some(outer_len),
+        elem: inner_id,
+    } = parsed.tree_node(parsed.root().unwrap()).unwrap().kind
+    else {
+        panic!("expected outer Array");
+    };
+    let outer_expr = parsed.expression(outer_len).unwrap();
+    assert!(matches!(outer_expr.kind, ExprKind::Binary { .. }));
+    assert_eq!(&src[outer_expr.span.clone()], "N+1");
+    let TypeTreeKind::Array {
+        len_expr: Some(inner_len),
+        elem: elem_id,
+    } = parsed.tree_node(inner_id).unwrap().kind
+    else {
+        panic!("expected inner Array");
+    };
+    let inner_expr = parsed.expression(inner_len).unwrap();
+    assert!(matches!(inner_expr.kind, ExprKind::Binary { .. }));
+    assert_eq!(&src[inner_expr.span.clone()], "2*M");
+    assert!(matches!(
+        &parsed.tree_node(elem_id).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "T"
+    ));
+    let inferred_src = "[...]byte";
+    let inferred = parse_type(inferred_src);
+    assert!(inferred.diagnostics().is_empty());
+    assert_tree_well_formed(inferred_src, &inferred);
+    let TypeTreeKind::Array {
+        len_expr: None,
+        elem,
+    } = inferred.tree_node(inferred.root().unwrap()).unwrap().kind
+    else {
+        panic!("expected inferred Array");
+    };
+    assert!(matches!(
+        &inferred.tree_node(elem).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(inferred_src, span) == "byte"
+    ));
+
+    // 3. Nested generic instantiations.
+    let src = "pkg.M[K, []V, Box[int]]";
+    let parsed = parse_type(src);
+    assert!(parsed.diagnostics().is_empty());
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Instantiation { base, args } = parsed
+        .tree_node(parsed.root().unwrap())
+        .unwrap()
+        .kind
+        .clone()
+    else {
+        panic!("expected Instantiation");
+    };
+    assert!(matches!(
+        &parsed.tree_node(base).unwrap().kind,
+        TypeTreeKind::Qualified { qual, name }
+            if slice(src, qual) == "pkg" && slice(src, name) == "M"
+    ));
+    let arg_ids = parsed.type_node_list(args);
+    assert_eq!(arg_ids.len(), 3);
+    assert!(matches!(
+        &parsed.tree_node(arg_ids[0]).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "K"
+    ));
+    assert!(matches!(
+        parsed.tree_node(arg_ids[1]).unwrap().kind,
+        TypeTreeKind::Slice(v)
+            if matches!(&parsed.tree_node(v).unwrap().kind, TypeTreeKind::Name { span } if slice(src, span) == "V")
+    ));
+    let TypeTreeKind::Instantiation {
+        base: box_base,
+        args: box_args,
+    } = parsed.tree_node(arg_ids[2]).unwrap().kind.clone()
+    else {
+        panic!("expected nested Box[int]");
+    };
+    assert!(matches!(
+        &parsed.tree_node(box_base).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "Box"
+    ));
+    let box_arg_ids = parsed.type_node_list(box_args);
+    assert_eq!(box_arg_ids.len(), 1);
+    assert!(matches!(
+        &parsed.tree_node(box_arg_ids[0]).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "int"
+    ));
+
+    // 4. Nested structs, grouped fields sharing TypeNodeId/tag, and embedded fields.
+    let src = r#"struct {
+        a, b int `json:"ab"`
+        inner struct {
+            x string
+            *io.Reader
+        }
+        Base
+        *pkg.Gen[K, []V] `tag:"g"`
+        tail bool
+    }"#;
+    let parsed = parse_type(src);
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "{:?}",
+        parsed.diagnostics()
+    );
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Struct { fields } = parsed
+        .tree_node(parsed.root().unwrap())
+        .unwrap()
+        .kind
+        .clone()
+    else {
+        panic!("expected outer Struct");
+    };
+    let outer_fields = parsed.struct_fields(fields);
+    assert_eq!(outer_fields.len(), 6);
+    assert_eq!(slice(src, outer_fields[0].name.as_ref().unwrap()), "a");
+    assert_eq!(slice(src, outer_fields[1].name.as_ref().unwrap()), "b");
+    assert_eq!(outer_fields[0].ty, outer_fields[1].ty);
+    assert!(!outer_fields[0].embedded && !outer_fields[1].embedded);
+    assert_eq!(
+        slice(src, outer_fields[0].tag.as_ref().unwrap()),
+        "`json:\"ab\"`"
+    );
+    assert_eq!(outer_fields[0].tag, outer_fields[1].tag);
+    assert_eq!(slice(src, outer_fields[2].name.as_ref().unwrap()), "inner");
+    let TypeTreeKind::Struct {
+        fields: inner_range,
+    } = parsed.tree_node(outer_fields[2].ty).unwrap().kind.clone()
+    else {
+        panic!("expected nested Struct");
+    };
+    let inner_fields = parsed.struct_fields(inner_range);
+    assert_eq!(inner_fields.len(), 2);
+    assert_eq!(slice(src, inner_fields[0].name.as_ref().unwrap()), "x");
+    assert!(!inner_fields[0].embedded);
+    assert_eq!(slice(src, inner_fields[1].name.as_ref().unwrap()), "Reader");
+    assert!(inner_fields[1].embedded);
+    assert!(matches!(
+        parsed.tree_node(inner_fields[1].ty).unwrap().kind,
+        TypeTreeKind::Pointer(_)
+    ));
+    assert_eq!(slice(src, outer_fields[3].name.as_ref().unwrap()), "Base");
+    assert!(outer_fields[3].embedded);
+    assert_eq!(slice(src, outer_fields[4].name.as_ref().unwrap()), "Gen");
+    assert!(outer_fields[4].embedded);
+    assert_eq!(
+        slice(src, outer_fields[4].tag.as_ref().unwrap()),
+        "`tag:\"g\"`"
+    );
+    let TypeTreeKind::Pointer(gen_inst) = parsed.tree_node(outer_fields[4].ty).unwrap().kind else {
+        panic!("expected Pointer to Instantiation");
+    };
+    assert!(matches!(
+        parsed.tree_node(gen_inst).unwrap().kind,
+        TypeTreeKind::Instantiation { .. }
+    ));
+    assert_eq!(slice(src, outer_fields[5].name.as_ref().unwrap()), "tail");
+    assert!(!outer_fields[5].embedded);
+
+    // 5. Interfaces with embeds, methods, variadics, unions, approx, and nesting.
+    let src = r#"interface {
+        io.Closer
+        Read(p []byte) (n int, err error)
+        Log(fmt string, args ...any)
+        ~int | ~string | float64
+        ~[]byte
+        interface { Ping() bool }
+    }"#;
+    let parsed = parse_type(src);
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "{:?}",
+        parsed.diagnostics()
+    );
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Interface { members } = parsed
+        .tree_node(parsed.root().unwrap())
+        .unwrap()
+        .kind
+        .clone()
+    else {
+        panic!("expected Interface");
+    };
+    let members = parsed.interface_members(members);
+    assert_eq!(members.len(), 6);
+    assert!(matches!(
+        members[0],
+        InterfaceMemberNode::Embedded(id)
+            if matches!(&parsed.tree_node(id).unwrap().kind, TypeTreeKind::Qualified { qual, name }
+                if slice(src, qual) == "io" && slice(src, name) == "Closer")
+    ));
+    let InterfaceMemberNode::Method { name, sig } = &members[1] else {
+        panic!("expected Method Read");
+    };
+    assert_eq!(slice(src, name), "Read");
+    let read_sig = parsed.sig_node(*sig).unwrap();
+    assert!(!read_sig.variadic);
+    assert_eq!(parsed.sig_params(read_sig.params.clone()).len(), 1);
+    assert_eq!(parsed.sig_params(read_sig.results.clone()).len(), 2);
+    let InterfaceMemberNode::Method { name, sig } = &members[2] else {
+        panic!("expected Method Log");
+    };
+    assert_eq!(slice(src, name), "Log");
+    let log_sig = parsed.sig_node(*sig).unwrap();
+    assert!(log_sig.variadic);
+    let log_params = parsed.sig_params(log_sig.params.clone());
+    assert_eq!(log_params.len(), 2);
+    assert!(!log_params[0].variadic && log_params[1].variadic);
+    assert!(parsed.sig_params(log_sig.results.clone()).is_empty());
+    let InterfaceMemberNode::Embedded(union_id) = members[3] else {
+        panic!("expected Embedded Union");
+    };
+    let TypeTreeKind::Union { terms } = parsed.tree_node(union_id).unwrap().kind.clone() else {
+        panic!("expected Union");
+    };
+    let term_ids = parsed.type_node_list(terms);
+    assert_eq!(term_ids.len(), 3);
+    assert!(matches!(
+        parsed.tree_node(term_ids[0]).unwrap().kind,
+        TypeTreeKind::Approx(_)
+    ));
+    assert!(matches!(
+        parsed.tree_node(term_ids[1]).unwrap().kind,
+        TypeTreeKind::Approx(_)
+    ));
+    assert!(matches!(
+        &parsed.tree_node(term_ids[2]).unwrap().kind,
+        TypeTreeKind::Name { span } if slice(src, span) == "float64"
+    ));
+    assert!(matches!(
+        members[4],
+        InterfaceMemberNode::Embedded(id)
+            if matches!(parsed.tree_node(id).unwrap().kind, TypeTreeKind::Approx(s)
+                if matches!(parsed.tree_node(s).unwrap().kind, TypeTreeKind::Slice(_)))
+    ));
+    let InterfaceMemberNode::Embedded(nested_iface) = members[5] else {
+        panic!("expected nested interface");
+    };
+    let TypeTreeKind::Interface {
+        members: nested_members,
+    } = parsed.tree_node(nested_iface).unwrap().kind.clone()
+    else {
+        panic!("expected nested Interface");
+    };
+    assert!(matches!(
+        parsed.interface_members(nested_members),
+        [InterfaceMemberNode::Method { name, .. }] if slice(src, name) == "Ping"
+    ));
+
+    // 6. Direct `parse_constraint` union and single approx.
+    let src = "~T | pkg.U[int]";
+    let parsed = parse_constraint(src);
+    assert!(parsed.diagnostics().is_empty());
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Union { terms } = parsed
+        .tree_node(parsed.root().unwrap())
+        .unwrap()
+        .kind
+        .clone()
+    else {
+        panic!("expected Union");
+    };
+    let term_ids = parsed.type_node_list(terms);
+    assert_eq!(term_ids.len(), 2);
+    assert!(matches!(
+        parsed.tree_node(term_ids[0]).unwrap().kind,
+        TypeTreeKind::Approx(_)
+    ));
+    assert!(matches!(
+        parsed.tree_node(term_ids[1]).unwrap().kind,
+        TypeTreeKind::Instantiation { .. }
+    ));
+    let single = parse_constraint("~string");
+    assert!(single.diagnostics().is_empty());
+    assert_tree_well_formed("~string", &single);
+    assert!(matches!(
+        single.tree_node(single.root().unwrap()).unwrap().kind,
+        TypeTreeKind::Approx(_)
+    ));
+
+    // 7. Function types with variadics, named results, and nested signature isolation.
+    let src = "func(a, b int, cb func(int) (x, y string), rest ...[]byte) (ok bool, err error)";
+    let parsed = parse_type(src);
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "{:?}",
+        parsed.diagnostics()
+    );
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Func(outer_sig_id) = parsed.tree_node(parsed.root().unwrap()).unwrap().kind
+    else {
+        panic!("expected Func");
+    };
+    let outer_sig = parsed.sig_node(outer_sig_id).unwrap();
+    assert!(outer_sig.variadic);
+    assert_eq!(
+        slice(src, &outer_sig.span),
+        "(a, b int, cb func(int) (x, y string), rest ...[]byte) (ok bool, err error)"
+    );
+    let params = parsed.sig_params(outer_sig.params.clone());
+    assert_eq!(params.len(), 4);
+    assert_eq!(params[0].ty, params[1].ty);
+    let TypeTreeKind::Func(cb_sig_id) = parsed.tree_node(params[2].ty).unwrap().kind else {
+        panic!("expected nested Func");
+    };
+    let cb_sig = parsed.sig_node(cb_sig_id).unwrap();
+    assert!(!cb_sig.variadic);
+    assert_eq!(parsed.sig_params(cb_sig.params.clone()).len(), 1);
+    let cb_results = parsed.sig_params(cb_sig.results.clone());
+    assert_eq!(cb_results.len(), 2);
+    assert_eq!(cb_results[0].ty, cb_results[1].ty);
+    assert!(params[3].variadic);
+    assert!(matches!(
+        parsed.tree_node(params[3].ty).unwrap().kind,
+        TypeTreeKind::Slice(_)
+    ));
+    assert_eq!(parsed.sig_params(outer_sig.results.clone()).len(), 2);
+    let short_src = "func(...int) error";
+    let short = parse_type(short_src);
+    assert!(short.diagnostics().is_empty());
+    assert_tree_well_formed(short_src, &short);
+    let TypeTreeKind::Func(sig_id) = short.tree_node(short.root().unwrap()).unwrap().kind else {
+        panic!("expected Func");
+    };
+    let sig = short.sig_node(sig_id).unwrap();
+    assert!(sig.variadic);
+    let p = short.sig_params(sig.params.clone());
+    assert_eq!(p.len(), 1);
+    assert!(p[0].name.is_none() && p[0].variadic);
+    let r = short.sig_params(sig.results.clone());
+    assert_eq!(r.len(), 1);
+    assert!(r[0].name.is_none());
+
+    // 8. `parse_type_prefix` stopping before `= nil` + legacy `type_nodes()` pre-order.
+    let src = "map[string][]int = nil";
+    let parsed = parse_type_prefix(src);
+    assert!(parsed.diagnostics().is_empty());
+    assert_eq!(&src[parsed.span.clone()], "map[string][]int");
+    assert_tree_well_formed(src, &parsed);
+    let legacy_kinds: Vec<TypeNodeKind> = parsed.type_nodes().iter().map(|n| n.kind).collect();
+    assert_eq!(
+        legacy_kinds,
+        vec![
+            TypeNodeKind::Map,
+            TypeNodeKind::Name,
+            TypeNodeKind::Slice,
+            TypeNodeKind::Name,
+        ]
+    );
+
+    // 9. Malformed recovery across all 3 entry points + depth limit.
+    let malformed_cases = [
+        "",
+        "*",
+        "(",
+        "(int",
+        "[",
+        "[N",
+        "[N]",
+        "map",
+        "map[",
+        "map[string]",
+        "<-",
+        "chan",
+        "chan<-",
+        "pkg.",
+        "pkg.[int]",
+        "M[]",
+        "M[int",
+        "M[int,]",
+        "struct",
+        "struct {",
+        "struct { a, b }",
+        "struct { a, *int }",
+        "struct { []int }",
+        "struct { * }",
+        "struct { **int }",
+        "struct { x ...int }",
+        "struct { a [...]int }",
+        "interface",
+        "interface {",
+        "interface { M(",
+        "interface { ~ }",
+        "interface { ~int | }",
+        "func",
+        "func(",
+        "func(a int, b)",
+        "func(*int, b string)",
+        "func(...int, string)",
+        "func(a, b ...int)",
+        "func [T any](x T) T",
+        "~T",
+        "int + string",
+    ];
+    for case in malformed_cases {
+        assert_tree_well_formed(case, &parse_type(case));
+        assert_tree_well_formed(case, &parse_constraint(case));
+        assert_tree_well_formed(case, &parse_type_prefix(case));
+    }
+    let deep = format!("{}int", "*".repeat(200));
+    let parsed_deep = parse_type(&deep);
+    assert!(!parsed_deep.diagnostics().is_empty());
+    assert_tree_well_formed(&deep, &parsed_deep);
+
+    // 10. Nested struct inside array length does not leak into outer `field_nodes()`.
+    let src = "struct { buf [len(struct{ y int }{})]byte; items [N]T; M[K, []V] }";
+    let parsed = parse_type(src);
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "{:?}",
+        parsed.diagnostics()
+    );
+    assert_tree_well_formed(src, &parsed);
+    let TypeTreeKind::Struct { fields } = parsed
+        .tree_node(parsed.root().unwrap())
+        .unwrap()
+        .kind
+        .clone()
+    else {
+        panic!("expected outer Struct");
+    };
+    let fields = parsed.struct_fields(fields);
+    assert_eq!(fields.len(), 3);
+    assert_eq!(parsed.field_nodes().len(), 3);
+    assert_eq!(slice(src, fields[2].name.as_ref().unwrap()), "M");
+    assert!(fields[2].embedded);
+    let fn_src = "func(M[K, []V], [N]int)";
+    let fn_parsed = parse_type(fn_src);
+    assert!(fn_parsed.diagnostics().is_empty());
+    assert_tree_well_formed(fn_src, &fn_parsed);
+    let TypeTreeKind::Func(sig_id) = fn_parsed.tree_node(fn_parsed.root().unwrap()).unwrap().kind
+    else {
+        panic!("expected Func");
+    };
+    let params = fn_parsed.sig_params(fn_parsed.sig_node(sig_id).unwrap().params.clone());
+    assert_eq!(params.len(), 2);
+    assert!(params[0].name.is_none() && params[1].name.is_none());
+
+    // 11. `MAX_TYPE_NODES` budget overflow clears all arenas cleanly.
+    let mut huge = String::with_capacity((MAX_TYPE_NODES + 10) * 3);
+    for i in 0..=MAX_TYPE_NODES {
+        if i > 0 {
+            huge.push('|');
+        }
+        huge.push('T');
+    }
+    let parsed = parse_constraint(&huge);
+    assert!(parsed.tree_overflowed());
+    assert!(parsed.root().is_none());
+    assert_tree_well_formed(&huge, &parsed);
+
+    let mut huge_struct = String::from("struct {");
+    for _ in 0..=MAX_TYPE_NODES {
+        huge_struct.push_str(" x int;");
+    }
+    huge_struct.push('}');
+    let parsed_struct = parse_type(&huge_struct);
+    assert!(parsed_struct.tree_overflowed());
+    assert!(parsed_struct.root().is_none());
+    assert_tree_well_formed(&huge_struct, &parsed_struct);
 }
 
 // Exercise the matcher library's byte-offset and fixed-buffer boundaries;

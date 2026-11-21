@@ -164,8 +164,7 @@ mod tests {
 
     use crate::analysis::engine::check::RegionChecker;
     use crate::analysis::engine::check::decls::DeclTable;
-    use crate::analysis::engine::check::diagnostics::{Code, Kind};
-    use crate::analysis::engine::check::region::{RecordMask, RegionInfo, WriteKind};
+    use crate::analysis::engine::check::region::{RecordMask, RegionInfo};
     use crate::analysis::engine::scope::tree::ScopeTree;
     use crate::analysis::engine::types::{BasicKind, Constant, Mode, Operand, TypeArena};
     use crate::syntax::{self, ExprKind};
@@ -497,98 +496,6 @@ mod tests {
         assert_eq!(run_case("1 << s", BasicKind::Float64), (None, None));
         // Overflowing constant LHS is rejected by representability.
         assert_eq!(run_case("256 << s", BasicKind::Uint8), (None, None));
-    }
-
-    #[test]
-    fn writes_recording_preserves_unused_var_and_classifies_mutations() {
-        let src = concat!(
-            "package p\n",
-            "type box struct { n int }\n",
-            "func f() {\n",
-            "\tinc := 1\n",
-            "\tinc++\n",
-            "\taddr := 1\n",
-            "\t_ = &addr\n",
-            "\tch := make(chan int)\n",
-            "\tch <- 1\n",
-            "\tvar ptr *int\n",
-            "\t(*ptr)++\n",
-            "\tvar st box\n",
-            "\tst.n++\n",
-            "\tonlyWritten := 1\n",
-            "\tonlyWritten = 2\n",
-            "}\n",
-        );
-        let dir = TempMod::new(
-            "writes_unused",
-            &[
-                ("go.mod", "module example.com/p\n\ngo 1.24\n"),
-                ("p.go", src),
-            ],
-        );
-        let ws = dir.workspace();
-        let file = ws
-            .files
-            .keys()
-            .find(|p| p.ends_with("p.go"))
-            .unwrap()
-            .as_path();
-
-        let mut arena = TypeArena::with_shared_budget(&ws, ws.build_view(None));
-        let mut decls = DeclTable::new();
-        let region =
-            check_func_region(&ws, &mut arena, &mut decls, file, src, "f", RecordMask::ALL);
-
-        // Only `onlyWritten` should be flagged as UnusedVar.
-        let unused: Vec<&str> = region
-            .diagnostics
-            .iter()
-            .filter(|d| d.kind == Kind::Compiler(Code::UnusedVar))
-            .map(|d| d.message.as_str())
-            .collect();
-        assert_eq!(unused, vec!["declared and not used: onlyWritten"]);
-
-        // Classified write sites distinguish Assign, Modify, and AddrOf.
-        let inc_span = span_of_sub(src, "inc++", "inc");
-        let addr_span = span_of_sub(src, "&addr", "addr");
-        let ch_span = span_of_sub(src, "ch <- 1", "ch");
-        let ptr_span = span_of_sub(src, "(*ptr)++", "ptr");
-        let field_span = span_of_sub(src, "st.n++", "n");
-        let assign_span = span_of_sub(src, "onlyWritten = 2", "onlyWritten");
-
-        assert_eq!(region.write_kind_at(inc_span), Some(WriteKind::Modify));
-        assert!(region.is_write(inc_span));
-        assert_eq!(region.write_kind_at(addr_span), Some(WriteKind::AddrOf));
-        assert!(!region.is_write(addr_span));
-        assert_eq!(region.write_kind_at(ch_span), Some(WriteKind::Modify));
-        assert!(region.is_write(ch_span));
-        assert_eq!(region.write_kind_at(ptr_span), Some(WriteKind::Modify));
-        assert!(region.is_write(ptr_span));
-        assert_eq!(region.write_kind_at(field_span), Some(WriteKind::Modify));
-        assert!(region.is_write(field_span));
-        assert_eq!(region.write_kind_at(assign_span), Some(WriteKind::Assign));
-        assert!(region.is_write(assign_span));
-
-        // DIAGNOSTICS-only skips write_sites allocation while keeping exact UnusedVar diagnostics.
-        arena.reset_local();
-        let diag_region = check_func_region(
-            &ws,
-            &mut arena,
-            &mut decls,
-            file,
-            src,
-            "f",
-            RecordMask::DIAGNOSTICS,
-        );
-        assert!(diag_region.write_sites.is_empty());
-        assert!(diag_region.writes.is_empty());
-        let diag_unused: Vec<&str> = diag_region
-            .diagnostics
-            .iter()
-            .filter(|d| d.kind == Kind::Compiler(Code::UnusedVar))
-            .map(|d| d.message.as_str())
-            .collect();
-        assert_eq!(diag_unused, vec!["declared and not used: onlyWritten"]);
     }
 
     #[test]

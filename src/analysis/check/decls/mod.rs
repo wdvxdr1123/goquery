@@ -282,7 +282,7 @@ impl<'a> DeclResolver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::engine::types::{BasicKind, Constant};
+    use crate::analysis::engine::types::Constant;
     use crate::workspace::{self, Workspace};
     use serde_json::json;
     use std::path::PathBuf;
@@ -369,80 +369,5 @@ mod tests {
         assert!(matches!(first_op.value, Some(Constant::Int(10))));
         assert!(matches!(second_op.value, Some(Constant::Int(11))));
         assert!(matches!(fourth_op.value, Some(Constant::Int(24))));
-    }
-
-    #[test]
-    fn decl_resolver_caches_generic_type_origin_and_generic_receiver_method() {
-        let dir = unique_temp_dir("generic-decls");
-        std::fs::write(dir.0.join("go.mod"), "module example.com/m\n\ngo 1.27\n")
-            .expect("write go.mod");
-        let src = concat!(
-            "package p\n",
-            "const N = 4\n",
-            "type Box[T comparable] struct { Data [N]T }\n",
-            "func (b *Box[T]) First(x T, extra ...int) T { return x }\n",
-        );
-        std::fs::write(dir.0.join("generic.go"), src).expect("write generic.go");
-
-        let workspace = init_temp_workspace(&dir.0);
-        let (interned, stub) = workspace
-            .files
-            .iter()
-            .find(|(p, _)| p.ends_with("generic.go"))
-            .expect("indexed generic.go");
-        let box_decl = DeclId {
-            file: interned.as_path(),
-            symbol: stub
-                .symbols
-                .iter()
-                .find(|s| s.name == "Box")
-                .expect("Box symbol"),
-        };
-        let method_decl = DeclId {
-            file: interned.as_path(),
-            symbol: stub
-                .symbols
-                .iter()
-                .find(|s| s.name == "First")
-                .expect("First method"),
-        };
-
-        let mut store = TypeArena::with_shared_budget(&workspace, workspace.build_view(None));
-        let mut decls = DeclResolver::new();
-
-        // Uninstantiated generic types continue to return `None` from `operand_of`/`type_of`.
-        assert!(decls.operand_of(&mut store, box_decl).is_none());
-        assert!(decls.type_of(&mut store, box_decl).is_none());
-
-        // `generic_type_origin` caches the `DeclArena` origin template cleanly.
-        let origin_ty = decls
-            .generic_type_origin(&mut store, box_decl)
-            .expect("generic origin");
-        assert!(origin_ty.is_decl_safe());
-        assert_eq!(
-            decls.generic_type_origin(&mut store, box_decl),
-            Some(origin_ty)
-        );
-
-        // Generic-receiver method signatures resolve and cache in `DeclResolver`.
-        let sig_ty = decls
-            .type_of(&mut store, method_decl)
-            .expect("generic receiver method signature");
-        assert!(sig_ty.is_decl_safe());
-        let (params, results, variadic) = store.signature_parts(sig_ty).expect("signature parts");
-        assert_eq!(params.len(), 2);
-        assert_eq!(results.len(), 1);
-        assert!(variadic);
-        assert_eq!(store.format_parameter(sig_ty), Some(0));
-
-        // Instantiating `Box[int]` evaluates `[N]int` through `DeclResolver` without legacy `Evaluator`.
-        let int_ty = store.basic(BasicKind::Int).expect("int");
-        let box_int = store
-            .push_named(box_decl, &[int_ty], false)
-            .expect("Box[int]");
-        let data_sel = store
-            .literal_field(box_int, interned.as_path(), "Data")
-            .expect("Data field");
-        assert_eq!(store.array_length(data_sel.ty), Some(4));
     }
 }

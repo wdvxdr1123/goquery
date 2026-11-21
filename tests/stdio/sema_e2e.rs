@@ -1,8 +1,12 @@
+use crate::go_corpus::official_acceptance;
 use crate::harness::{
-    TestServer, assert_has_location, assert_hover_contains, completion_item,
-    decode_semantic_tokens, jsonrpc2, location, locations, pos, range, range_of,
+    TempDir, TestServer, assert_has_location, assert_hover_contains, completion_item,
+    decode_semantic_tokens, goquery_command, hover_text, jsonrpc2, location, locations, pos, range,
+    range_of,
 };
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::process::Command;
 
 type DiagnosticCase<'a> = (&'a str, &'a [(&'a str, &'a str, &'a str)]);
 
@@ -2485,4 +2489,1084 @@ fn sema_document_highlight_large_composite_table_preserves_all_writes() {
     );
 
     server.shutdown();
+}
+
+fn start_server_at(dir: &TempDir, options: Value) -> TestServer {
+    let mut cmd = goquery_command();
+    cmd.env("GOMODCACHE", dir.join("_gomodcache"));
+    let mut server = TestServer::from_command(cmd, true);
+    server.initialize_ok(json!({
+        "processId": std::process::id(),
+        "rootUri": dir.dir_uri(),
+        "capabilities": {},
+        "initializationOptions": options,
+    }));
+    server
+}
+
+#[test]
+fn sema_generics_constraints_and_composite_lowering() {
+    // Build a 40-type-parameter generic struct and function (exceeds retired 32-param cap).
+    let mut tparams = String::from("T0 ~int | ~string");
+    let mut ok_args = String::from("int");
+    let mut bad_args = String::from("float64");
+    for i in 1..40 {
+        tparams.push_str(&format!(", T{i} any"));
+        ok_args.push_str(if i == 39 { ", bool" } else { ", int" });
+        bad_args.push_str(if i == 39 { ", bool" } else { ", int" });
+    }
+    let main_src = format!(
+        r#"package p
+
+type Many[{tparams}] struct {{
+	First T0
+	Last  T39
+}}
+
+func CompareMany[{tparams}](a T0, b T39) bool {{
+	_ = b
+	return a == a
+}}
+
+type MyInt int
+func (MyInt) M() {{}}
+
+type A interface {{ int }}
+type B interface {{ ~int }}
+type HasMethod interface {{ M() }}
+type Comp interface {{ comparable }}
+type CompSliceOrInt interface {{ comparable; []int | int }}
+type Empty interface {{ int; string }}
+type WithMethod interface {{ ~int | ~string; M() }}
+
+type BadOverlap1[T MyInt | ~int] struct {{ V T }}
+type BadOverlap2[T int | int] struct {{ V T }}
+type BadMethodUnion[T HasMethod | int] struct {{ V T }}
+type BadCompUnion[T Comp | int] struct {{ V T }}
+type BadCompDirect[T comparable | int] struct {{ V T }}
+type GoodIfaceUnion[T A | B] struct {{ V T }}
+type GoodCompFilter[T CompSliceOrInt] struct {{ V T }}
+type EmptyBox[T Empty] struct {{ V T }}
+
+func Apply[T WithMethod](x T) T {{ return x }}
+
+func applyRegion1(v MyInt) {{
+	r1 := Apply(v)
+	_ = r1
+}}
+
+func applyRegion2(v MyInt) {{
+	r2 := Apply(v)
+	_ = r2
+}}
+
+type MapA[K comparable] map[K]int
+type MapB[K comparable] map[K]int
+type Reverse[S interface{{ MapA[K] | MapB[K] }}, K comparable] struct {{ Values S }}
+
+const N = 4
+type Box[T comparable] struct {{ Data [N]T }}
+func (b *Box[T]) First(x T, extra ...int) T {{ return x }}
+
+func useBoxInt(b *Box[int]) {{
+	d1 := b.Data
+	f1 := b.First(1, 2, 3)
+	_, _ = d1, f1
+}}
+
+func useBoxStr(b *Box[string]) {{
+	d2 := b.Data
+	f2 := b.First("a")
+	_, _ = d2, f2
+}}
+
+const (
+	Base = 2
+	Step = iota + 1
+	Count
+)
+
+type GenBox[T any] struct {{ V T }}
+
+type Composite struct {{
+	buf     [Count + Base]byte
+	cb      func(x int, rest ...string) (res error)
+	handler interface {{ Apply(GenBox[int]) ([Step]int, bool) }}
+	m       map[string]chan<- int
+}}
+
+func checkConstraints(
+	okMany Many[{ok_args}],
+	badMany Many[{bad_args}],
+	b1 BadOverlap1[int],
+	b2 BadOverlap2[int],
+	b3 BadMethodUnion[int],
+	b4 BadCompUnion[int],
+	b5 BadCompDirect[int],
+	g1 GoodIfaceUnion[MyInt],
+	g2 GoodCompFilter[int],
+	b6 GoodCompFilter[[]int],
+	b7 EmptyBox[int],
+	rev Reverse[MapA[string], string],
+	c Composite,
+) {{
+	_ = okMany.First
+	_ = okMany.Last
+	_ = badMany.First
+	_ = b1.V
+	_ = b2.V
+	_ = b3.V
+	_ = b4.V
+	_ = b5.V
+	_ = g1.V
+	_ = g2.V
+	_ = b6.V
+	_ = b7.V
+	_ = rev.Values
+	buf := c.buf
+	_ = c.cb(1, "a", "b")
+	arr, ok := c.handler.Apply(GenBox[int]{{V: 1}})
+	ch := c.m["k"]
+	_, _, _, _ = buf, arr, ok, ch
+}}
+"#
+    );
+
+    let mut huge_src = String::from("package p\n\ntype Huge struct {\n");
+    for i in 0..8200 {
+        huge_src.push_str(&format!("\tf{i} int\n"));
+    }
+    huge_src.push_str("}\n\nfunc useHuge(h Huge) {\n\tv := h.f0\n\t_ = v\n}\n");
+
+    let mut server = TestServer::start_in_target(
+        "generics-constraints-composite",
+        &[
+            ("go.mod", "module example.com/gen\n\ngo 1.27\n"),
+            ("main.go", &main_src),
+            ("huge.go", &huge_src),
+        ],
+        Some(("linux", "amd64")),
+    );
+    let main_uri = server.uri("main.go");
+    let huge_uri = server.uri("huge.go");
+    server.did_open(&main_uri, &main_src);
+    let main_diags = server.published_diagnostics(&main_uri, 1);
+    assert!(
+        main_diags.is_empty(),
+        "unexpected diagnostics on main.go: {main_diags:?}"
+    );
+
+    // 1. 40 type params + bound enforcement (`~int | ~string`).
+    let t39_off = main_src.find("b T39").unwrap() + 2;
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, t39_off),
+        "T39",
+        "40th type param T39",
+    );
+    let ok_first_off = main_src.find("okMany.First").unwrap() + "okMany.".len();
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, ok_first_off),
+        "int",
+        "Many[int, ...].First",
+    );
+    let ok_last_off = main_src.find("okMany.Last").unwrap() + "okMany.".len();
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, ok_last_off),
+        "bool",
+        "Many[int, ..., bool].Last",
+    );
+    let bad_first_off = main_src.find("badMany.First").unwrap() + "badMany.".len();
+    assert!(
+        server.hover(&main_uri, &main_src, bad_first_off)["result"].is_null(),
+        "float64 violates ~int | ~string bound"
+    );
+
+    // 2. Unified interface TypeSet Go constraint rules.
+    for bad_sel in ["b1.V", "b2.V", "b3.V", "b4.V", "b5.V", "b6.V", "b7.V"] {
+        let off = main_src.find(bad_sel).unwrap() + bad_sel.len() - 1;
+        let reply = server.hover(&main_uri, &main_src, off);
+        assert!(
+            reply["result"].is_null(),
+            "invalid constraint instantiation {bad_sel} must not resolve: {reply}"
+        );
+    }
+    let g1_off = main_src.find("g1.V").unwrap() + 3;
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, g1_off),
+        "MyInt",
+        "A | B interface union allows MyInt",
+    );
+    let g2_off = main_src.find("g2.V").unwrap() + 3;
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, g2_off),
+        "int",
+        "CompSliceOrInt allows int",
+    );
+
+    // 3. DeclArena interface TypeSet survives LocalArena reset across functions.
+    let full = server.semantic_tokens_full(&main_uri);
+    let tokens = decode_semantic_tokens(full["result"]["data"].as_array().expect("tokens"));
+    let token_at = |needle: &str| {
+        let off = main_src.find(needle).expect(needle);
+        let p = pos(&main_src, off);
+        let target_line = p["line"].as_u64().unwrap() as u32;
+        let target_col = p["character"].as_u64().unwrap() as u32;
+        tokens
+            .iter()
+            .copied()
+            .find(|(line, col, ..)| *line == target_line && *col == target_col)
+            .unwrap_or_else(|| panic!("missing token for {needle:?}"))
+    };
+    const MOD_NUMBER: u32 = 1 << 6;
+    const MOD_ARRAY: u32 = 1 << 12;
+    assert_ne!(
+        token_at("r1 := Apply").4 & MOD_NUMBER,
+        0,
+        "region 1 Apply(v) should have MOD_NUMBER"
+    );
+    assert_ne!(
+        token_at("r2 := Apply").4 & MOD_NUMBER,
+        0,
+        "region 2 Apply(v) after arena reset should have MOD_NUMBER"
+    );
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("r1 := Apply").unwrap()),
+        "var r1 MyInt",
+        "r1 hover",
+    );
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("r2 := Apply").unwrap()),
+        "var r2 MyInt",
+        "r2 hover",
+    );
+
+    // 4. Forward-referenced sibling type parameter constraint resolves.
+    let rev_off = main_src.find("rev.Values").unwrap() + "rev.".len();
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, rev_off),
+        "MapA[string]",
+        "Reverse[MapA[string], string].Values",
+    );
+
+    // 5. DeclResolver generic origin and generic-receiver method caching across regions.
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("d1 := b.Data").unwrap()),
+        "[4]int",
+        "Box[int].Data evaluates [N]int",
+    );
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("d2 := b.Data").unwrap()),
+        "[4]string",
+        "Box[string].Data evaluates [N]string",
+    );
+    assert_hover_contains(
+        &server.hover(
+            &main_uri,
+            &main_src,
+            main_src.find("f1 := b.First").unwrap(),
+        ),
+        "var f1 int",
+        "Box[int].First return",
+    );
+    assert_hover_contains(
+        &server.hover(
+            &main_uri,
+            &main_src,
+            main_src.find("f2 := b.First").unwrap(),
+        ),
+        "var f2 string",
+        "Box[string].First return",
+    );
+    assert_ne!(
+        token_at("d1 := b.Data").4 & MOD_ARRAY,
+        0,
+        "d1 should carry MOD_ARRAY"
+    );
+    assert_ne!(
+        token_at("d2 := b.Data").4 & MOD_ARRAY,
+        0,
+        "d2 should carry MOD_ARRAY"
+    );
+    let first_sig = server.signature_help(
+        &main_uri,
+        &main_src,
+        main_src.find("b.First(1, 2, 3)").unwrap() + "b.First(1, ".len(),
+    );
+    let first_label = first_sig["result"]["signatures"][0]["label"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        first_label.contains("extra ...int"),
+        "expected variadic generic receiver method signature: {first_sig}"
+    );
+
+    // 6. Single-pass composite lowering (const arrays, variadic func field, interface method, map->send chan).
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("buf := c.buf").unwrap()),
+        "[5]byte",
+        "Composite.buf [Count + Base]byte = [5]byte",
+    );
+    let cb_hover = server.hover(&main_uri, &main_src, main_src.find("c.cb(1").unwrap() + 2);
+    assert_hover_contains(
+        &cb_hover,
+        "func(x int, rest ...string) (res error)",
+        "Composite.cb named variadic signature",
+    );
+    let cb_sig = server.signature_help_invoked(
+        &main_uri,
+        &main_src,
+        main_src.find("c.cb(1, \"a\"").unwrap() + "c.cb(1, ".len(),
+    );
+    let cb_label = cb_sig["result"]["signatures"][0]["label"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        cb_label.contains("x int, rest ...string") && cb_label.contains("res error"),
+        "expected named variadic callback signature: {cb_sig}"
+    );
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("arr, ok :=").unwrap()),
+        "[2]int",
+        "handler.Apply result 0 [Step]int = [2]int",
+    );
+    assert_hover_contains(
+        &server.hover(
+            &main_uri,
+            &main_src,
+            main_src.find("ok := c.handler").unwrap(),
+        ),
+        "var ok bool",
+        "handler.Apply result 1 bool",
+    );
+    assert_hover_contains(
+        &server.hover(&main_uri, &main_src, main_src.find("ch := c.m").unwrap()),
+        "chan<- int",
+        "Composite.m value type chan<- int",
+    );
+
+    // 7. Struct exceeding MAX_TYPE_NODES falls back cleanly without false diagnostics.
+    server.did_open(&huge_uri, &huge_src);
+    let huge_diags = server.published_diagnostics(&huge_uri, 1);
+    assert!(
+        huge_diags.is_empty(),
+        "overflowed struct must not emit false diagnostics: {huge_diags:?}"
+    );
+    let huge_f0 = server.hover(&huge_uri, &huge_src, huge_src.find("h.f0").unwrap() + 2);
+    assert!(
+        huge_f0["result"].is_null(),
+        "overflowed struct field hover should fall back gracefully: {huge_f0}"
+    );
+
+    server.shutdown();
+}
+
+#[test]
+fn sema_hierarchy_aliases_generic_ptr_and_build_variants() {
+    let alias_src = concat!(
+        "package aliaspkg\n",
+        "type Reader interface { Read([]byte) (int, error) }\n",
+        "type Real struct{}\n",
+        "type Alias1 = Real\n",
+        "type Alias2 = Alias1\n",
+        "func (Alias2) Read(b []byte) (int, error) { return 0, nil }\n",
+        "type EmbedsAlias struct { Alias1 }\n",
+        "type NonImpl struct{}\n",
+    );
+    let gen_src = concat!(
+        "package gen\n",
+        "type Getter[T any] interface { Get() T }\n",
+        "type Box[T any] struct { v T }\n",
+        "func (b *Box[T]) Get() T { return b.v }\n",
+        "type WrappedBox struct { Box[int] }\n",
+        "type IntGetter interface { Get() int }\n",
+        "type DefGetter IntGetter\n",
+        "type Other struct{}\n",
+        "func (Other) Nope() {}\n",
+    );
+    let iface_src = "package iface\ntype Pinger interface { Ping() }\n";
+
+    let mut server = TestServer::start_in_target(
+        "hierarchy-aliases-generic-variants",
+        &[
+            ("go.mod", "module example.test/hier\n\ngo 1.24\n"),
+            ("aliaspkg/p.go", alias_src),
+            ("gen/gen.go", gen_src),
+            ("iface/iface.go", iface_src),
+            ("pkg/types.go", "package pkg\ntype Impl struct{}\n"),
+            (
+                "pkg/methods_linux.go",
+                "//go:build linux\n\npackage pkg\nfunc (Impl) Ping() {}\n",
+            ),
+            (
+                "pkg/methods_windows.go",
+                "//go:build windows\n\npackage pkg\nfunc (Impl) Ping() {}\n",
+            ),
+            (
+                "pkg/methods_darwin.go",
+                "//go:build darwin\n\npackage pkg\nfunc (Impl) Ping() {}\n",
+            ),
+            (
+                "pkg/ext_test.go",
+                "package pkg_test\nimport \"example.test/hier/pkg\"\ntype ExtWrapper struct { pkg.Impl }\n",
+            ),
+        ],
+        Some(("linux", "amd64")),
+    );
+
+    let hierarchy_names =
+        |server: &mut TestServer, uri: &str, src: &str, needle: &str, method: &str| {
+            let prepared = server.text_doc_pos(
+                "textDocument/prepareTypeHierarchy",
+                uri,
+                src,
+                src.find(needle).expect(needle),
+            );
+            let item = prepared["result"][0].clone();
+            assert!(
+                !item.is_null(),
+                "prepareTypeHierarchy failed for {needle}: {prepared}"
+            );
+            let reply = server.request(method, json!({"item": item}));
+            let mut names: Vec<String> = reply["result"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{method} failed for {needle}: {reply}"))
+                .iter()
+                .map(|row| row["name"].as_str().unwrap().to_owned())
+                .collect();
+            names.sort();
+            names
+        };
+
+    // 1. Chained alias receivers and embedded non-generic aliases.
+    let alias_uri = server.uri("aliaspkg/p.go");
+    server.did_open(&alias_uri, alias_src);
+    assert_eq!(
+        hierarchy_names(
+            &mut server,
+            &alias_uri,
+            alias_src,
+            "Reader",
+            "typeHierarchy/subtypes"
+        ),
+        vec!["EmbedsAlias".to_owned(), "Real".to_owned()]
+    );
+    assert_eq!(
+        hierarchy_names(
+            &mut server,
+            &alias_uri,
+            alias_src,
+            "Real",
+            "typeHierarchy/supertypes"
+        ),
+        vec!["Reader".to_owned()]
+    );
+    let alias_impls =
+        server.implementation(&alias_uri, alias_src, alias_src.find("Reader").unwrap());
+    let impl_rows = alias_impls["result"].as_array().expect("impl array");
+    assert_eq!(
+        impl_rows.len(),
+        2,
+        "expected Real and EmbedsAlias: {alias_impls}"
+    );
+
+    // 2. Generic pointer receiver embedded by value + defined interface.
+    let gen_uri = server.uri("gen/gen.go");
+    server.did_open(&gen_uri, gen_src);
+    let gen_subs = hierarchy_names(
+        &mut server,
+        &gen_uri,
+        gen_src,
+        "IntGetter",
+        "typeHierarchy/subtypes",
+    );
+    for expected in ["Box", "DefGetter", "WrappedBox"] {
+        assert!(
+            gen_subs.iter().any(|n| n == expected),
+            "missing {expected} in IntGetter subtypes: {gen_subs:?}"
+        );
+    }
+    assert!(
+        !gen_subs.iter().any(|n| n == "Other"),
+        "unexpected Other in IntGetter subtypes: {gen_subs:?}"
+    );
+    let gen_supers = hierarchy_names(
+        &mut server,
+        &gen_uri,
+        gen_src,
+        "WrappedBox",
+        "typeHierarchy/supertypes",
+    );
+    for expected in ["DefGetter", "Getter", "IntGetter"] {
+        assert!(
+            gen_supers.iter().any(|n| n == expected),
+            "missing {expected} in WrappedBox supertypes: {gen_supers:?}"
+        );
+    }
+
+    // 3. Build-tag-split method files + external `_test` package embedding.
+    let iface_uri = server.uri("iface/iface.go");
+    server.did_open(&iface_uri, iface_src);
+    assert_eq!(
+        hierarchy_names(
+            &mut server,
+            &iface_uri,
+            iface_src,
+            "Pinger",
+            "typeHierarchy/subtypes"
+        ),
+        vec!["ExtWrapper".to_owned(), "Impl".to_owned()]
+    );
+
+    server.shutdown();
+}
+
+#[test]
+fn sema_write_highlights_unused_var_and_type_inspection() {
+    let writes_src = concat!(
+        "package p\n",
+        "type box struct { n int }\n",
+        "func unusedAndWrites() {\n",
+        "\tinc := 1\n",
+        "\tinc++\n",
+        "\taddr := 1\n",
+        "\t_ = &addr\n",
+        "\tch := make(chan int)\n",
+        "\tch <- 1\n",
+        "\tvar ptr *int\n",
+        "\t(*ptr)++\n",
+        "\tvar st box\n",
+        "\tst.n++\n",
+        "\tonlyWritten := 1\n",
+        "\tonlyWritten = 2\n",
+        "}\n",
+        "type Box struct { V int }\n",
+        "func allWriteKinds(ch chan int, p *int, b Box) {\n",
+        "\tx := 0\n",
+        "\tx = 1\n",
+        "\tx++\n",
+        "\tx--\n",
+        "\tch <- x\n",
+        "\t(*p)++\n",
+        "\tb.V++\n",
+        "\t_ = &x\n",
+        "\t_ = &b.V\n",
+        "\t_ = x\n",
+        "}\n",
+    );
+    let inspect_src = concat!(
+        "package p\n",
+        "type ErrAlias = error\n",
+        "type CustomErr struct{}\n",
+        "func (CustomErr) Error() string { return \"\" }\n",
+        "type Fn func(string, ...any)\n",
+        "func probe(e error, ea ErrAlias, ce CustomErr, f Fn, n int, a any, anon interface{ Error() string }) {\n",
+        "\tf(\"hi\", 1)\n",
+        "\t_ = e.Error(); _ = ea.Error(); _ = ce.Error(); _ = anon.Error()\n",
+        "\t_ = e; _ = ea; _ = ce; _ = f; _ = n; _ = a; _ = anon\n",
+        "\t{\n",
+        "\t\ttype error int\n",
+        "\t\tvar shadowed error\n",
+        "\t\t_ = shadowed\n",
+        "\t}\n",
+        "}\n",
+        "type Padded struct {\n",
+        "\tFlag  bool\n",
+        "\tCount int64\n",
+        "\tTail  struct{}\n",
+        "}\n",
+        "type Bytes []byte\n",
+        "type I32 int32\n",
+        "type AnonHolder struct {\n",
+        "\tB byte\n",
+        "\tW int32\n",
+        "}\n",
+        "func layoutProbe(p Padded, s Bytes, n I32) {\n",
+        "\tvar anon struct {\n",
+        "\t\tB byte\n",
+        "\t\tW int32\n",
+        "\t}\n",
+        "\t_, _, _, _ = p, s, n, anon\n",
+        "\t_, _, _ = p.Flag, p.Count, p.Tail\n",
+        "\t_, _ = anon.B, anon.W\n",
+        "}\n",
+    );
+
+    let mut server = TestServer::start_in_target(
+        "write-highlights-and-inspection",
+        &[
+            ("go.mod", "module example.com/inspect\n\ngo 1.24\n"),
+            ("writes.go", writes_src),
+            ("inspect.go", inspect_src),
+        ],
+        Some(("linux", "amd64")),
+    );
+
+    // 1. UnusedVar only on `onlyWritten`, plus Write(3) vs Read(2) documentHighlight classification.
+    let writes_uri = server.uri("writes.go");
+    server.did_open(&writes_uri, writes_src);
+    let diags = server.published_diagnostics(&writes_uri, 1);
+    let unused_msgs: Vec<&str> = diags
+        .iter()
+        .filter(|d| d["code"].as_str() == Some("UnusedVar"))
+        .filter_map(|d| d["message"].as_str())
+        .collect();
+    assert_eq!(unused_msgs, vec!["declared and not used: onlyWritten"]);
+
+    let highlight_kind_at =
+        |server: &mut TestServer, anchor: &str, needle: &str, inner_offset: usize| -> u64 {
+            let anchor_off = writes_src.find(anchor).expect(anchor);
+            let target_off = writes_src.find(needle).expect(needle) + inner_offset;
+            let reply = server.document_highlight(&writes_uri, writes_src, anchor_off);
+            let target_pos = pos(writes_src, target_off);
+            reply["result"]
+                .as_array()
+                .expect("highlights")
+                .iter()
+                .find(|h| h["range"]["start"] == target_pos)
+                .unwrap_or_else(|| panic!("missing highlight at {needle:?} in {reply}"))["kind"]
+                .as_u64()
+                .expect("highlight kind")
+        };
+
+    // DocumentHighlightKind: 2 = Read, 3 = Write.
+    assert_eq!(highlight_kind_at(&mut server, "inc := 1", "inc++", 0), 3);
+    assert_eq!(highlight_kind_at(&mut server, "addr := 1", "&addr", 1), 2);
+    assert_eq!(
+        highlight_kind_at(&mut server, "ch := make", "ch <- 1", 0),
+        3
+    );
+    assert_eq!(highlight_kind_at(&mut server, "ptr *int", "(*ptr)++", 2), 3);
+    assert_eq!(highlight_kind_at(&mut server, "n int", "st.n++", 3), 3);
+    assert_eq!(
+        highlight_kind_at(&mut server, "onlyWritten := 1", "onlyWritten = 2", 0),
+        3
+    );
+
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "x = 1", 0), 3);
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "x++", 0), 3);
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "x--", 0), 3);
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "ch <- x", 6), 2);
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "_ = &x", 5), 2);
+    assert_eq!(highlight_kind_at(&mut server, "x := 0", "_ = x", 4), 2);
+    assert_eq!(
+        highlight_kind_at(&mut server, "ch chan int", "ch <- x", 0),
+        3
+    );
+    assert_eq!(highlight_kind_at(&mut server, "p *int", "(*p)++", 2), 3);
+    assert_eq!(highlight_kind_at(&mut server, "V int", "b.V++", 2), 3);
+    assert_eq!(highlight_kind_at(&mut server, "V int", "&b.V", 3), 2);
+
+    // 2. Semantic error / interface / callable / shape inspection via semanticTokens + signatureHelp.
+    let inspect_uri = server.uri("inspect.go");
+    server.did_open(&inspect_uri, inspect_src);
+    let full = server.semantic_tokens_full(&inspect_uri);
+    let tokens = decode_semantic_tokens(full["result"]["data"].as_array().expect("tokens"));
+    let token_at = |needle: &str, inner_offset: usize| {
+        let off = inspect_src.find(needle).expect(needle) + inner_offset;
+        let p = pos(inspect_src, off);
+        let target_line = p["line"].as_u64().unwrap() as u32;
+        let target_col = p["character"].as_u64().unwrap() as u32;
+        tokens
+            .iter()
+            .copied()
+            .find(|(line, col, ..)| *line == target_line && *col == target_col)
+            .unwrap_or_else(|| panic!("missing token for {needle:?}+{inner_offset}"))
+    };
+    const MOD_DEFAULT_LIBRARY: u32 = 1 << 3;
+    const MOD_SIGNATURE: u32 = 1 << 5;
+    const MOD_NUMBER: u32 = 1 << 6;
+    const MOD_INTERFACE: u32 = 1 << 9;
+    const MOD_STRUCT: u32 = 1 << 10;
+
+    // `e.Error()` and `ea.Error()` are built-in `error.Error` (defaultLibrary); `ce`/`anon` are not.
+    assert_ne!(token_at("e.Error()", 2).4 & MOD_DEFAULT_LIBRARY, 0);
+    assert_ne!(token_at("ea.Error()", 3).4 & MOD_DEFAULT_LIBRARY, 0);
+    assert_eq!(token_at("ce.Error()", 3).4 & MOD_DEFAULT_LIBRARY, 0);
+    assert_eq!(token_at("anon.Error()", 5).4 & MOD_DEFAULT_LIBRARY, 0);
+
+    // Interface vs struct vs signature vs number (including shadowed `type error int`).
+    assert_ne!(token_at("_ = e;", 4).4 & MOD_INTERFACE, 0);
+    assert_ne!(token_at("_ = a;", 4).4 & MOD_INTERFACE, 0);
+    assert_ne!(token_at("_ = anon\n", 4).4 & MOD_INTERFACE, 0);
+    assert_eq!(token_at("_ = ce;", 4).4 & MOD_INTERFACE, 0);
+    assert_ne!(token_at("_ = ce;", 4).4 & MOD_STRUCT, 0);
+    assert_ne!(token_at("_ = f;", 4).4 & MOD_SIGNATURE, 0);
+    assert_ne!(token_at("_ = n;", 4).4 & MOD_NUMBER, 0);
+    assert_ne!(token_at("_ = shadowed", 4).4 & MOD_NUMBER, 0);
+    assert_eq!(token_at("_ = shadowed", 4).4 & MOD_INTERFACE, 0);
+
+    let fn_sig = server.signature_help(
+        &inspect_uri,
+        inspect_src,
+        inspect_src.find("f(\"hi\", 1)").unwrap() + "f(\"hi\", ".len(),
+    );
+    assert!(
+        fn_sig["result"]["signatures"][0]["label"]
+            .as_str()
+            .is_some_and(|l| l.contains("string, ...any")),
+        "expected callable Fn signature help: {fn_sig}"
+    );
+
+    // 3. Struct/field/type sizes and offsets on linux/amd64 (including zero-sized trailing field).
+    let padded_hover = server.hover(
+        &inspect_uri,
+        inspect_src,
+        inspect_src.find("Padded struct").unwrap(),
+    );
+    assert!(
+        hover_text(&padded_hover).contains("size=24"),
+        "expected Padded size=24 (trailing zero-size Tail padded to 8-byte align): {padded_hover}"
+    );
+    for (needle, expected_size, expected_offset) in [
+        ("Flag  bool", "size=1", "offset=0"),
+        ("Count int64", "size=8", "offset=8"),
+        ("Tail  struct{}", "size=0", "offset=16"),
+    ] {
+        let reply = server.hover(&inspect_uri, inspect_src, inspect_src.find(needle).unwrap());
+        let text = hover_text(&reply);
+        assert!(
+            text.contains(expected_size) && text.contains(expected_offset),
+            "{needle}: expected {expected_size} and {expected_offset} in {reply}"
+        );
+    }
+    // Anonymous local struct field layout (last occurrence of `B byte` / `W int32` inside `var anon`).
+    for (needle, expected_size, expected_offset) in [
+        ("B byte", "size=1", "offset=0"),
+        ("W int32", "size=4", "offset=4"),
+    ] {
+        let reply = server.hover(
+            &inspect_uri,
+            inspect_src,
+            inspect_src.rfind(needle).unwrap(),
+        );
+        let text = hover_text(&reply);
+        assert!(
+            text.contains(expected_size) && text.contains(expected_offset),
+            "anon {needle}: expected {expected_size} and {expected_offset} in {reply}"
+        );
+    }
+    let slice_hover = server.hover(
+        &inspect_uri,
+        inspect_src,
+        inspect_src.find("Bytes []byte").unwrap(),
+    );
+    assert!(
+        hover_text(&slice_hover).contains("size=24"),
+        "expected []byte size=24: {slice_hover}"
+    );
+    let i32_hover = server.hover(
+        &inspect_uri,
+        inspect_src,
+        inspect_src.find("I32 int32").unwrap(),
+    );
+    assert!(
+        hover_text(&i32_hover).contains("size=4"),
+        "expected int32 size=4: {i32_hover}"
+    );
+    let anon_hover = server.hover(
+        &inspect_uri,
+        inspect_src,
+        inspect_src.find("AnonHolder struct").unwrap(),
+    );
+    assert!(
+        hover_text(&anon_hover).contains("size=8"),
+        "expected AnonHolder struct size=8: {anon_hover}"
+    );
+
+    server.shutdown();
+}
+
+#[test]
+fn build_constraints_and_selection_match_go_oracle() {
+    // Part 1: 9 Go constraint expressions + 4 header/malformed edge cases in 1 server.
+    let expr_cases: Vec<String> = [
+        "linux && amd64",
+        "windows || linux && !amd64",
+        "(windows || linux) && feature",
+        "!(!linux)",
+        "linux ||",
+        "linux & amd64",
+        "",
+        "linux other",
+        "linux && (amd64 || arm64)",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    let expected_exprs = official_acceptance(&expr_cases, "--constraints");
+
+    let expr_dir = TempDir::new("build-constraints");
+    expr_dir.write("go.mod", "module example.com/bc\n\ngo 1.27\n");
+    let mut expected_syms: BTreeMap<String, bool> = BTreeMap::new();
+    for (idx, (expr, expected)) in expr_cases.iter().zip(expected_exprs).enumerate() {
+        let sym = format!("Sym{idx:02}");
+        expr_dir.write(
+            format!("c{idx:02}.go"),
+            format!("//go:build {expr}\n\npackage p\nconst {sym} = {idx}\n"),
+        );
+        expected_syms.insert(sym, expected);
+    }
+    // Edge cases: negated invalid expression must not evaluate as `!(false) == true`;
+    // duplicate directives must be rejected; block comments and body comments do not constrain.
+    for (idx, (header, body_tail, expected)) in [
+        ("//go:build !(linux ||)\n\n", "", false),
+        ("//go:build linux\n//go:build windows\n\n", "", false),
+        ("/* //go:build windows */\n", "", true),
+        ("", "\n//go:build windows\n", true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let sym = format!("SymEdge{idx}");
+        expr_dir.write(
+            format!("edge{idx}.go"),
+            format!("{header}package p\nconst {sym} = {idx}\n{body_tail}"),
+        );
+        expected_syms.insert(sym, expected);
+    }
+    let mut server = start_server_at(
+        &expr_dir,
+        json!({
+            "goroot": "",
+            "fileWatch": false,
+            "goos": "linux",
+            "goarch": "amd64",
+            "buildTags": ["feature"],
+        }),
+    );
+    let found: BTreeSet<String> = server.workspace_symbol("Sym")["result"]
+        .as_array()
+        .expect("workspace symbols")
+        .iter()
+        .filter_map(|item| item["name"].as_str().map(str::to_owned))
+        .collect();
+    for (sym, expected) in &expected_syms {
+        assert_eq!(
+            found.contains(sym),
+            *expected,
+            "constraint selection mismatch for {sym}: found={found:?}"
+        );
+    }
+    server.shutdown();
+
+    // Part 2: 7 platforms x 16 filenames x 4 expressions = 448 cases over 1 shared 64-file TempDir.
+    let platforms = [
+        "windows/amd64",
+        "linux/arm64",
+        "android/arm64",
+        "ios/arm64",
+        "illumos/amd64",
+        "wasip1/wasm",
+        "unknown/amd64",
+    ];
+    let names = [
+        "main.go",
+        "linux.go",
+        "main_linux.go",
+        "main_windows_amd64.go",
+        "main_arm64_test.go",
+        "main_darwin.go",
+        "main_solaris.go",
+        "main_linux_test.go",
+        "main_unix.go",
+        "main_mips64p32le.go",
+        "main_linux.extra.go",
+        "_main.go",
+        ".main.go",
+        "main.txt",
+        "main_amd64_linux.go",
+        "main_linux_unknown.go",
+    ];
+    let expressions = [
+        "",
+        "unix && feature",
+        "linux || darwin || solaris",
+        "go1.27 && gc",
+    ];
+
+    let sel_dir = TempDir::new("build-selection");
+    sel_dir.write("go.mod", "module example.com/sel\n\ngo 1.27\n");
+    let mut file_symbols = Vec::new();
+    for (expr_idx, expr) in expressions.iter().enumerate() {
+        for (name_idx, name) in names.iter().enumerate() {
+            let sym = format!("Sel{expr_idx}_{name_idx:02}");
+            let header = if expr.is_empty() {
+                String::new()
+            } else {
+                format!("//go:build {expr}\n\n")
+            };
+            sel_dir.write(
+                format!("e{expr_idx}/{name}"),
+                format!("{header}package e{expr_idx}\nconst {sym} = 1\n"),
+            );
+            file_symbols.push((sym, *name, *expr));
+        }
+    }
+
+    let mut oracle_cases = Vec::with_capacity(platforms.len() * file_symbols.len());
+    for platform in &platforms {
+        for (_, name, expr) in &file_symbols {
+            oracle_cases.push(format!("{platform}|{name}|{expr}"));
+        }
+    }
+    let accepted = official_acceptance(&oracle_cases, "--match-files");
+
+    for (p_idx, platform) in platforms.iter().enumerate() {
+        let (goos, goarch) = platform.split_once('/').unwrap();
+        let mut server = start_server_at(
+            &sel_dir,
+            json!({
+                "goroot": "",
+                "fileWatch": false,
+                "goos": goos,
+                "goarch": goarch,
+                "buildTags": ["feature", "gc", "go1.27"],
+            }),
+        );
+        let found: BTreeSet<String> = server.workspace_symbol("Sel")["result"]
+            .as_array()
+            .expect("selection symbols")
+            .iter()
+            .filter_map(|item| item["name"].as_str().map(str::to_owned))
+            .collect();
+        let base = p_idx * file_symbols.len();
+        for (f_idx, (sym, name, expr)) in file_symbols.iter().enumerate() {
+            let expected = accepted[base + f_idx];
+            assert_eq!(
+                found.contains(sym),
+                expected,
+                "build selection differs from Go for {platform}|{name}|{expr} ({sym})"
+            );
+        }
+        server.shutdown();
+    }
+}
+
+#[test]
+fn goexperiment_selection_matches_go_oracle() {
+    let version = Command::new("go")
+        .arg("version")
+        .output()
+        .expect("Go experiment oracle");
+    assert!(
+        version.status.success()
+            && String::from_utf8_lossy(&version.stdout)
+                .split_whitespace()
+                .any(|part| part == "go1.27.3"),
+        "experiment oracle requires Go 1.27.3"
+    );
+
+    let configs = [
+        ("windows", "amd64", ""),
+        ("linux", "386", ""),
+        ("darwin", "arm64", ""),
+        ("aix", "ppc64", ""),
+        ("windows", "amd64", "none,noregabi"),
+        ("linux", "386", "regabi,arenas,boringcrypto"),
+        ("linux", "arm64", "nojsonv2,nogreenteagc"),
+        ("linux", "386", "none,jsonv2,nojsonv2,jsonv2,simd"),
+    ];
+
+    let mut expected_per_config: Vec<BTreeMap<String, bool>> = Vec::with_capacity(configs.len());
+    let mut all_experiments: BTreeSet<String> = BTreeSet::new();
+    for &(os, arch, configuration) in &configs {
+        let output = Command::new("go")
+            .args(["list", "-json", "internal/goexperiment"])
+            .env("GOOS", os)
+            .env("GOARCH", arch)
+            .env("GOEXPERIMENT", configuration)
+            .env("GOWORK", "off")
+            .env("GOTOOLCHAIN", "local")
+            .output()
+            .expect("Go experiment file selection");
+        assert!(
+            output.status.success(),
+            "go list internal/goexperiment failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).expect("Go experiment package");
+        let mut map = BTreeMap::new();
+        for file in report["GoFiles"].as_array().expect("selected Go files") {
+            let Some(name) = file.as_str().expect("Go filename").strip_prefix("exp_") else {
+                continue;
+            };
+            let (experiment, enabled) = if let Some(name) = name.strip_suffix("_on.go") {
+                (name, true)
+            } else if let Some(name) = name.strip_suffix("_off.go") {
+                (name, false)
+            } else {
+                continue;
+            };
+            all_experiments.insert(experiment.to_owned());
+            map.insert(experiment.to_owned(), enabled);
+        }
+        assert!(map.len() >= 20, "oracle must check every pinned experiment");
+        expected_per_config.push(map);
+    }
+
+    let dir = TempDir::new("goexperiment");
+    dir.write("go.mod", "module example.com/exp\n\ngo 1.27\n");
+    for exp in all_experiments
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once("madeup"))
+    {
+        dir.write(
+            format!("exp_{exp}.go"),
+            format!("//go:build goexperiment.{exp}\n\npackage exp\nconst Exp_{exp} = 1\n"),
+        );
+    }
+
+    for (&(os, arch, configuration), expected) in configs.iter().zip(&expected_per_config) {
+        let mut server = start_server_at(
+            &dir,
+            json!({
+                "goroot": "",
+                "fileWatch": false,
+                "goos": os,
+                "goarch": arch,
+                "goexperiment": configuration,
+            }),
+        );
+        let found: BTreeSet<String> = server.workspace_symbol("Exp_")["result"]
+            .as_array()
+            .expect("experiment symbols")
+            .iter()
+            .filter_map(|item| item["name"].as_str().map(str::to_owned))
+            .collect();
+        for (experiment, &enabled) in expected {
+            assert_eq!(
+                found.contains(&format!("Exp_{experiment}")),
+                enabled,
+                "{os}/{arch}/{configuration}: {experiment}"
+            );
+        }
+        server.shutdown();
+    }
+
+    // Unknown experiment names are accepted as tags; `no<name>` disables them again.
+    for (configuration, expected) in [("madeup", true), ("madeup,nomadeup", false)] {
+        let mut server = start_server_at(
+            &dir,
+            json!({
+                "goroot": "",
+                "fileWatch": false,
+                "goos": "linux",
+                "goarch": "386",
+                "goexperiment": configuration,
+            }),
+        );
+        let found: BTreeSet<String> = server.workspace_symbol("Exp_madeup")["result"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item["name"].as_str().map(str::to_owned))
+            .collect();
+        assert_eq!(
+            found.contains("Exp_madeup"),
+            expected,
+            "unknown experiment handling failed for {configuration}"
+        );
+        server.shutdown();
+    }
 }
