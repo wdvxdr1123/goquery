@@ -1,10 +1,11 @@
 //! Type relation predicates (`identical`, `assignable`, `convertible`, `comparable`,
 //! `implements`) extracted into [`TypeRelations`].
 use super::constant::{constant_value, representable};
+use super::eval::TypeEval;
 use super::ty::CheckMode;
 use super::{
     BasicKind, CheckError, ConstAssignError, Constant, Direction, MAX_DEPTH, MAX_NODES, Mode,
-    Operand, Tags, Ty, TypeArena, TypeId, TypeStore,
+    Operand, Tags, Ty, TypeId, TypeStore,
 };
 use CheckError::{Invalid, Unknown};
 
@@ -26,15 +27,29 @@ pub(super) enum TypePairs {
     Children(Vec<(TypeId, TypeId)>),
 }
 
-/// Standalone Go type-predicate evaluator over `&mut TypeStore`.
+/// Standalone Go type-predicate evaluator over [`TypeEval`].
 pub(crate) struct TypeRelations<'s, 'a> {
-    store: &'s mut TypeStore<'a>,
-    _mode: CheckMode,
+    eval: TypeEval<'s, 'a>,
 }
 
 impl<'s, 'a> TypeRelations<'s, 'a> {
     pub(crate) fn new(store: &'s mut TypeStore<'a>, mode: CheckMode) -> Self {
-        Self { store, _mode: mode }
+        Self {
+            eval: TypeEval::new(store, mode),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) const fn mode(&self) -> CheckMode {
+        self.eval.mode()
+    }
+
+    pub(super) fn store(&self) -> &TypeStore<'a> {
+        self.eval.store()
+    }
+
+    fn store_mut(&mut self) -> &mut TypeStore<'a> {
+        self.eval.store_mut()
     }
 
     pub(crate) fn identical(&mut self, left: TypeId, right: TypeId) -> Option<bool> {
@@ -49,11 +64,14 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
     ) -> Option<bool> {
         let mut pending = vec![(left, right, 0usize)];
         while let Some((left, right, depth)) = pending.pop() {
-            self.store.step()?;
+            self.eval.step()?;
             if depth >= MAX_DEPTH {
                 return None;
             }
-            let (left, right) = (self.store.unalias(left)?, self.store.unalias(right)?);
+            let (left, right) = (
+                self.store_mut().unalias(left)?,
+                self.store_mut().unalias(right)?,
+            );
             let TypePairs::Children(pairs) = self.identity_pairs(left, right, tags)? else {
                 return Some(false);
             };
@@ -75,36 +93,41 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
         tags: Tags,
     ) -> Option<TypePairs> {
         if let (Some((la, lb, _, _)), Some((ra, rb, _, _))) = (
-            self.store.local_decl_info(left),
-            self.store.local_decl_info(right),
+            self.store().local_decl_info(left),
+            self.store().local_decl_info(right),
         ) {
             return Some(if la == ra && lb == rb {
                 TypePairs::Children(Vec::new())
-            } else if self.store.is_known_non_opaque(left) && self.store.is_known_non_opaque(right)
+            } else if self.store().is_known_non_opaque(left)
+                && self.store().is_known_non_opaque(right)
             {
                 TypePairs::Mismatch
             } else {
                 return None;
             });
         }
-        if self.store.local_decl_info(left).is_some() || self.store.local_decl_info(right).is_some()
+        if self.store().local_decl_info(left).is_some()
+            || self.store().local_decl_info(right).is_some()
         {
-            return if self.store.is_known_non_opaque(left) && self.store.is_known_non_opaque(right)
+            return if self.store().is_known_non_opaque(left)
+                && self.store().is_known_non_opaque(right)
             {
                 Some(TypePairs::Mismatch)
             } else {
                 None
             };
         }
-        if self.store.error_interface(left).is_some() && self.store.error_interface(right).is_some()
+        if self.store().error_interface(left).is_some()
+            && self.store().error_interface(right).is_some()
         {
             return Some(TypePairs::Children(Vec::new()));
         }
-        if self.store.error_interface(left).is_some() || self.store.error_interface(right).is_some()
+        if self.store().error_interface(left).is_some()
+            || self.store().error_interface(right).is_some()
         {
             return Some(TypePairs::Mismatch);
         }
-        let pairs = match (*self.store.node(left)?, *self.store.node(right)?) {
+        let pairs = match (*self.store().node(left)?, *self.store().node(right)?) {
             (Ty::Basic(a), Ty::Basic(b)) => {
                 if a.canonical() != b.canonical() {
                     return Some(TypePairs::Mismatch);
@@ -118,8 +141,8 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 Vec::new()
             }
             (Ty::Named { .. }, Ty::Named { .. }) => {
-                let (a, aa, _) = self.store.named_info(left)?;
-                let (b, ba, _) = self.store.named_info(right)?;
+                let (a, aa, _) = self.store().named_info(left)?;
+                let (b, ba, _) = self.store().named_info(right)?;
                 if a.file != b.file || a.symbol.start != b.symbol.start || aa.len() != ba.len() {
                     return Some(TypePairs::Mismatch);
                 }
@@ -127,32 +150,32 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 if a.symbol.generic && aa.is_empty() {
                     return None;
                 }
-                self.store
+                self.store()
                     .arguments_slice(left, aa)
                     .iter()
                     .copied()
-                    .zip(self.store.arguments_slice(right, ba).iter().copied())
+                    .zip(self.store().arguments_slice(right, ba).iter().copied())
                     .collect()
             }
             (Ty::Tuple(a), Ty::Tuple(b)) => {
                 if a.len() != b.len() {
                     return Some(TypePairs::Mismatch);
                 }
-                self.store
+                self.store()
                     .arguments_slice(left, a)
                     .iter()
                     .copied()
-                    .zip(self.store.arguments_slice(right, b).iter().copied())
+                    .zip(self.store().arguments_slice(right, b).iter().copied())
                     .collect()
             }
             (Ty::Pointer(a), Ty::Pointer(b)) | (Ty::Slice(a), Ty::Slice(b)) => vec![(a, b)],
             (Ty::Interface(_), Ty::Interface(_)) => {
-                let ld = self.store.interface_data(left)?.clone();
-                let rd = self.store.interface_data(right)?.clone();
+                let ld = self.store().interface_data(left)?.clone();
+                let rd = self.store().interface_data(right)?.clone();
                 if ld.comparable != rd.comparable
                     || ld.has_type_elements != rd.has_type_elements
                     || ld.embeddeds.len() != rd.embeddeds.len()
-                    || !self.store.same_interface_methods(
+                    || !self.store().same_interface_methods(
                         left,
                         ld.methods.clone(),
                         right,
@@ -162,24 +185,24 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                     return Some(TypePairs::Mismatch);
                 }
                 let mut pairs: Vec<(TypeId, TypeId)> = self
-                    .store
+                    .store()
                     .methods_slice(left, ld.methods)
                     .iter()
                     .map(|m| m.signature)
                     .zip(
-                        self.store
+                        self.store()
                             .methods_slice(right, rd.methods)
                             .iter()
                             .map(|m| m.signature),
                     )
                     .collect();
                 pairs.extend(
-                    self.store
+                    self.store()
                         .arguments_slice(left, ld.embeddeds)
                         .iter()
                         .copied()
                         .zip(
-                            self.store
+                            self.store()
                                 .arguments_slice(right, rd.embeddeds)
                                 .iter()
                                 .copied(),
@@ -188,8 +211,8 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 pairs
             }
             (Ty::Union(a), Ty::Union(b)) => {
-                let at = self.store.terms_slice(left, a);
-                let bt = self.store.terms_slice(right, b);
+                let at = self.store().terms_slice(left, a);
+                let bt = self.store().terms_slice(right, b);
                 if at.len() != bt.len()
                     || at
                         .iter()
@@ -204,44 +227,44 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                     .collect()
             }
             (Ty::Signature(_), Ty::Signature(_)) => {
-                let ls = self.store.signature_data(left)?.clone();
-                let rs = self.store.signature_data(right)?.clone();
+                let ls = self.store().signature_data(left)?.clone();
+                let rs = self.store().signature_data(right)?.clone();
                 if ls.variadic != rs.variadic
                     || ls.parameters.len() != rs.parameters.len()
                     || ls.results.len() != rs.results.len()
                 {
                     return Some(TypePairs::Mismatch);
                 }
-                self.store
+                self.store()
                     .arg_range(left, ls.parameters)
                     .iter()
-                    .chain(self.store.arg_range(left, ls.results))
+                    .chain(self.store().arg_range(left, ls.results))
                     .copied()
                     .zip(
-                        self.store
+                        self.store()
                             .arg_range(right, rs.parameters)
                             .iter()
-                            .chain(self.store.arg_range(right, rs.results))
+                            .chain(self.store().arg_range(right, rs.results))
                             .copied(),
                     )
                     .collect()
             }
             (Ty::Struct(_), Ty::Struct(_)) => {
-                let ld = self.store.struct_data(left)?.clone();
-                let rd = self.store.struct_data(right)?.clone();
-                if !self.store.struct_fields_with_tags(
+                let ld = self.store().struct_data(left)?.clone();
+                let rd = self.store().struct_data(right)?.clone();
+                if !self.store().struct_fields_with_tags(
                     (ld.origin, left, ld.fields.clone()),
                     (rd.origin, right, rd.fields.clone()),
                     tags,
                 )? {
                     return Some(TypePairs::Mismatch);
                 }
-                self.store
+                self.store()
                     .fields_slice(left, ld.fields)?
                     .iter()
                     .map(|f| f.ty)
                     .zip(
-                        self.store
+                        self.store()
                             .fields_slice(right, rd.fields)?
                             .iter()
                             .map(|f| f.ty),
@@ -295,28 +318,31 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
         target: TypeId,
         int_bits: u32,
     ) -> Result<(), CheckError<AssignmentError>> {
-        self.store.step().ok_or(Unknown)?;
+        self.eval.step().ok_or(Unknown)?;
         let mismatch = Invalid(AssignmentError::TypeMismatch);
         if !source.mode.is_value() {
             return Err(mismatch);
         }
         // Compare declaration identities before expanding types. Interface
         // constructors still need their complete basic method set.
-        if !self.store.interface_constructor(target).ok_or(Unknown)?
+        if !self
+            .store_mut()
+            .interface_constructor(target)
+            .ok_or(Unknown)?
             && self.identical(source.ty, target).ok_or(Unknown)?
         {
             return Ok(());
         }
-        if self.store.is_interface(target).ok_or(Unknown)? {
+        if self.store_mut().is_interface(target).ok_or(Unknown)? {
             return self
-                .store
+                .store_mut()
                 .assign_interface(source, target, int_bits)
                 .ok_or(Unknown)?
                 .then_some(())
                 .ok_or(Invalid(AssignmentError::InterfaceMismatch));
         }
         if let Some(kind) = self
-            .store
+            .store_mut()
             .basic_kind(source.ty)
             .filter(|kind| kind.untyped())
         {
@@ -327,11 +353,15 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                     .then_some(())
                     .ok_or(mismatch);
             }
-            if self.store.assign_basic(source, target, int_bits).is_some() {
+            if self
+                .store_mut()
+                .assign_basic(source, target, int_bits)
+                .is_some()
+            {
                 return Ok(());
             }
             let reason = self
-                .store
+                .store_mut()
                 .const_assignment_error(source, target, int_bits)
                 .ok_or(Unknown)?;
             return Err(Invalid(AssignmentError::ImplicitConstant(reason)));
@@ -340,15 +370,15 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
             return Ok(());
         }
         let (source, target) = (
-            self.store.unalias(source.ty).ok_or(Unknown)?,
-            self.store.unalias(target).ok_or(Unknown)?,
+            self.store_mut().unalias(source.ty).ok_or(Unknown)?,
+            self.store_mut().unalias(target).ok_or(Unknown)?,
         );
-        if self.store.is_defined_type(source) && self.store.is_defined_type(target) {
+        if self.store().is_defined_type(source) && self.store().is_defined_type(target) {
             return Err(mismatch);
         }
         let (source, target) = (
-            self.store.underlying(source).ok_or(Unknown)?,
-            self.store.underlying(target).ok_or(Unknown)?,
+            self.store_mut().underlying(source).ok_or(Unknown)?,
+            self.store_mut().underlying(target).ok_or(Unknown)?,
         );
         if self.identical(source, target).ok_or(Unknown)? {
             return Ok(());
@@ -362,8 +392,8 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 element: target, ..
             },
         ) = (
-            self.store.node(source).ok_or(Unknown)?,
-            self.store.node(target).ok_or(Unknown)?,
+            self.store().node(source).ok_or(Unknown)?,
+            self.store().node(target).ok_or(Unknown)?,
         ) {
             return self
                 .identical(*source, *target)
@@ -389,9 +419,9 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<Result<Operand, ConversionError>> {
-        self.store.underlying(target)?;
-        self.store.underlying(input.ty)?;
-        let source_kind = self.store.basic_kind(input.ty);
+        self.store_mut().underlying(target)?;
+        self.store_mut().underlying(input.ty)?;
+        let source_kind = self.store_mut().basic_kind(input.ty);
         if source_kind == Some(BasicKind::UntypedNil) {
             self.nilable(target)?.then_some(())?;
             return Some(Ok(Operand {
@@ -400,7 +430,7 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 value: None,
             }));
         }
-        if self.store.is_interface(target)? {
+        if self.store_mut().is_interface(target)? {
             if !self.assignable(input, target, int_bits)? && !self.convertible(input.ty, target)? {
                 return None;
             }
@@ -410,7 +440,7 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 value: None,
             }));
         }
-        let target_kind = self.store.basic_kind(target);
+        let target_kind = self.store_mut().basic_kind(target);
         if input.mode == Mode::Constant
             && let Some(kind) = target_kind
         {
@@ -459,9 +489,9 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
     }
 
     pub(super) fn nilable(&mut self, target: TypeId) -> Option<bool> {
-        let target = self.store.underlying(target)?;
+        let target = self.store_mut().underlying(target)?;
         Some(matches!(
-            self.store.node(target)?,
+            self.store().node(target)?,
             Ty::Pointer(_)
                 | Ty::Slice(_)
                 | Ty::Map { .. }
@@ -477,20 +507,30 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
             return Some(true);
         }
         let (s, t) = (
-            self.store.underlying(source)?,
-            self.store.underlying(target)?,
+            self.store_mut().underlying(source)?,
+            self.store_mut().underlying(target)?,
         );
         if self.identical_with_tags(s, t, Tags::Ignore)? {
             return Some(true);
         }
-        let (sv, tv) = (self.store.unalias(source)?, self.store.unalias(target)?);
-        if let (Ty::Pointer(a), Ty::Pointer(b)) = (*self.store.node(sv)?, *self.store.node(tv)?) {
-            let (a, b) = (self.store.underlying(a)?, self.store.underlying(b)?);
+        let (sv, tv) = (
+            self.store_mut().unalias(source)?,
+            self.store_mut().unalias(target)?,
+        );
+        if let (Ty::Pointer(a), Ty::Pointer(b)) = (*self.store().node(sv)?, *self.store().node(tv)?)
+        {
+            let (a, b) = (
+                self.store_mut().underlying(a)?,
+                self.store_mut().underlying(b)?,
+            );
             if self.identical_with_tags(a, b, Tags::Ignore)? {
                 return Some(true);
             }
         }
-        if let (Some(a), Some(b)) = (self.store.basic_kind(s), self.store.basic_kind(t)) {
+        if let (Some(a), Some(b)) = (
+            self.store_mut().basic_kind(s),
+            self.store_mut().basic_kind(t),
+        ) {
             if let (Some(a), Some(b)) = (a.numeric_rank(), b.numeric_rank()) {
                 return Some(a <= 2 && b <= 2 || a == 3 && b == 3);
             }
@@ -498,31 +538,39 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 return Some(true);
             }
         }
-        if (matches!(self.store.node(s)?, Ty::Pointer(_))
-            || self.store.basic_kind(s) == Some(BasicKind::Uintptr))
-            && self.store.basic_kind(t) == Some(BasicKind::UnsafePointer)
+        if (matches!(self.store().node(s)?, Ty::Pointer(_))
+            || self.store_mut().basic_kind(s) == Some(BasicKind::Uintptr))
+            && self.store_mut().basic_kind(t) == Some(BasicKind::UnsafePointer)
         {
             return Some(true);
         }
-        if self.store.basic_kind(s) == Some(BasicKind::UnsafePointer)
-            && (matches!(self.store.node(t)?, Ty::Pointer(_))
-                || self.store.basic_kind(t) == Some(BasicKind::Uintptr))
+        if self.store_mut().basic_kind(s) == Some(BasicKind::UnsafePointer)
+            && (matches!(self.store().node(t)?, Ty::Pointer(_))
+                || self.store_mut().basic_kind(t) == Some(BasicKind::Uintptr))
         {
             return Some(true);
         }
-        if self.store.basic_kind(s).is_some_and(BasicKind::string) && self.bytes_or_runes(t)?
-            || self.bytes_or_runes(s)? && self.store.basic_kind(t).is_some_and(BasicKind::string)
+        if self
+            .store_mut()
+            .basic_kind(s)
+            .is_some_and(BasicKind::string)
+            && self.bytes_or_runes(t)?
+            || self.bytes_or_runes(s)?
+                && self
+                    .store_mut()
+                    .basic_kind(t)
+                    .is_some_and(BasicKind::string)
         {
             return Some(true);
         }
-        match (*self.store.node(s)?, *self.store.node(t)?) {
+        match (*self.store().node(s)?, *self.store().node(t)?) {
             (
                 Ty::Chan {
                     direction: Direction::Both,
                     element: a,
                 },
                 Ty::Chan { element: b, .. },
-            ) if !self.store.is_defined_type(sv) || !self.store.is_defined_type(tv) => {
+            ) if !self.store().is_defined_type(sv) || !self.store().is_defined_type(tv) => {
                 self.identical(a, b)
             }
             (
@@ -532,10 +580,10 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 },
             ) => self.identical(element, target),
             (Ty::Slice(element), Ty::Pointer(array)) => {
-                let array = self.store.underlying(array)?;
+                let array = self.store_mut().underlying(array)?;
                 let Ty::Array {
                     element: target, ..
-                } = *self.store.node(array)?
+                } = *self.store().node(array)?
                 else {
                     return Some(false);
                 };
@@ -546,22 +594,23 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
     }
 
     fn bytes_or_runes(&mut self, input: TypeId) -> Option<bool> {
-        let input = self.store.underlying(input)?;
-        let Ty::Slice(element) = *self.store.node(input)? else {
+        let input = self.store_mut().underlying(input)?;
+        let Ty::Slice(element) = *self.store().node(input)? else {
             return Some(false);
         };
         Some(
-            self.store.basic_kind(element).is_some_and(|kind| {
+            self.store_mut().basic_kind(element).is_some_and(|kind| {
                 matches!(kind.canonical(), BasicKind::Uint8 | BasicKind::Int32)
             }),
         )
     }
 }
 
-impl TypeArena<'_> {
+impl TypeStore<'_> {
     pub(crate) fn identical(&mut self, left: TypeId, right: TypeId) -> Option<bool> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).identical(left, right)
+        TypeEval::from_store(self)
+            .relations()
+            .identical(left, right)
     }
 
     pub(super) fn identity_pairs(
@@ -570,8 +619,9 @@ impl TypeArena<'_> {
         right: TypeId,
         tags: Tags,
     ) -> Option<TypePairs> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).identity_pairs(left, right, tags)
+        TypeEval::from_store(self)
+            .relations()
+            .identity_pairs(left, right, tags)
     }
 
     pub(crate) fn assignable(
@@ -580,8 +630,9 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<bool> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).assignable(source, target, int_bits)
+        TypeEval::from_store(self)
+            .relations()
+            .assignable(source, target, int_bits)
     }
 
     pub(crate) fn check_assignment(
@@ -590,8 +641,9 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Result<(), CheckError<AssignmentError>> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).check_assignment(source, target, int_bits)
+        TypeEval::from_store(self)
+            .relations()
+            .check_assignment(source, target, int_bits)
     }
 
     pub(crate) fn convert(
@@ -600,8 +652,9 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<Operand> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).convert(input, target, int_bits)
+        TypeEval::from_store(self)
+            .relations()
+            .convert(input, target, int_bits)
     }
 
     pub(crate) fn checked_conversion(
@@ -610,8 +663,9 @@ impl TypeArena<'_> {
         target: TypeId,
         int_bits: u32,
     ) -> Option<Result<Operand, ConversionError>> {
-        let mode = self.mode;
-        TypeRelations::new(self, mode).checked_conversion(input, target, int_bits)
+        TypeEval::from_store(self)
+            .relations()
+            .checked_conversion(input, target, int_bits)
     }
 
     /// Test-only structural projection; no JSON machinery enters runtime queries.

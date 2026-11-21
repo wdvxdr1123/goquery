@@ -6,6 +6,7 @@ mod complex;
 mod constant;
 mod constraints;
 mod declaration;
+mod eval;
 mod form;
 mod format;
 mod generics;
@@ -36,6 +37,8 @@ pub(crate) use basic::BasicKind;
 pub(crate) use builtin::{AppendError, CopyError, MakeError, ProcedureError};
 pub(crate) use complex::ComplexError;
 pub(crate) use constant::{ConstAssignError, Constant};
+#[allow(unused_imports)]
+pub(crate) use eval::{DepthGuard, DepthKind, ModeGuard, TypeEval};
 pub(crate) use format::Qualifier;
 pub(crate) use index::{IndexError, IndexValueError, SliceError};
 use interface::Method;
@@ -48,6 +51,8 @@ pub(crate) use selection::{PromotionIndices, Selection, SelectionKind};
 pub(crate) use sizes::{FieldLayout, Layout, StructLayout, align_to};
 pub(crate) use store::TypeStore as TypeArena;
 pub(crate) use store::TypeStore;
+#[allow(unused_imports)]
+pub(crate) use store::{AllocTierGuard, ProjectionGuard};
 use structure::Field;
 pub(crate) use ty::{CheckOutcome, TypeId, UnknownReason};
 use ty::{Direction, Ty};

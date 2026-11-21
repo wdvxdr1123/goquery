@@ -1,9 +1,8 @@
 //! Bounded field/method lookup sharing visibility, promotion and ambiguity checks.
 use super::constraints::Constraint;
+use super::eval::TypeEval;
 use super::ty::CheckMode;
-use super::{
-    MAX_DEPTH, Method, PromotionIndices, Selection, SelectionKind, Ty, TypeArena, TypeId, TypeStore,
-};
+use super::{MAX_DEPTH, Method, PromotionIndices, Selection, SelectionKind, Ty, TypeId, TypeStore};
 use crate::analysis::engine::obj::{DeclId, MemberDeclId, MethodOrigin, ObjectRef};
 use std::path::Path;
 
@@ -68,15 +67,29 @@ pub(super) fn has_owner_cycle(
     false
 }
 
-/// Standalone field/method selection engine over `&mut TypeStore`.
+/// Standalone field/method selection engine over [`TypeEval`].
 pub(crate) struct MethodLookup<'s, 'a> {
-    store: &'s mut TypeStore<'a>,
-    _mode: CheckMode,
+    eval: TypeEval<'s, 'a>,
 }
 
 impl<'s, 'a> MethodLookup<'s, 'a> {
     pub(crate) fn new(store: &'s mut TypeStore<'a>, mode: CheckMode) -> Self {
-        Self { store, _mode: mode }
+        Self {
+            eval: TypeEval::new(store, mode),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) const fn mode(&self) -> CheckMode {
+        self.eval.mode()
+    }
+
+    pub(super) fn store(&self) -> &TypeStore<'a> {
+        self.eval.store()
+    }
+
+    fn store_mut(&mut self) -> &mut TypeStore<'a> {
+        self.eval.store_mut()
     }
 
     pub(crate) fn lookup_field_or_method(
@@ -91,7 +104,7 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
         }
         let mut candidate = self.lookup_member(recv, recv, origin, name, false)?;
         if candidate.is_none() && addressable {
-            let pointer = self.store.pointer(recv)?;
+            let pointer = self.store_mut().pointer(recv)?;
             candidate = self.lookup_member(pointer, recv, origin, name, false)?;
         }
         if let Some(candidate) = candidate {
@@ -99,10 +112,10 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
         }
         // Defined pointers permit fields, but must not acquire methods
         // from their underlying pointer or from selector auto-addressing.
-        let root = self.store.unalias(recv)?;
-        if matches!(self.store.node(root)?, Ty::Named { .. })
-            && let Some(pointer) = self.store.underlying(root)
-            && matches!(self.store.node(pointer)?, Ty::Pointer(_))
+        let root = self.store_mut().unalias(recv)?;
+        if matches!(self.store().node(root)?, Ty::Named { .. })
+            && let Some(pointer) = self.store_mut().underlying(root)
+            && matches!(self.store().node(pointer)?, Ty::Pointer(_))
             && let Some(candidate) = self.lookup_member(pointer, recv, origin, name, false)?
             && candidate.selection.kind == SelectionKind::FieldVal
         {
@@ -126,17 +139,23 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
         if candidate.selection.kind != SelectionKind::MethodVal {
             return Some(None);
         }
-        let sig = self.store.signature_data(candidate.selection.ty).cloned()?;
+        let sig = self
+            .store()
+            .signature_data(candidate.selection.ty)
+            .cloned()?;
         let mut arguments = vec![recv];
-        arguments.extend_from_slice(self.store.arg_range(candidate.selection.ty, sig.parameters));
+        arguments.extend_from_slice(
+            self.store()
+                .arg_range(candidate.selection.ty, sig.parameters),
+        );
         let results = self
-            .store
+            .store()
             .arg_range(candidate.selection.ty, sig.results)
             .to_vec();
         let ty = self
-            .store
+            .store_mut()
             .store_signature(arguments, results, sig.variadic)?;
-        self.store
+        self.store_mut()
             .copy_signature_names(candidate.selection.ty, ty, true);
         Some(Some(Selection {
             kind: SelectionKind::MethodExpr,
@@ -156,13 +175,13 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
         count: &mut usize,
         found: &mut Option<MemberCandidate<'a>>,
     ) -> Option<()> {
-        let root = self.store.underlying(iface)?;
-        let methods = self.store.interface_data(root)?.methods.clone();
-        let methods = self.store.methods_slice(root, methods).to_vec();
+        let root = self.store_mut().underlying(iface)?;
+        let methods = self.store().interface_data(root)?.methods.clone();
+        let methods = self.store().methods_slice(root, methods).to_vec();
         for method in methods {
             if method.name == ctx.name
                 && (crate::syntax::is_exported_name(ctx.name)
-                    || self.store.same_field_package(method.origin, ctx.origin)?)
+                    || self.store().same_field_package(method.origin, ctx.origin)?)
             {
                 *count += 1;
                 let indices = collect_indices(ctx.steps, ctx.index, None)?;
@@ -193,10 +212,10 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
         declaration: DeclId<'a>,
         name: &str,
     ) -> Vec<DeclId<'a>> {
-        if let Some(index) = self
-            .store
+        let store = self.store_mut();
+        if let Some(index) = store
             .env_cache
-            .pkg_method_index(self.store.workspace, declaration.file)
+            .pkg_method_index(store.workspace, declaration.file)
         {
             let direct = index
                 .by_recv_and_name
@@ -217,9 +236,9 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
             return out;
         }
         let probe = crate::bloom::Fingerprint::new(name.as_bytes());
-        self.store
+        store
             .workspace
-            .package_files_in_view(declaration.file, self.store.build_view)
+            .package_files_in_view(declaration.file, store.build_view)
             .filter(move |(_, stub)| stub.identifiers.may_contain_fingerprint(probe))
             .flat_map(|(file, stub)| stub.symbols.iter().map(move |symbol| (file, symbol)))
             .map(|(file, symbol)| DeclId {
@@ -250,23 +269,23 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
             let mut count = 0;
             let mut found = None;
             for index in level {
-                self.store.step()?;
-                let mut input = self.store.unalias(steps[index].ty)?;
-                let pointer = if let Ty::Pointer(element) = *self.store.node(input)? {
-                    input = self.store.unalias(element)?;
+                self.eval.step()?;
+                let mut input = self.store_mut().unalias(steps[index].ty)?;
+                let pointer = if let Ty::Pointer(element) = *self.store().node(input)? {
+                    input = self.store_mut().unalias(element)?;
                     true
                 } else {
                     false
                 };
                 let indirect = steps[index].indirect || pointer;
-                if matches!(self.store.node(input)?, Ty::Pointer(_)) {
+                if matches!(self.store().node(input)?, Ty::Pointer(_)) {
                     continue;
                 }
-                if matches!(self.store.node(input)?, Ty::TypeParam(_)) {
+                if matches!(self.store().node(input)?, Ty::TypeParam(_)) {
                     if pointer {
                         continue;
                     }
-                    let constraint = self.store.parameter_constraint(input).cloned();
+                    let constraint = self.store().parameter_constraint(input).cloned();
                     let lookup = InterfaceLookup {
                         recv: original_recv,
                         indirect,
@@ -277,7 +296,7 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                     };
                     match constraint {
                         Some(Constraint::Exact(bound))
-                            if self.store.interface_constructor(bound)? =>
+                            if self.store_mut().interface_constructor(bound)? =>
                         {
                             self.lookup_interface_methods(
                                 bound, None, &lookup, &mut count, &mut found,
@@ -298,11 +317,14 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                     }
                     continue;
                 }
-                if self.store.interface_constructor(input)? {
+                if self.store_mut().interface_constructor(input)? {
                     if pointer {
                         continue;
                     }
-                    let owner = self.store.named_info(input).map(|(decl, _, _)| decl.symbol);
+                    let owner = self
+                        .store()
+                        .named_info(input)
+                        .map(|(decl, _, _)| decl.symbol);
                     let lookup = InterfaceLookup {
                         recv: original_recv,
                         indirect,
@@ -315,13 +337,13 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                     continue;
                 }
                 let previous_count = count;
-                if let Some((declaration, arguments, false)) = self.store.named_info(input) {
-                    self.store.check_named_arguments(input)?;
+                if let Some((declaration, arguments, false)) = self.store().named_info(input) {
+                    self.store_mut().check_named_arguments(input)?;
                     if has_owner_cycle(&steps, steps[index].parent, declaration) {
                         continue;
                     }
                     steps[index].owner = Some(declaration);
-                    let arguments = self.store.arguments_slice(input, arguments).to_vec();
+                    let arguments = self.store().arguments_slice(input, arguments).to_vec();
                     let candidates = self.concrete_method_candidates(declaration, name);
                     for method_decl in candidates {
                         let file = method_decl.file;
@@ -329,21 +351,21 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                         if !method.is_method()
                             || method.name != name
                             || !relation
-                                && !self.store.workspace.selector_file_visible_in_view(
+                                && !self.store().workspace.selector_file_visible_in_view(
                                     origin,
                                     file,
-                                    self.store.build_view,
+                                    self.store().build_view,
                                 )
                             || !crate::syntax::is_exported_name(&method.name)
-                                && !self.store.same_field_package(file, origin)?
+                                && !self.store().same_field_package(file, origin)?
                         {
                             continue;
                         }
-                        self.store.step()?;
+                        self.eval.step()?;
                         let receiver = method.receiver.as_deref()?;
                         if receiver != declaration.symbol.name {
                             if let Some((file, symbol)) = self
-                                .store
+                                .store()
                                 .resolver()
                                 .resolve_type_declaration(file, receiver)
                                 && !symbol.alias
@@ -352,12 +374,12 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                             {
                                 continue;
                             }
-                            let receiver = self.store.parse(file, receiver)?;
-                            let mut receiver = self.store.unalias(receiver)?;
-                            if let Ty::Pointer(element) = *self.store.node(receiver)? {
-                                receiver = self.store.unalias(element)?;
+                            let receiver = self.store_mut().parse(file, receiver)?;
+                            let mut receiver = self.store_mut().unalias(receiver)?;
+                            if let Ty::Pointer(element) = *self.store().node(receiver)? {
+                                receiver = self.store_mut().unalias(element)?;
                             }
-                            let Some((candidate, _, false)) = self.store.named_info(receiver)
+                            let Some((candidate, _, false)) = self.store().named_info(receiver)
                             else {
                                 continue;
                             };
@@ -368,15 +390,18 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                             }
                         }
                         let (pointer_receiver, sig_opt) = if arguments.is_empty()
-                            && let Some(&memo) = self.store.decl.concrete_methods.get(&method_decl)
+                            && let Some(&memo) =
+                                self.store().decl.concrete_methods.get(&method_decl)
                             && ((!indirect && memo.pointer_receiver) || memo.signature.is_some())
                         {
                             (memo.pointer_receiver, memo.signature)
                         } else {
-                            let header = self
-                                .store
-                                .env_cache
-                                .method_header(self.store.workspace, method_decl)?;
+                            let header = {
+                                let store = self.store_mut();
+                                store
+                                    .env_cache
+                                    .method_header(store.workspace, method_decl)?
+                            };
                             if header.receiver_names.len() != arguments.len() {
                                 return None;
                             }
@@ -413,16 +438,16 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                                     Some((pointer_receiver, signature))
                                 };
                             let (pointer_receiver, signature) = if arguments.is_empty() {
-                                self.store.with_decl_alloc(compute)?
+                                self.store_mut().with_decl_alloc(compute)?
                             } else {
-                                compute(self.store)?
+                                compute(self.store_mut())?
                             };
                             if arguments.is_empty()
                                 && signature.is_none_or(|s| s.is_decl_safe())
-                                && self.store.decl.concrete_methods.len()
-                                    < self.store.decl.pool.node_limit
+                                && self.store().decl.concrete_methods.len()
+                                    < self.store().decl.pool.node_limit
                             {
-                                self.store.decl.concrete_methods.insert(
+                                self.store_mut().decl.concrete_methods.insert(
                                     method_decl,
                                     ConcreteMethodMemo {
                                         pointer_receiver,
@@ -455,21 +480,21 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                 if count > previous_count {
                     continue;
                 }
-                let root = self.store.underlying(input)?;
+                let root = self.store_mut().underlying(input)?;
                 let Some((field_origin, fields)) = self
-                    .store
+                    .store()
                     .struct_data(root)
                     .map(|d| (d.origin, d.fields.clone()))
                 else {
                     continue;
                 };
-                let fields_vec = self.store.fields_slice(root, fields)?.to_vec();
+                let fields_vec = self.store().fields_slice(root, fields)?.to_vec();
                 for (ord, field) in fields_vec.into_iter().enumerate() {
-                    self.store.step()?;
+                    self.eval.step()?;
                     let leaf_index = u16::try_from(ord).ok()?;
                     if field.name == name
                         && (crate::syntax::is_exported_name(&field.name)
-                            || self.store.same_field_package(field_origin, origin)?)
+                            || self.store().same_field_package(field_origin, origin)?)
                     {
                         count += 1;
                         let indices = collect_indices(&steps, index, Some(leaf_index))?;
@@ -491,7 +516,7 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                         });
                     }
                     if field.embedded {
-                        if steps.len() >= self.store.active_node_limit() {
+                        if steps.len() >= self.store().active_node_limit() {
                             return None;
                         }
                         next.push(steps.len());
@@ -517,7 +542,7 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
     }
 }
 
-impl<'a> TypeArena<'a> {
+impl<'a> TypeStore<'a> {
     /// The declaring receiver reached by an already-proven method selection.
     pub(crate) fn selected_method_receiver(&mut self, selection: &Selection<'a>) -> Option<TypeId> {
         let path = self.embedded_field_path(selection.recv, selection.indices.as_slice())?;
@@ -560,8 +585,9 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         name: &str,
     ) -> Option<Option<Selection<'a>>> {
-        let mode = self.mode;
-        MethodLookup::new(self, mode).lookup_field_or_method(recv, addressable, origin, name)
+        TypeEval::from_store(self)
+            .method_lookup()
+            .lookup_field_or_method(recv, addressable, origin, name)
     }
 
     /// A documentation receiver denotes its declaration's formal instance;
@@ -575,10 +601,10 @@ impl<'a> TypeArena<'a> {
         if name.len() > super::MAX_BYTES {
             return None;
         }
-        self.with_projection(true, |arena| {
-            let receiver = arena.declaration_type(declaration)?;
+        TypeEval::from_store(self).with_projection(CheckMode::Symbolic, |eval| {
+            let receiver = eval.store_mut().declaration_type(declaration)?;
             Some(
-                arena
+                eval.method_lookup()
                     .lookup_field_or_method(receiver, true, consumer, name)??
                     .obj,
             )
@@ -593,8 +619,9 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         name: &str,
     ) -> Option<Option<Selection<'a>>> {
-        let mode = self.mode;
-        MethodLookup::new(self, mode).lookup_method_expr(recv, origin, name)
+        TypeEval::from_store(self)
+            .method_lookup()
+            .lookup_method_expr(recv, origin, name)
     }
 
     pub(super) fn lookup_method(
@@ -602,8 +629,7 @@ impl<'a> TypeArena<'a> {
         source: TypeId,
         required: &Method<'_>,
     ) -> Option<Option<TypeId>> {
-        let mode = self.mode;
-        let Some(candidate) = MethodLookup::new(self, mode).lookup_member(
+        let Some(candidate) = TypeEval::from_store(self).method_lookup().lookup_member(
             source,
             source,
             required.origin,
@@ -637,9 +663,9 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         name: &str,
     ) -> Option<Option<Selection<'a>>> {
-        let mode = self.mode;
-        let Some(candidate) =
-            MethodLookup::new(self, mode).lookup_member(recv, recv, origin, name, true)?
+        let Some(candidate) = TypeEval::from_store(self)
+            .method_lookup()
+            .lookup_member(recv, recv, origin, name, true)?
         else {
             return Some(None);
         };
@@ -652,9 +678,13 @@ impl<'a> TypeArena<'a> {
         origin: &Path,
         name: &str,
     ) -> Option<ObjectRef<'a>> {
-        self.with_projection(true, |arena| {
-            let receiver = arena.implementation_receiver(declaration)?;
-            Some(arena.implementation_selection(receiver, origin, name)??.obj)
+        TypeEval::from_store(self).with_projection(CheckMode::Symbolic, |eval| {
+            let receiver = eval.store_mut().implementation_receiver(declaration)?;
+            let selection = eval
+                .method_lookup()
+                .lookup_member(receiver, receiver, origin, name, true)??
+                .selection;
+            (selection.kind == SelectionKind::MethodVal).then_some(selection.obj)
         })
     }
 }

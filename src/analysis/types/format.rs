@@ -1,7 +1,7 @@
 //! Unified `go/types.TypeString` formatting controlled by `Qualifier`.
 
 use super::ty::{CheckMode, TypeOrigin};
-use super::{BasicKind, Direction, MAX_BYTES, MAX_DEPTH, Ty, TypeArena, TypeId, TypeStore};
+use super::{BasicKind, Direction, MAX_BYTES, MAX_DEPTH, Ty, TypeId, TypeStore};
 use crate::syntax::{Lexer, TokenKind};
 use std::path::Path;
 
@@ -491,7 +491,7 @@ impl<'s, 'a> TypeWriter<'s, 'a> {
     }
 }
 
-impl TypeArena<'_> {
+impl TypeStore<'_> {
     pub(crate) fn format_type(&self, id: TypeId, qualifier: Qualifier<'_>) -> Option<String> {
         TypeWriter::new(self, self.mode).format(id, qualifier)
     }

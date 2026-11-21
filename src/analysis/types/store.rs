@@ -14,7 +14,7 @@ use crate::analysis::engine::obj::DeclId;
 use crate::analysis::engine::resolve::FileEnvCache;
 use crate::workspace::{BuildView, Workspace};
 use std::collections::HashMap;
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 use std::path::Path;
 
 /// Request-scoped storage for package-level declaration types (never rewound).
@@ -32,27 +32,37 @@ impl<'a> DeclArena<'a> {
     }
 }
 
+#[inline]
+fn to_u32(len: usize) -> u32 {
+    debug_assert!(len <= u32::MAX as usize);
+    len as u32
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct LocalWatermark {
-    nodes: usize,
-    arguments: usize,
-    origins: usize,
-    structs: usize,
-    interfaces: usize,
-    signatures: usize,
-    type_params: usize,
-    constraint_terms: usize,
-    local_parameters: usize,
-    local_types: usize,
-    local_type_bytes: usize,
-    fields: usize,
-    field_bytes: usize,
-    methods: usize,
-    method_bytes: usize,
-    terms: usize,
-    signature_names: usize,
-    signature_name_bytes: usize,
+    nodes: u32,
+    arguments: u32,
+    origins: u32,
+    structs: u32,
+    interfaces: u32,
+    signatures: u32,
+    type_params: u32,
+    constraint_terms: u32,
+    local_parameters: u32,
+    local_types: u32,
+    local_type_bytes: u32,
+    fields: u32,
+    field_bytes: u32,
+    methods: u32,
+    method_bytes: u32,
+    terms: u32,
+    signature_names: u32,
+    signature_name_bytes: u32,
 }
+
+const _: () = assert!(std::mem::size_of::<TypeId>() == 4);
+const _: () = assert!(std::mem::size_of::<Ty>() <= 24);
+const _: () = assert!(std::mem::size_of::<LocalWatermark>() <= 72);
 
 /// Region-scoped storage for local types, parameters, and speculative probes.
 pub(super) struct LocalArena<'a> {
@@ -108,52 +118,163 @@ impl<'a> LocalArena<'a> {
 
     fn mark(&self) -> LocalWatermark {
         LocalWatermark {
-            nodes: self.pool.nodes.len(),
-            arguments: self.pool.arguments.len(),
-            origins: self.pool.origins.len(),
-            structs: self.pool.structs.len(),
-            interfaces: self.pool.interfaces.len(),
-            signatures: self.pool.signatures.len(),
-            type_params: self.pool.type_params.len(),
-            constraint_terms: self.constraint_terms,
-            local_parameters: self.local_parameters.len(),
-            local_types: self.local_types.len(),
-            local_type_bytes: self.local_type_bytes,
-            fields: self.pool.fields.len(),
-            field_bytes: self.pool.field_bytes,
-            methods: self.pool.methods.len(),
-            method_bytes: self.pool.method_bytes,
-            terms: self.pool.terms.len(),
-            signature_names: self.pool.signature_names.len(),
-            signature_name_bytes: self.pool.signature_name_bytes.len(),
+            nodes: to_u32(self.pool.nodes.len()),
+            arguments: to_u32(self.pool.arguments.len()),
+            origins: to_u32(self.pool.origins.len()),
+            structs: to_u32(self.pool.structs.len()),
+            interfaces: to_u32(self.pool.interfaces.len()),
+            signatures: to_u32(self.pool.signatures.len()),
+            type_params: to_u32(self.pool.type_params.len()),
+            constraint_terms: to_u32(self.constraint_terms),
+            local_parameters: to_u32(self.local_parameters.len()),
+            local_types: to_u32(self.local_types.len()),
+            local_type_bytes: to_u32(self.local_type_bytes),
+            fields: to_u32(self.pool.fields.len()),
+            field_bytes: to_u32(self.pool.field_bytes),
+            methods: to_u32(self.pool.methods.len()),
+            method_bytes: to_u32(self.pool.method_bytes),
+            terms: to_u32(self.pool.terms.len()),
+            signature_names: to_u32(self.pool.signature_names.len()),
+            signature_name_bytes: to_u32(self.pool.signature_name_bytes.len()),
         }
     }
 
     fn rewind(&mut self, mark: LocalWatermark) {
-        let removed_nodes = self.pool.nodes.len() > mark.nodes;
-        self.pool.nodes.truncate(mark.nodes);
-        self.pool.arguments.truncate(mark.arguments);
-        self.pool.origins.truncate(mark.origins);
-        self.pool.structs.truncate(mark.structs);
-        self.pool.interfaces.truncate(mark.interfaces);
-        self.pool.signatures.truncate(mark.signatures);
-        self.pool.type_params.truncate(mark.type_params);
-        self.constraint_terms = mark.constraint_terms;
-        self.local_parameters.truncate(mark.local_parameters);
-        self.local_types.truncate(mark.local_types);
-        self.local_type_bytes = mark.local_type_bytes;
-        self.pool.fields.truncate(mark.fields);
-        self.pool.field_bytes = mark.field_bytes;
-        self.pool.methods.truncate(mark.methods);
-        self.pool.method_bytes = mark.method_bytes;
-        self.pool.terms.truncate(mark.terms);
-        self.pool.signature_names.truncate(mark.signature_names);
+        let nodes = mark.nodes as usize;
+        let removed_nodes = self.pool.nodes.len() > nodes;
+        self.pool.nodes.truncate(nodes);
+        self.pool.arguments.truncate(mark.arguments as usize);
+        self.pool.origins.truncate(mark.origins as usize);
+        self.pool.structs.truncate(mark.structs as usize);
+        self.pool.interfaces.truncate(mark.interfaces as usize);
+        self.pool.signatures.truncate(mark.signatures as usize);
+        self.pool.type_params.truncate(mark.type_params as usize);
+        self.constraint_terms = mark.constraint_terms as usize;
+        self.local_parameters
+            .truncate(mark.local_parameters as usize);
+        self.local_types.truncate(mark.local_types as usize);
+        self.local_type_bytes = mark.local_type_bytes as usize;
+        self.pool.fields.truncate(mark.fields as usize);
+        self.pool.field_bytes = mark.field_bytes as usize;
+        self.pool.methods.truncate(mark.methods as usize);
+        self.pool.method_bytes = mark.method_bytes as usize;
+        self.pool.terms.truncate(mark.terms as usize);
+        self.pool
+            .signature_names
+            .truncate(mark.signature_names as usize);
         self.pool
             .signature_name_bytes
-            .truncate(mark.signature_name_bytes);
+            .truncate(mark.signature_name_bytes as usize);
         if removed_nodes {
-            self.pool.retain_above(mark.nodes);
+            self.pool.retain_above(nodes);
         }
+    }
+}
+
+/// RAII guard temporarily switching [`TypeStore::alloc_tier`] and restoring
+/// the previous tier unconditionally on drop (including early return or panic).
+pub(crate) struct AllocTierGuard<'s, 'a> {
+    store: &'s mut TypeStore<'a>,
+    saved_tier: AllocTier,
+}
+
+impl<'s, 'a> AllocTierGuard<'s, 'a> {
+    pub(crate) fn new(store: &'s mut TypeStore<'a>, tier: AllocTier) -> Self {
+        let saved_tier = store.alloc_tier;
+        store.alloc_tier = tier;
+        Self { store, saved_tier }
+    }
+}
+
+impl<'a> Deref for AllocTierGuard<'_, 'a> {
+    type Target = TypeStore<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.store
+    }
+}
+
+impl DerefMut for AllocTierGuard<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.store
+    }
+}
+
+impl Drop for AllocTierGuard<'_, '_> {
+    fn drop(&mut self) {
+        self.store.alloc_tier = self.saved_tier;
+    }
+}
+
+/// RAII guard for speculative local projections. Captures a [`LocalWatermark`]
+/// and ambient execution limits on entry, then unconditionally rewinds local
+/// allocations and restores `mode`, `steps`, `alloc_tier`, `node_limit`, and
+/// `byte_limit` on drop (even on early return or panic).
+pub(crate) struct ProjectionGuard<'s, 'a> {
+    store: &'s mut TypeStore<'a>,
+    mark: LocalWatermark,
+    saved_mode: CheckMode,
+    saved_steps: StepBudget,
+    saved_tier: AllocTier,
+    saved_nodes: usize,
+    saved_bytes: usize,
+}
+
+impl<'s, 'a> ProjectionGuard<'s, 'a> {
+    pub(crate) fn new(store: &'s mut TypeStore<'a>, mode: CheckMode) -> Self {
+        let mark = store.local.mark();
+        let saved_mode = store.mode;
+        let saved_steps = store.steps;
+        let saved_tier = store.alloc_tier;
+        let saved_nodes = store.local.pool.node_limit;
+        let saved_bytes = store.local.pool.byte_limit;
+        store.mode = mode;
+        store.alloc_tier = AllocTier::Local;
+        store.local.pool.node_limit =
+            saved_nodes.min((mark.nodes as usize).saturating_add(MAX_NODES));
+        store.local.pool.byte_limit = saved_bytes.min(
+            store
+                .local
+                .pool
+                .field_bytes
+                .max(store.local.pool.method_bytes)
+                .saturating_add(MAX_BYTES),
+        );
+        store.steps.reset();
+        Self {
+            store,
+            mark,
+            saved_mode,
+            saved_steps,
+            saved_tier,
+            saved_nodes,
+            saved_bytes,
+        }
+    }
+}
+
+impl<'a> Deref for ProjectionGuard<'_, 'a> {
+    type Target = TypeStore<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.store
+    }
+}
+
+impl DerefMut for ProjectionGuard<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.store
+    }
+}
+
+impl Drop for ProjectionGuard<'_, '_> {
+    fn drop(&mut self) {
+        self.store.local.rewind(self.mark);
+        self.store.mode = self.saved_mode;
+        self.store.steps = self.saved_steps;
+        self.store.alloc_tier = self.saved_tier;
+        self.store.local.pool.node_limit = self.saved_nodes;
+        self.store.local.pool.byte_limit = self.saved_bytes;
     }
 }
 
@@ -197,20 +318,29 @@ impl<'a> TypeStore<'a> {
         self.alloc_tier = AllocTier::Local;
     }
 
+    /// Reports whether `LocalArena` still has at least half its node and byte
+    /// budget available for a speculative projection without resetting the
+    /// active region.
+    #[allow(dead_code)]
+    pub(crate) fn local_headroom(&self) -> bool {
+        let pool = &self.local.pool;
+        pool.nodes.len().saturating_mul(2) <= pool.node_limit
+            && pool.arguments.len().saturating_mul(2) <= pool.node_limit
+            && pool.field_bytes.max(pool.method_bytes).saturating_mul(2) <= pool.byte_limit
+    }
+
     pub(crate) fn with_decl_alloc<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
-        let saved = self.alloc_tier;
-        self.alloc_tier = AllocTier::Decl;
-        let result = f(self);
-        self.alloc_tier = saved;
-        result
+        let mut guard = AllocTierGuard::new(self, AllocTier::Decl);
+        f(&mut guard)
     }
 
     pub(crate) fn with_local_alloc<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
-        let saved = self.alloc_tier;
-        self.alloc_tier = AllocTier::Local;
-        let result = f(self);
-        self.alloc_tier = saved;
-        result
+        let mut guard = AllocTierGuard::new(self, AllocTier::Local);
+        f(&mut guard)
+    }
+
+    pub(crate) fn projection_guard(&mut self, mode: CheckMode) -> ProjectionGuard<'_, 'a> {
+        ProjectionGuard::new(self, mode)
     }
 
     /// Speculative presentation/inference shares local storage. Callers return
@@ -220,35 +350,13 @@ impl<'a> TypeStore<'a> {
         symbolic: bool,
         project: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let mark = self.local.mark();
-        let saved_mode = self.mode;
-        let saved_steps = self.steps;
-        let saved_tier = self.alloc_tier;
-        let saved_nodes = self.local.pool.node_limit;
-        let saved_bytes = self.local.pool.byte_limit;
-        self.mode = if symbolic {
+        let mode = if symbolic {
             CheckMode::Symbolic
         } else {
             CheckMode::Concrete
         };
-        self.alloc_tier = AllocTier::Local;
-        self.local.pool.node_limit = saved_nodes.min(mark.nodes.saturating_add(MAX_NODES));
-        self.local.pool.byte_limit = saved_bytes.min(
-            self.local
-                .pool
-                .field_bytes
-                .max(self.local.pool.method_bytes)
-                .saturating_add(MAX_BYTES),
-        );
-        self.steps.reset();
-        let result = project(self);
-        self.local.rewind(mark);
-        self.mode = saved_mode;
-        self.steps = saved_steps;
-        self.alloc_tier = saved_tier;
-        self.local.pool.node_limit = saved_nodes;
-        self.local.pool.byte_limit = saved_bytes;
-        result
+        let mut guard = self.projection_guard(mode);
+        project(&mut guard)
     }
 
     pub(crate) fn resolver(&self) -> crate::analysis::engine::resolve::View<'a> {
