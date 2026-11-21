@@ -1,13 +1,12 @@
 //! Tiered type-node pool (`ArenaPool`) shared between `DeclArena` and `LocalArena`.
-use super::constraints::Constraint;
 use super::signature_names::SignatureNames;
 use super::ty::{
-    InterfaceData, OriginId, SignatureData, SliceRef, StructData, Term, TypeOrigin, TypeParamData,
-    TypeParamId,
+    InterfaceData, NamedCheckState, NamedOriginData, OriginId, SignatureData, SliceRef, StructData,
+    Term, TypeParamData, TypeParamId,
 };
 use super::{Direction, Field, Method, Ty, TypeId};
-use crate::analysis::engine::obj::DeclId;
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(super) enum InternArgs {
@@ -36,7 +35,7 @@ impl InternArgs {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub(super) enum InternKey<'a> {
+pub(super) enum InternKey {
     Pointer(TypeId),
     Slice(TypeId),
     Array {
@@ -52,11 +51,11 @@ pub(super) enum InternKey<'a> {
         element: TypeId,
     },
     Named {
-        declaration: DeclId<'a>,
+        origin: OriginId,
         arguments: InternArgs,
     },
     Alias {
-        declaration: DeclId<'a>,
+        origin: OriginId,
         arguments: InternArgs,
     },
     Tuple(InternArgs),
@@ -67,15 +66,16 @@ pub(super) struct ArenaPool<'a> {
     pub(super) epoch: u16,
     pub(super) node_limit: usize,
     pub(super) byte_limit: usize,
-    pub(super) interner: HashMap<InternKey<'a>, TypeId>,
+    pub(super) interner: HashMap<InternKey, TypeId>,
     pub(super) nodes: Vec<Ty>,
     pub(super) arguments: Vec<TypeId>,
-    pub(super) origins: Vec<TypeOrigin<'a>>,
+    pub(super) origins: Vec<NamedOriginData<'a>>,
     pub(super) structs: Vec<StructData<'a>>,
     pub(super) interfaces: Vec<InterfaceData<'a>>,
     pub(super) signatures: Vec<SignatureData>,
-    pub(super) type_params: Vec<TypeParamData>,
-    pub(super) parameter_constraints: HashMap<TypeId, Constraint>,
+    pub(super) type_params: Vec<TypeParamData<'a>>,
+    pub(super) param_names: String,
+    pub(super) formal_params: HashMap<(&'a Path, u32), TypeId>,
     pub(super) fields: Vec<Field>,
     pub(super) field_bytes: usize,
     pub(super) methods: Vec<Method<'a>>,
@@ -85,7 +85,7 @@ pub(super) struct ArenaPool<'a> {
     pub(super) signature_names: Vec<SignatureNames>,
     pub(super) signature_name_bytes: String,
     pub(super) expansions: HashMap<TypeId, TypeId>,
-    pub(super) named_checks: HashMap<TypeId, bool>,
+    pub(super) named_checks: HashMap<TypeId, NamedCheckState>,
 }
 
 impl<'a> ArenaPool<'a> {
@@ -103,7 +103,8 @@ impl<'a> ArenaPool<'a> {
             interfaces: Vec::new(),
             signatures: Vec::new(),
             type_params: Vec::new(),
-            parameter_constraints: HashMap::new(),
+            param_names: String::new(),
+            formal_params: HashMap::new(),
             fields: Vec::new(),
             field_bytes: 0,
             methods: Vec::new(),
@@ -123,6 +124,15 @@ impl<'a> ArenaPool<'a> {
             TypeId::local(self.epoch, index)
         } else {
             TypeId::decl(index)
+        })
+    }
+
+    fn make_origin_id(&self, index: usize) -> Option<OriginId> {
+        let index = u32::try_from(index).ok()?;
+        Some(if self.is_local {
+            OriginId::local(index)
+        } else {
+            OriginId::decl(index)
         })
     }
 
@@ -172,30 +182,38 @@ impl<'a> ArenaPool<'a> {
         self.push_raw(ty)
     }
 
-    pub(super) fn push_named(
+    pub(super) fn push_origin_data(&mut self, data: NamedOriginData<'a>) -> Option<OriginId> {
+        if self.origins.len() >= self.node_limit {
+            return None;
+        }
+        let idx = self.origins.len();
+        let origin_id = self.make_origin_id(idx)?;
+        self.origins.push(data);
+        Some(origin_id)
+    }
+
+    pub(super) fn push_named_instance(
         &mut self,
-        declaration: DeclId<'a>,
+        origin: OriginId,
         arguments: &[TypeId],
         alias: bool,
     ) -> Option<TypeId> {
         let intern_args = InternArgs::from_slice(arguments);
         let key = if alias {
             InternKey::Alias {
-                declaration,
+                origin,
                 arguments: intern_args,
             }
         } else {
             InternKey::Named {
-                declaration,
+                origin,
                 arguments: intern_args,
             }
         };
         if let Some(&id) = self.interner.get(&key) {
             return Some(id);
         }
-        if self.arguments.len() + arguments.len() > self.node_limit
-            || self.origins.len() >= self.node_limit
-        {
+        if self.arguments.len() + arguments.len() > self.node_limit {
             return None;
         }
         let start = self.arguments.len();
@@ -204,13 +222,6 @@ impl<'a> ArenaPool<'a> {
             self.arguments.truncate(start);
             return None;
         };
-        let origin_idx = self.origins.len();
-        let Ok(origin_u32) = u32::try_from(origin_idx) else {
-            self.arguments.truncate(start);
-            return None;
-        };
-        self.origins.push(TypeOrigin::Package(declaration));
-        let origin = OriginId(origin_u32);
         let ty = if alias {
             Ty::Alias {
                 origin,
@@ -223,7 +234,6 @@ impl<'a> ArenaPool<'a> {
             }
         };
         let Some(id) = self.push_raw(ty) else {
-            self.origins.truncate(origin_idx);
             self.arguments.truncate(start);
             return None;
         };
@@ -231,17 +241,17 @@ impl<'a> ArenaPool<'a> {
         Some(id)
     }
 
-    pub(super) fn push_origin_raw(
+    pub(super) fn push_origin_node(
         &mut self,
-        origin: TypeOrigin<'a>,
+        data: NamedOriginData<'a>,
         alias: bool,
-    ) -> Option<TypeId> {
+    ) -> Option<(OriginId, TypeId)> {
         if self.origins.len() >= self.node_limit {
             return None;
         }
         let idx = self.origins.len();
-        let origin_id = OriginId(u32::try_from(idx).ok()?);
-        self.origins.push(origin);
+        let origin_id = self.make_origin_id(idx)?;
+        self.origins.push(data);
         let arguments = SliceRef::default();
         let ty = if alias {
             Ty::Alias {
@@ -258,18 +268,40 @@ impl<'a> ArenaPool<'a> {
             self.origins.truncate(idx);
             return None;
         };
-        Some(id)
+        Some((origin_id, id))
     }
 
-    pub(super) fn push_type_param_raw(&mut self, index: usize) -> Option<TypeId> {
-        if self.type_params.len() >= self.node_limit {
+    pub(super) fn push_type_param_data(
+        &mut self,
+        origin: Option<&'a Path>,
+        selection: u32,
+        index: u16,
+        name: &str,
+        ready: bool,
+        synthetic: bool,
+    ) -> Option<TypeId> {
+        if self.type_params.len() >= self.node_limit
+            || self.param_names.len().checked_add(name.len())? > self.byte_limit
+        {
             return None;
         }
+        let name_start = u32::try_from(self.param_names.len()).ok()?;
+        let data = TypeParamData::new(
+            origin,
+            selection,
+            index,
+            name_start,
+            name.len(),
+            ready,
+            synthetic,
+        )?;
         let idx = self.type_params.len();
         let param_id = TypeParamId(u32::try_from(idx).ok()?);
-        self.type_params.push(TypeParamData { index });
+        self.param_names.push_str(name);
+        self.type_params.push(data);
         let Some(id) = self.push_raw(Ty::TypeParam(param_id)) else {
             self.type_params.truncate(idx);
+            self.param_names.truncate(name_start as usize);
             return None;
         };
         Some(id)
@@ -301,9 +333,8 @@ impl<'a> ArenaPool<'a> {
         });
         self.named_checks
             .retain(|k, _| !k.is_local() || k.index() < node_limit);
-        self.parameter_constraints
-            .retain(|k, _| !k.is_local() || k.index() < node_limit);
         self.interface_sets
             .retain(|k, _| !k.is_local() || k.index() < node_limit);
+        self.formal_params.retain(|_, id| id.index() < node_limit);
     }
 }

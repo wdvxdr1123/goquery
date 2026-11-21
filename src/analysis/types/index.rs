@@ -110,8 +110,8 @@ impl TypeArena<'_> {
             return self.index_term(input, root);
         }
         let set = self.parameter_set(root).ok_or(Unknown)?;
-        let terms = set.terms.ok_or(Unknown)?;
-        let mut terms = terms.into_iter();
+        let terms = set.terms.as_slice().ok_or(Unknown)?;
+        let mut terms = terms.iter().copied();
         let ty = terms.next().ok_or(Unknown)?.ty;
         let root = self.underlying(ty).ok_or(Unknown)?;
         let mut projection = self.index_term(Operand { ty, ..input }, root)?;
@@ -278,10 +278,11 @@ impl TypeArena<'_> {
         if !matches!(self.node(root)?, Ty::TypeParam(_)) {
             return Some(root);
         }
-        let terms = self.parameter_set(root)?.terms?;
+        let set = self.parameter_set(root)?;
+        let terms = set.terms.as_slice()?;
         let mut common = None;
         let mut has_string = false;
-        for term in terms {
+        for &term in terms {
             self.step()?;
             let mut ty = self.underlying(term.ty)?;
             if matches!(self.node(ty)?, Ty::Basic(kind) if kind.string()) {

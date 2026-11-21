@@ -625,6 +625,7 @@ impl<'u, 'a> Unifier<'u, 'a> {
                         embeddeds,
                         data.has_type_elements,
                         data.comparable,
+                        data.implicit,
                     )
                     .ok();
             }

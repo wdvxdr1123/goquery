@@ -2,11 +2,11 @@
 
 use std::ops::Range;
 
-use crate::analysis::engine::check::RegionChecker;
 use crate::analysis::engine::check::region::RecordMask;
+use crate::analysis::engine::check::{RegionChecker, collect_visible_type_env};
 use crate::analysis::engine::obj::{MemberDeclId, MethodOrigin, ObjectRef};
 use crate::analysis::engine::scope::tree::LocalBindingKind;
-use crate::analysis::engine::types::{LocalTypeDefinition, Mode, Operand, TypeId};
+use crate::analysis::engine::types::{Mode, Operand, TypeId};
 use crate::syntax::{self, BlockTree, ExprId, ExprKind, Signature, StmtId};
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
@@ -149,27 +149,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         abs_offset: usize,
         parsed: &syntax::TypeSyntax,
     ) -> Option<TypeId> {
-        let (visible_defs, extra_env) = self.visible_type_env(abs_offset);
-        let defs: Vec<LocalTypeDefinition<'_>> = visible_defs
-            .iter()
-            .map(|entry| LocalTypeDefinition {
-                name: entry.name.as_str(),
-                selection: self.file_offset(entry.selection.start)
-                    ..self.file_offset(entry.selection.end),
-                annotation: entry.annotation.as_str(),
-                annotation_start: self.file_offset(entry.annotation_start),
-                alias: entry.alias,
-            })
-            .collect();
-        let env_pairs: Vec<(&str, TypeId)> =
-            extra_env.iter().map(|(n, ty)| (n.as_str(), *ty)).collect();
-
-        let ty = self.arena.declared_scope_type_in_parsed(
+        let env_pairs = collect_visible_type_env(self.region, &self.env, self.source, abs_offset);
+        let ty = self.arena.lower_type_syntax_in(
             self.file,
             text,
             parsed,
             Some(self.file_offset(abs_offset)),
-            &defs,
             &env_pairs,
         )?;
         self.arena.validate_type(ty).map(|()| ty)

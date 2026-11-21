@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 use std::ops::Range;
 
 use crate::analysis::engine::check::diagnostics::Code;
-use crate::analysis::engine::check::{LocalTypeDefEntry, RegionChecker};
+use crate::analysis::engine::check::{RegionChecker, collect_visible_type_env};
 use crate::analysis::engine::obj::{DeclId, ObjectRef, SymbolOrigin, VarKind};
-use crate::analysis::engine::types::{LocalFormal, LocalTypeDefinition, Mode, Operand, TypeId};
+use crate::analysis::engine::types::{LocalFormal, Mode, Operand, TypeId};
 use crate::syntax::{self, ExprId, ExprKind, StmtId, StmtKind};
 
 pub(super) struct ConstGroupState {
@@ -97,40 +97,44 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             let lead = raw_ann.len() - raw_ann.trim_start().len();
             let abs_ann_start = self.body_base + ann_r.start + lead;
             if !ann_text.is_empty() && is_generic_local {
-                self.env.declaring_type = local_id;
+                self.env.declaring_type = local_id.map(|lid| (lid, None));
                 let _ = self.validate_local_type_rhs(ann_text, abs_ann_start);
                 self.env.declaring_type = None;
             } else if !ann_text.is_empty() {
+                let file_sel =
+                    self.file_offset(abs_name_range.start)..self.file_offset(abs_name_range.end);
+                let file_ann = self.file_offset(abs_ann_start)
+                    ..self.file_offset(abs_ann_start + ann_text.len());
+                let local_ty = self
+                    .arena
+                    .register_local_type(self.file, name, file_sel, ann_text, file_ann, is_alias);
                 if let Some(lid) = local_id {
-                    self.env.local_type_defs.push(LocalTypeDefEntry {
-                        local_id: lid,
-                        name: name.to_string(),
-                        selection: abs_name_range,
-                        annotation: ann_text.to_string(),
-                        annotation_start: abs_ann_start,
-                        alias: is_alias,
-                    });
-                    self.env.declaring_type = Some(lid);
+                    self.env.declaring_type = Some((lid, local_ty));
                 }
-                if self.validate_local_type_rhs(ann_text, abs_ann_start) {
-                    let (visible_defs, extra_env) = self.visible_type_env(abs_ann_start);
-                    let defs: Vec<LocalTypeDefinition<'_>> = visible_defs
-                        .iter()
-                        .map(|e| LocalTypeDefinition {
-                            name: e.name.as_str(),
-                            selection: self.file_offset(e.selection.start)
-                                ..self.file_offset(e.selection.end),
-                            annotation: e.annotation.as_str(),
-                            annotation_start: self.file_offset(e.annotation_start),
-                            alias: e.alias,
-                        })
-                        .collect();
-                    let env_pairs: Vec<(&str, TypeId)> =
-                        extra_env.iter().map(|(n, t)| (n.as_str(), *t)).collect();
-                    resolved_ty = self
-                        .arena
-                        .declared_scope_type_in(self.file, name, None, &defs, &env_pairs)
-                        .filter(|&ty| self.arena.validate_type(ty).is_some());
+                let refs_ok = self.validate_local_type_rhs(ann_text, abs_ann_start);
+                if let Some(ty) = local_ty {
+                    if refs_ok {
+                        let env_pairs = collect_visible_type_env(
+                            self.region,
+                            &self.env,
+                            self.source,
+                            abs_ann_start,
+                        );
+                        let rhs = self.arena.parse_in_at(
+                            self.file,
+                            ann_text,
+                            self.file_offset(abs_ann_start),
+                            &env_pairs,
+                        );
+                        self.arena.set_local_type_rhs(ty, rhs);
+                        if rhs.is_some() && self.arena.validate_type(ty).is_some() {
+                            resolved_ty = Some(ty);
+                        } else {
+                            self.arena.set_local_type_rhs(ty, None);
+                        }
+                    } else {
+                        self.arena.set_local_type_rhs(ty, None);
+                    }
                 }
                 self.env.declaring_type = None;
             }

@@ -100,16 +100,13 @@ impl<'a> TypeArena<'a> {
         }
         let mut arguments = Vec::new();
         if declaration.symbol.generic {
-            let source = self.type_parameter_source(declaration)?;
-            let (header, signature) = super::named::parse_type_parameters_of(&source, true)?;
-            if !signature.diagnostics.is_empty() {
+            let origin_id =
+                self.get_or_insert_package_origin(declaration, declaration.symbol.alias)?;
+            let count = self.ensure_origin_tparams(origin_id, false)?.len();
+            if count == 0 || count > self.active_node_limit() {
                 return None;
             }
-            let names = super::constraints::parameter_names(header, &signature)?;
-            if names.is_empty() || names.len() > 32 {
-                return None;
-            }
-            for index in 0..names.len() {
+            for index in 0..count {
                 // Schema variables need no display name or constraint table.
                 // Their TypeIds are fresh even when two owners share an ordinal.
                 arguments.push(self.push_type_param(index)?);

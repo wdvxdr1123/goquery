@@ -65,15 +65,12 @@ impl TypeArena<'_> {
         self.step().ok_or(Unknown)?;
         let root = self.underlying(input.ty).ok_or(Unknown)?;
         if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
-            let terms = self
-                .parameter_set(root)
-                .ok_or(Unknown)?
-                .terms
-                .ok_or(Unknown)?;
+            let set = self.parameter_set(root).ok_or(Unknown)?;
+            let terms = set.terms.as_slice().ok_or(Unknown)?;
             if terms.is_empty() {
                 return Err(Unknown);
             }
-            for term in terms {
+            for &term in terms {
                 self.step().ok_or(Unknown)?;
                 self.length_type(term.ty, capacity)?;
             }
@@ -370,8 +367,9 @@ impl TypeArena<'_> {
         let root = self.underlying(source.ty)?;
         let terms = if matches!(self.node(root)?, Ty::TypeParam(_)) {
             self.parameter_set(root)?
-                .terms?
-                .into_iter()
+                .terms
+                .as_slice()?
+                .iter()
                 .map(|term| term.ty)
                 .collect()
         } else {
@@ -406,15 +404,12 @@ impl TypeArena<'_> {
         let root = self.underlying(input).ok_or(Unknown)?;
         let mut key = None;
         if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
-            let terms = self
-                .parameter_set(root)
-                .ok_or(Unknown)?
-                .terms
-                .ok_or(Unknown)?;
+            let set = self.parameter_set(root).ok_or(Unknown)?;
+            let terms = set.terms.as_slice().ok_or(Unknown)?;
             if terms.is_empty() {
                 return Err(Unknown);
             }
-            for term in terms {
+            for &term in terms {
                 self.step().ok_or(Unknown)?;
                 let root = self.underlying(term.ty).ok_or(Unknown)?;
                 self.procedure_term(function, root, &mut key)?;

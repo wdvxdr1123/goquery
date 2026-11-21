@@ -92,7 +92,7 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
         right: TypeId,
         tags: Tags,
     ) -> Option<TypePairs> {
-        if let (Some((la, lb, _, _)), Some((ra, rb, _, _))) = (
+        if let (Some((_, la, lb, _)), Some((_, ra, rb, _))) = (
             self.store().local_decl_info(left),
             self.store().local_decl_info(right),
         ) {
@@ -106,8 +106,8 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
                 return None;
             });
         }
-        if self.store().local_decl_info(left).is_some()
-            || self.store().local_decl_info(right).is_some()
+        if self.store().local_origin_id(left).is_some()
+            || self.store().local_origin_id(right).is_some()
         {
             return if self.store().is_known_non_opaque(left)
                 && self.store().is_known_non_opaque(right)
@@ -691,7 +691,7 @@ impl TypeStore<'_> {
         Some(match *self.node(input)? {
             Ty::Invalid | Ty::Union(_) => return None,
             Ty::TypeParam(_) => {
-                let (origin, selection, _) = self.local_parameter(input)?;
+                let (origin, selection, _) = self.type_param_info(input)?;
                 json!(["parameter", origin, selection])
             }
             Ty::Interface(_) => {
@@ -806,11 +806,7 @@ impl TypeStore<'_> {
 
     #[cfg(test)]
     fn local_declaration_identity(&mut self, input: TypeId) -> Option<serde_json::Value> {
-        let (origin, selection, formal, _) = self.local_decl_info(input)?;
-        if formal {
-            return None;
-        }
-        self.local_type_index(origin, &selection)?;
+        let (_, origin, selection, _) = self.local_decl_info(input)?;
         Some(serde_json::json!(["local", origin, selection.start, []]))
     }
 }

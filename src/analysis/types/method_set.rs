@@ -1,5 +1,4 @@
 //! Accessible member-set and implementation method-set enumeration (`methodset.go`).
-use super::constraints::Constraint;
 use super::lookup::{Step, collect_indices, has_owner_cycle};
 use super::ty::CheckMode;
 use super::{MAX_DEPTH, MethodLookup, Selection, SelectionKind, Ty, TypeArena, TypeId};
@@ -224,14 +223,9 @@ impl<'a> TypeArena<'a> {
                     if pointer {
                         continue;
                     }
-                    let iface = match self.parameter_constraint(input).cloned() {
-                        Some(Constraint::Exact(bound)) if self.interface_constructor(bound)? => {
-                            Some(bound)
-                        }
-                        Some(Constraint::Set(set)) => set.methods,
-                        _ => None,
-                    };
-                    if let Some(iface) = iface {
+                    if let Some(set) = self.parameter_set(input)
+                        && let Some(iface) = set.methods
+                    {
                         self.collect_interface_members(
                             iface,
                             None,

@@ -86,4 +86,6 @@ pub(crate) use generics::completion_inferable;
 pub(crate) use lower::{declaration_body, unparenthesized_type};
 pub(crate) use signature_names::CallableNames;
 
-pub(crate) use declaration::{LocalTypeDefinition, TypeDeclaration};
+#[allow(unused_imports)]
+pub(crate) use declaration::LocalTypeDefinition;
+pub(crate) use declaration::TypeDeclaration;

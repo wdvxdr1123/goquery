@@ -43,7 +43,7 @@ impl<'s, 'a> TypeWriter<'s, 'a> {
         match *self.store.node(id)? {
             Ty::Invalid => return None,
             Ty::TypeParam(_) => {
-                let (origin, _, name) = self.store.local_parameter(id)?;
+                let (origin, _, name) = self.store.type_param_info(id)?;
                 if !self.mode.is_symbolic()
                     && matches!(qualifier, Qualifier::RelativeTo(file) | Qualifier::Presentation(file) if file != origin)
                 {
@@ -144,28 +144,27 @@ impl<'s, 'a> TypeWriter<'s, 'a> {
             },
             Ty::Basic(kind) => out.push_str(kind.name()),
             Ty::Named { origin, arguments } | Ty::Alias { origin, arguments } => {
-                match self.store.origin_data(id, origin)? {
+                match self.store.origin_data(origin)?.origin {
                     TypeOrigin::BuiltinError { .. } => out.push_str("error"),
                     TypeOrigin::Local {
-                        origin,
+                        origin: file_path,
                         start,
                         end,
-                        formal,
                     } => {
-                        let selection = *start as usize..*end as usize;
+                        let selection = start as usize..end as usize;
                         match qualifier {
                             Qualifier::RelativeTo(file) | Qualifier::Presentation(file)
-                                if file == *origin && !*formal =>
+                                if file == file_path =>
                             {
-                                out.push_str(&self.store.local_type_name(origin, &selection)?);
+                                out.push_str(
+                                    &self.store.local_type_name(origin, file_path, &selection)?,
+                                );
                             }
                             Qualifier::FullPath => {
-                                if !*formal {
-                                    out.push_str(&self.store.workspace.import_path(origin)?);
-                                    out.push('.');
-                                }
+                                out.push_str(&self.store.workspace.import_path(file_path)?);
+                                out.push('.');
                                 out.push_str(
-                                    &self.store.workspace.source_slice(origin, selection)?,
+                                    &self.store.local_type_name(origin, file_path, &selection)?,
                                 );
                             }
                             _ => return None,
@@ -386,6 +385,10 @@ impl<'s, 'a> TypeWriter<'s, 'a> {
             out.push_str("any");
             return Some(());
         }
+        let embeddeds = self.store.arguments_slice(id, data.embeddeds);
+        if data.implicit && data.methods.is_empty() && !data.comparable && embeddeds.len() == 1 {
+            return self.write_type_in(embeddeds[0], qualifier, out, depth + 1);
+        }
         out.push_str("interface{");
         let mut first = true;
         for method in self.store.methods_slice(id, data.methods.clone()) {
@@ -407,7 +410,6 @@ impl<'s, 'a> TypeWriter<'s, 'a> {
                 return None;
             }
         }
-        let embeddeds = self.store.arguments_slice(id, data.embeddeds);
         if data.comparable && embeddeds.is_empty() {
             if !first {
                 out.push_str("; ");

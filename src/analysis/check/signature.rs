@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
-use crate::analysis::engine::check::RegionChecker;
+use crate::analysis::engine::check::{RegionChecker, collect_visible_type_env};
 use crate::analysis::engine::obj::{LocalId, ObjectRef, VarKind};
-use crate::analysis::engine::types::{LocalFormal, LocalTypeDefinition, Mode, Operand, TypeId};
+use crate::analysis::engine::types::{LocalFormal, Mode, Operand, TypeId};
 use crate::syntax::{self, Signature};
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
@@ -343,20 +343,13 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             })
             .collect();
 
-        let (visible_defs, extra_env) = self.visible_type_env(sig_base);
-        let defs: Vec<LocalTypeDefinition<'_>> = visible_defs
-            .iter()
-            .map(|entry| LocalTypeDefinition {
-                name: entry.name.as_str(),
-                selection: self.file_offset(entry.selection.start)
-                    ..self.file_offset(entry.selection.end),
-                annotation: entry.annotation.as_str(),
-                annotation_start: self.file_offset(entry.annotation_start),
-                alias: entry.alias,
-            })
+        let env_pairs = collect_visible_type_env(self.region, &self.env, self.source, sig_base);
+        let env_owned: Vec<(String, TypeId)> = env_pairs
+            .into_iter()
+            .map(|(n, ty)| (n.to_string(), ty))
             .collect();
-        let env_pairs: Vec<(&str, TypeId)> =
-            extra_env.iter().map(|(n, ty)| (n.as_str(), *ty)).collect();
+        let env_refs: Vec<(&str, TypeId)> =
+            env_owned.iter().map(|(n, ty)| (n.as_str(), *ty)).collect();
 
         let mut pending_active: Vec<LocalId> = Vec::new();
         for (param, refs_ok) in sig.parameters.iter().zip(param_valid) {
@@ -366,23 +359,21 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } else if param.variadic {
                 let elem_text = ann.trim_start_matches("...").trim();
                 self.arena
-                    .declared_scope_type_in(
+                    .parse_in_at(
                         self.file,
                         elem_text,
-                        Some(self.file_offset(sig_base + param.annotation.end - elem_text.len())),
-                        &defs,
-                        &env_pairs,
+                        self.file_offset(sig_base + param.annotation.end - elem_text.len()),
+                        &env_refs,
                     )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
                     .and_then(|elem| self.arena.slice_type(elem))
             } else {
                 self.arena
-                    .declared_scope_type_in(
+                    .parse_in_at(
                         self.file,
                         ann,
-                        Some(self.file_offset(sig_base + param.annotation.start)),
-                        &defs,
-                        &env_pairs,
+                        self.file_offset(sig_base + param.annotation.start),
+                        &env_refs,
                     )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };
@@ -409,12 +400,11 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 None
             } else {
                 self.arena
-                    .declared_scope_type_in(
+                    .parse_in_at(
                         self.file,
                         ann,
-                        Some(self.file_offset(sig_base + res.annotation.start)),
-                        &defs,
-                        &env_pairs,
+                        self.file_offset(sig_base + res.annotation.start),
+                        &env_refs,
                     )
                     .filter(|&ty| self.arena.validate_type(ty).is_some())
             };

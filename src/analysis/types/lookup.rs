@@ -1,5 +1,4 @@
 //! Bounded field/method lookup sharing visibility, promotion and ambiguity checks.
-use super::constraints::Constraint;
 use super::eval::TypeEval;
 use super::ty::CheckMode;
 use super::{MAX_DEPTH, Method, PromotionIndices, Selection, SelectionKind, Ty, TypeId, TypeStore};
@@ -285,7 +284,6 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                     if pointer {
                         continue;
                     }
-                    let constraint = self.store().parameter_constraint(input).cloned();
                     let lookup = InterfaceLookup {
                         recv: original_recv,
                         indirect,
@@ -294,26 +292,16 @@ impl<'s, 'a> MethodLookup<'s, 'a> {
                         origin,
                         name,
                     };
-                    match constraint {
-                        Some(Constraint::Exact(bound))
-                            if self.store_mut().interface_constructor(bound)? =>
-                        {
-                            self.lookup_interface_methods(
-                                bound, None, &lookup, &mut count, &mut found,
-                            )?;
-                        }
-                        Some(Constraint::Set(set)) => {
-                            if let Some(methods_iface) = set.methods {
-                                self.lookup_interface_methods(
-                                    methods_iface,
-                                    None,
-                                    &lookup,
-                                    &mut count,
-                                    &mut found,
-                                )?;
-                            }
-                        }
-                        _ => {}
+                    if let Some(set) = self.store_mut().parameter_set(input)
+                        && let Some(methods_iface) = set.methods
+                    {
+                        self.lookup_interface_methods(
+                            methods_iface,
+                            None,
+                            &lookup,
+                            &mut count,
+                            &mut found,
+                        )?;
                     }
                     continue;
                 }

@@ -537,4 +537,304 @@ mod tests {
         );
         assert_eq!(store.mode, CheckMode::Concrete);
     }
+
+    #[test]
+    fn named_origin_loads_once_and_instantiates_without_rereading_disk() {
+        use crate::analysis::engine::obj::DeclId;
+        use crate::analysis::engine::types::ty::NamedState;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("goquery_named_origin_{stamp}"));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let file = dir.join("box.go");
+        let source = "package p\ntype Box[T comparable] struct { V T }\n";
+        std::fs::write(&file, source).expect("write temp go file");
+
+        let mut workspace = Workspace::default();
+        workspace
+            .files
+            .insert(file.clone(), crate::index::index_source(source));
+        let (interned_file, stub) = workspace.files.get_key_value(&file).expect("indexed file");
+        let box_sym = stub
+            .symbols
+            .iter()
+            .find(|s| s.name == "Box")
+            .expect("Box symbol");
+        let box_decl = DeclId {
+            file: interned_file.as_path(),
+            symbol: box_sym,
+        };
+
+        let mut store = test_store(&workspace);
+        let int_ty = TypeId::basic(BasicKind::Int);
+        let str_ty = TypeId::basic(BasicKind::String);
+        let bool_ty = TypeId::basic(BasicKind::Bool);
+
+        let box_int = store
+            .with_decl_alloc(|s| s.push_named(box_decl, &[int_ty], false))
+            .expect("Box[int]");
+        let box_str = store
+            .with_decl_alloc(|s| s.push_named(box_decl, &[str_ty], false))
+            .expect("Box[string]");
+        let box_bool = store
+            .with_decl_alloc(|s| s.push_named(box_decl, &[bool_ty], false))
+            .expect("Box[bool]");
+
+        // All three instantiations share ONE NamedOriginData in DeclArena.
+        assert_eq!(store.decl.pool.origins.len(), 1);
+        assert_eq!(store.decl.pool.origins[0].state, NamedState::Unloaded);
+
+        // First expansion loads Box's origin template (tparams + bounds + rhs) from disk.
+        let sel_int = MethodLookup::new(&mut store, CheckMode::Concrete)
+            .lookup_field_or_method(box_int, false, interned_file, "V")
+            .expect("lookup outcome")
+            .expect("field V on Box[int]");
+        assert_eq!(sel_int.ty, int_ty);
+        assert_eq!(store.decl.pool.origins.len(), 1);
+        assert_eq!(store.decl.pool.origins[0].state, NamedState::Loaded);
+        assert!(store.decl.pool.origins[0].tparams_loaded());
+        assert!(store.decl.pool.origins[0].bounds_loaded());
+
+        // Delete the closed file from disk to prove zero additional disk reads or re-parsing.
+        std::fs::remove_file(&file).expect("remove temp go file");
+        let _ = std::fs::remove_dir(&dir);
+
+        let sel_str = MethodLookup::new(&mut store, CheckMode::Concrete)
+            .lookup_field_or_method(box_str, false, interned_file, "V")
+            .expect("lookup outcome without disk")
+            .expect("field V on Box[string]");
+        assert_eq!(sel_str.ty, str_ty);
+
+        let sel_bool = MethodLookup::new(&mut store, CheckMode::Concrete)
+            .lookup_field_or_method(box_bool, false, interned_file, "V")
+            .expect("lookup outcome without disk")
+            .expect("field V on Box[bool]");
+        assert_eq!(sel_bool.ty, bool_ty);
+
+        // Invalid argument still fails purely from the cached DeclArena bound (zero disk I/O).
+        let slice_int = store.slice_type(int_ty).expect("[]int");
+        let box_slice = store
+            .push_named(box_decl, &[slice_int], false)
+            .expect("Box[[]int]");
+        assert!(box_slice.is_local());
+        assert!(store.check_named_arguments(box_slice).is_none());
+        assert_eq!(store.decl.pool.origins.len(), 1);
+    }
+
+    #[test]
+    fn first_class_type_params_exceed_32_and_store_bounds_directly() {
+        let mut workspace = Workspace::default();
+        let file = std::path::PathBuf::from("params.go");
+        workspace
+            .files
+            .insert(file.clone(), crate::index::index_source("package p\n"));
+        let mut store = test_store(&workspace);
+
+        // Exceed the retired 32-parameter hard cap cleanly.
+        let mut ids = Vec::new();
+        for i in 0..40 {
+            let name = format!("T{i}");
+            let tp = store
+                .push_symbolic_parameter(&file, &name)
+                .expect("push type param past 32");
+            assert_eq!(store.type_param_index(tp), Some(i));
+            assert_eq!(
+                TypeWriter::new(&store, CheckMode::Concrete)
+                    .format(tp, Qualifier::RelativeTo(&file)),
+                Some(name)
+            );
+            ids.push(tp);
+        }
+        assert_eq!(ids.len(), 40);
+
+        // Parse and attach a unified interface constraint directly onto TypeParamData.bound.
+        let bound = store
+            .constraint(&file, "~int | ~string", &[])
+            .expect("constraint interface");
+        assert!(store.interface_data(bound).is_some_and(|d| d.implicit));
+        assert!(store.set_type_param_bound(ids[0], bound));
+        assert_eq!(store.type_param_bound(ids[0]), Some(bound));
+        assert_eq!(store.comparable(ids[0], 0), Some(true));
+        assert!(
+            store
+                .prove_constraint(bound, TypeId::basic(BasicKind::Int), 0)
+                .is_some()
+        );
+        assert!(
+            store
+                .prove_constraint(bound, TypeId::basic(BasicKind::Float64), 0)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn unified_interface_typeset_enforces_go_constraint_semantics() {
+        use crate::analysis::engine::types::CheckOutcome;
+        use crate::workspace::WorkspaceEvent;
+
+        let mut workspace = Workspace::default();
+        let file = std::path::PathBuf::from("constraints.go");
+        let source = concat!(
+            "package p\n",
+            "type MyInt int\n",
+            "type A interface { int }\n",
+            "type B interface { ~int }\n",
+            "type HasMethod interface { M() }\n",
+            "type Comp interface { comparable }\n",
+            "type CompSliceOrInt interface { comparable; []int | int }\n",
+            "type Empty interface { int; string }\n",
+        );
+        workspace
+            .apply(WorkspaceEvent::SetBuffer {
+                file: file.clone(),
+                source: source.to_owned(),
+                dirty: false,
+            })
+            .expect("open buffer");
+        let mut store = test_store(&workspace);
+
+        // Overlapping non-interface terms `MyInt | ~int` and `int | int` are rejected.
+        let overlap1 = store
+            .constraint(&file, "MyInt | ~int", &[])
+            .expect("parsed union");
+        assert!(matches!(
+            store.constraint_type_set_checked(overlap1, 0),
+            CheckOutcome::Invalid(())
+        ));
+        let overlap2 = store
+            .constraint(&file, "int | int", &[])
+            .expect("parsed union");
+        assert!(matches!(
+            store.constraint_type_set_checked(overlap2, 0),
+            CheckOutcome::Invalid(())
+        ));
+
+        // Overlapping interface terms `A | B` are allowed in Go unions.
+        let iface_union = store
+            .constraint(&file, "A | B", &[])
+            .expect("interface union");
+        let set = store
+            .constraint_type_set(iface_union, 0)
+            .expect("valid interface union type set");
+        assert_eq!(set.terms.as_slice().map(<[_]>::len), Some(1));
+
+        // Methods and `comparable` inside unions are rejected.
+        let bad_method_union = store
+            .constraint(&file, "HasMethod | int", &[])
+            .expect("parsed union");
+        assert!(matches!(
+            store.constraint_type_set_checked(bad_method_union, 0),
+            CheckOutcome::Invalid(())
+        ));
+        let bad_comp_union = store
+            .constraint(&file, "Comp | int", &[])
+            .expect("parsed union");
+        assert!(matches!(
+            store.constraint_type_set_checked(bad_comp_union, 0),
+            CheckOutcome::Invalid(())
+        ));
+        assert!(matches!(
+            store.constraint_checked(&file, "comparable | int", &[]),
+            CheckOutcome::Invalid(())
+        ));
+
+        // `comparable` intersected with `[]int | int` keeps only `int` and maintains
+        // the go/types invariant `!comparable || terms.is_all()`.
+        let comp_filtered = store
+            .constraint(&file, "CompSliceOrInt", &[])
+            .expect("CompSliceOrInt");
+        let filtered_set = store
+            .constraint_type_set(comp_filtered, 0)
+            .expect("filtered type set");
+        assert!(!filtered_set.comparable);
+        let terms = filtered_set.terms.as_slice().expect("finite terms");
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].ty, TypeId::basic(BasicKind::Int));
+
+        // Disjoint intersection produces an empty TermList.
+        let empty_iface = store.constraint(&file, "Empty", &[]).expect("Empty");
+        let empty_set = store
+            .constraint_type_set(empty_iface, 0)
+            .expect("empty type set");
+        assert!(empty_set.terms.is_empty());
+    }
+
+    #[test]
+    fn local_defined_types_live_in_local_arena_origins_without_string_copies() {
+        use crate::workspace::WorkspaceEvent;
+
+        let mut workspace = Workspace::default();
+        let file = std::path::PathBuf::from("local.go");
+        let source =
+            "package p\nfunc f() {\n\ttype Node struct { next *Node }\n\ttype Alias = Node\n}\n";
+        workspace
+            .apply(WorkspaceEvent::SetBuffer {
+                file: file.clone(),
+                source: source.to_owned(),
+                dirty: false,
+            })
+            .expect("open buffer");
+        let mut store = test_store(&workspace);
+
+        let node_start = source.find("Node").expect("Node");
+        let node_rhs_start = source.find("struct").expect("struct");
+        let node_rhs = "struct { next *Node }";
+        let node_ty = store
+            .register_local_type(
+                &file,
+                "Node",
+                node_start..node_start + 4,
+                node_rhs,
+                node_rhs_start..node_rhs_start + node_rhs.len(),
+                false,
+            )
+            .expect("register local Node");
+        let node_struct = store
+            .parse_in_at(&file, node_rhs, node_rhs_start, &[("Node", node_ty)])
+            .expect("parse Node rhs");
+        store.set_local_type_rhs(node_ty, Some(node_struct));
+
+        let alias_start = source.find("Alias").expect("Alias");
+        let alias_rhs_start = source.rfind("Node").expect("Alias rhs");
+        let alias_ty = store
+            .register_local_type(
+                &file,
+                "Alias",
+                alias_start..alias_start + 5,
+                "Node",
+                alias_rhs_start..alias_rhs_start + 4,
+                true,
+            )
+            .expect("register local Alias");
+        store.set_local_type_rhs(alias_ty, Some(node_ty));
+
+        // Open buffers incur ZERO bytes copied into LocalArena::local_text.
+        assert!(store.local.local_text.is_empty());
+        assert_eq!(store.unalias(alias_ty), Some(node_ty));
+        assert_eq!(store.underlying(alias_ty), Some(node_struct));
+        assert_eq!(
+            store.local_type_annotation(node_ty).map(|(_, ann)| ann),
+            Some(node_rhs)
+        );
+        assert_eq!(
+            TypeWriter::new(&store, CheckMode::Concrete)
+                .format(node_ty, Qualifier::RelativeTo(&file)),
+            Some("Node".to_owned())
+        );
+
+        // Speculative local types rewind cleanly without leaking origins or metadata.
+        store.with_projection(false, |s| {
+            let tmp = s
+                .register_local_type(&file, "Tmp", 0..3, "int", 0..3, false)
+                .expect("speculative local type");
+            s.set_local_type_rhs(tmp, Some(TypeId::basic(BasicKind::Int)));
+            assert_eq!(s.local.local_origins.len(), 3);
+        });
+        assert_eq!(store.local.local_origins.len(), 2);
+        assert_eq!(store.local.local_type_meta.len(), 2);
+    }
 }

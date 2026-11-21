@@ -106,13 +106,13 @@ impl TypeArena<'_> {
                 }
                 source = input;
                 input = self.expand(input)?;
-            } else if let Some((origin, selection, false, _)) = self.local_decl_info(input) {
-                let index = self.local_type_index(origin, &selection)?;
+            } else if let Some(origin_id) = self.local_origin_id(input) {
+                let data = self.origin_data(origin_id)?;
+                if data.state != super::ty::NamedState::Loaded {
+                    return None;
+                }
                 source = input;
-                input = match self.local.local_types[index].state {
-                    super::declaration::LocalTypeState::Ready(ty) => ty,
-                    _ => return None,
-                };
+                input = data.rhs_type()?;
             } else {
                 return Some((self.form(input)?, input, source));
             }
@@ -135,9 +135,6 @@ impl TypeArena<'_> {
             return false;
         };
         matches!(self.node(unaliased), Some(Ty::TypeParam(_)))
-            || self
-                .local_decl_info(unaliased)
-                .is_some_and(|(_, _, formal, _)| formal)
     }
 
     /// Aliases/definitions share native lazy expansion and its existing budgets.

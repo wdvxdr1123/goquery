@@ -1,5 +1,4 @@
 //! Bounded call inference: typed unification, untyped defaulting, substitution.
-use super::constraints::Constraint;
 use super::unify::{Unifier, UnifyMode};
 use super::{BasicKind, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
 use std::path::Path;
@@ -21,32 +20,33 @@ fn completion_inferable_inner(
     parameters: &[(&str, &str)],
     inputs: &[&str],
 ) -> Option<Vec<bool>> {
-    if parameters.len() > 32 {
+    if parameters.len() > arena.local.pool.node_limit {
         return None;
     }
-    let base = arena.local.local_parameters.len();
+    let mut params = Vec::with_capacity(parameters.len());
     let mut environment = Vec::with_capacity(parameters.len());
     for (name, _) in parameters {
         let ty = arena.push_symbolic_parameter(file, name)?;
+        params.push(ty);
         if *name != "_" {
             environment.push((*name, ty));
         }
     }
-    let mut inferred = vec![false; base + parameters.len()];
+    let mut inferred = vec![false; params.len()];
     for input in inputs {
         let ty = arena.parse_in(file, input, &environment)?;
-        collect_free_params(arena, ty, &mut inferred, 0)?;
+        collect_free_params(arena, ty, &params, &mut inferred, 0)?;
     }
     for _ in 0..=parameters.len() {
         let before = inferred.clone();
         for (index, (_, constraint)) in parameters.iter().enumerate() {
-            if inferred[base + index] {
-                let constraint = arena.constraint(file, constraint, &environment)?;
-                collect_constraint_params(arena, &constraint, &mut inferred, 0)?;
+            if inferred[index] {
+                let bound = arena.constraint(file, constraint, &environment)?;
+                collect_free_params(arena, bound, &params, &mut inferred, 0)?;
             }
         }
         if before == inferred {
-            return Some(inferred[base..].to_vec());
+            return Some(inferred);
         }
     }
     None
@@ -55,6 +55,7 @@ fn completion_inferable_inner(
 fn collect_free_params(
     arena: &mut TypeArena<'_>,
     input: TypeId,
+    params: &[TypeId],
     inferred: &mut [bool],
     depth: usize,
 ) -> Option<()> {
@@ -66,8 +67,9 @@ fn collect_free_params(
     match *arena.node(input)? {
         Ty::Invalid => None,
         Ty::TypeParam(_) => {
-            let index = arena.type_param_index(input)?;
-            if let Some(slot) = inferred.get_mut(index) {
+            if let Some(index) = params.iter().position(|&p| p == input)
+                && let Some(slot) = inferred.get_mut(index)
+            {
                 *slot = true;
             }
             Some(())
@@ -75,22 +77,24 @@ fn collect_free_params(
         Ty::Pointer(element)
         | Ty::Slice(element)
         | Ty::Array { element, .. }
-        | Ty::Chan { element, .. } => collect_free_params(arena, element, inferred, depth + 1),
+        | Ty::Chan { element, .. } => {
+            collect_free_params(arena, element, params, inferred, depth + 1)
+        }
         Ty::Map { key, value } => {
-            collect_free_params(arena, key, inferred, depth + 1)?;
-            collect_free_params(arena, value, inferred, depth + 1)
+            collect_free_params(arena, key, params, inferred, depth + 1)?;
+            collect_free_params(arena, value, params, inferred, depth + 1)
         }
         Ty::Tuple(items) => {
             let items = arena.arguments_slice(input, items).to_vec();
             for item in items {
-                collect_free_params(arena, item, inferred, depth + 1)?;
+                collect_free_params(arena, item, params, inferred, depth + 1)?;
             }
             Some(())
         }
         Ty::Named { arguments, .. } => {
             let arguments = arena.arguments_slice(input, arguments).to_vec();
             for argument in arguments {
-                collect_free_params(arena, argument, inferred, depth + 1)?;
+                collect_free_params(arena, argument, params, inferred, depth + 1)?;
             }
             Some(())
         }
@@ -103,7 +107,7 @@ fn collect_free_params(
                 .copied()
                 .collect::<Vec<_>>();
             for item in items {
-                collect_free_params(arena, item, inferred, depth + 1)?;
+                collect_free_params(arena, item, params, inferred, depth + 1)?;
             }
             Some(())
         }
@@ -115,7 +119,7 @@ fn collect_free_params(
                 .map(|f| f.ty)
                 .collect();
             for ty in field_tys {
-                collect_free_params(arena, ty, inferred, depth + 1)?;
+                collect_free_params(arena, ty, params, inferred, depth + 1)?;
             }
             Some(())
         }
@@ -127,11 +131,11 @@ fn collect_free_params(
                 .map(|m| m.signature)
                 .collect();
             for sig in sigs {
-                collect_free_params(arena, sig, inferred, depth + 1)?;
+                collect_free_params(arena, sig, params, inferred, depth + 1)?;
             }
             let embeddeds = arena.arguments_slice(input, data.embeddeds).to_vec();
             for emb in embeddeds {
-                collect_free_params(arena, emb, inferred, depth + 1)?;
+                collect_free_params(arena, emb, params, inferred, depth + 1)?;
             }
             Some(())
         }
@@ -142,43 +146,11 @@ fn collect_free_params(
                 .map(|t| t.ty)
                 .collect();
             for ty in terms {
-                collect_free_params(arena, ty, inferred, depth + 1)?;
+                collect_free_params(arena, ty, params, inferred, depth + 1)?;
             }
             Some(())
         }
         Ty::Basic(_) | Ty::Alias { .. } => Some(()),
-    }
-}
-
-fn collect_constraint_params(
-    arena: &mut TypeArena<'_>,
-    constraint: &Constraint,
-    inferred: &mut [bool],
-    depth: usize,
-) -> Option<()> {
-    if depth >= MAX_DEPTH {
-        return None;
-    }
-    match constraint {
-        Constraint::Any | Constraint::Comparable => Some(()),
-        Constraint::Exact(ty) | Constraint::Approximate(ty) => {
-            collect_free_params(arena, *ty, inferred, depth + 1)
-        }
-        Constraint::Set(set) => {
-            if let Some(terms) = &set.terms {
-                for term in terms {
-                    collect_free_params(arena, term.ty, inferred, depth + 1)?;
-                }
-            }
-            if let Some(methods) = set.methods {
-                collect_free_params(arena, methods, inferred, depth + 1)?;
-            }
-            for (nested, actual) in &set.checks {
-                collect_free_params(arena, *actual, inferred, depth + 1)?;
-                collect_constraint_params(arena, nested, inferred, depth + 1)?;
-            }
-            Some(())
-        }
     }
 }
 
@@ -196,15 +168,15 @@ impl TypeArena<'_> {
         let sig = self.signature_data(generic_ty)?.clone();
         let params = self.arguments_slice(generic_ty, sig.type_params).to_vec();
         if params.is_empty()
-            || params.len() > 32
+            || params.len() > self.active_node_limit()
             || explicit.len() > params.len()
             || actuals.len() > MAX_NODES
         {
             return None;
         }
-        let constraints: Vec<_> = params
+        let bounds: Vec<TypeId> = params
             .iter()
-            .map(|&tp| self.parameter_constraint(tp).cloned())
+            .map(|&tp| self.type_param_bound(tp))
             .collect::<Option<_>>()?;
         let sig_params = self.arg_range(generic_ty, sig.parameters).to_vec();
         let variadic = sig.variadic;
@@ -240,7 +212,7 @@ impl TypeArena<'_> {
                 return None;
             }
         }
-        Self::infer_constraints_with_unifier(&mut unifier, &params, &constraints)?;
+        Self::infer_constraints_with_unifier(&mut unifier, &params, &bounds)?;
         let snapshot = unifier.snapshot(&params);
         let mut untyped: Vec<Option<BasicKind>> = vec![None; params.len()];
         for (&formal, actual) in formals.iter().zip(actuals) {
@@ -275,11 +247,11 @@ impl TypeArena<'_> {
                 unifier.bind_param(params[index], default_ty)?;
             }
         }
-        Self::infer_constraints_with_unifier(&mut unifier, &params, &constraints)?;
+        Self::infer_constraints_with_unifier(&mut unifier, &params, &bounds)?;
         let bindings = unifier.snapshot(&params);
         drop(unifier);
 
-        self.prove_constraints(&params, &constraints, &bindings)?;
+        self.prove_constraints(&params, &bounds, &bindings)?;
         // Inference is not a proof of assignment or constant representability.
         for (formal, actual) in formals.into_iter().zip(actuals) {
             let target = self.substitute_for_params(formal, &params, &bindings, 0)?;

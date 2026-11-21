@@ -1,4 +1,6 @@
-//! gopls-style type-name projection, retaining aliases and signature result order.
+//! Type declaration origins (package & local), alias chains, and gopls-style type projection.
+use super::store::LocalTypeMeta;
+use super::ty::{NamedOriginData, NamedState, OriginId, SliceRef, TypeOrigin};
 use super::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId};
 use crate::analysis::engine::obj::DeclId;
 use crate::index::IndexedSymbol as Symbol;
@@ -13,31 +15,13 @@ pub(crate) enum TypeDeclaration<'a> {
 
 /// One written local `type` declaration, borrowed for the duration of the query.
 /// The RHS byte origin keeps nested anonymous member identities exact.
+#[allow(dead_code)]
 pub(crate) struct LocalTypeDefinition<'s> {
     pub(crate) name: &'s str,
     pub(crate) selection: Range<usize>,
     pub(crate) annotation: &'s str,
     pub(crate) annotation_start: usize,
     pub(crate) alias: bool,
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum LocalTypeState {
-    Pending,
-    Ready(TypeId),
-    Failed,
-}
-
-/// Owned query-local fact: a bare local type declaration has no body tree. The
-/// RHS is parsed once, in the same declaration environment as its references.
-pub(super) struct LocalTypeFact<'a> {
-    pub(super) name: Box<str>,
-    pub(super) origin: &'a Path,
-    pub(super) selection: Range<usize>,
-    pub(super) annotation: Box<str>,
-    pub(super) node: TypeId,
-    pub(super) alias: bool,
-    pub(super) state: LocalTypeState,
 }
 
 // Local defined types/aliases use the documented 64-entry, 16 KiB budget.
@@ -54,8 +38,125 @@ impl<'a> TypeArena<'a> {
         self.named_info(rhs).map(|(declaration, _, _)| declaration)
     }
 
+    /// Register a function-local `type` declaration directly as a `LocalArena`
+    /// `NamedOriginData` without cloning `String`s when the file is open.
+    pub(crate) fn register_local_type(
+        &mut self,
+        origin: &Path,
+        name: &str,
+        selection: Range<usize>,
+        annotation: &str,
+        annotation_span: Range<usize>,
+        alias: bool,
+    ) -> Option<TypeId> {
+        if name.is_empty() || annotation.is_empty() {
+            return None;
+        }
+        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
+        let start = u32::try_from(selection.start).ok()?;
+        let end = u32::try_from(selection.end).ok()?;
+        if let Some(&existing) = self.local.local_origins.get(&(origin, start, end)) {
+            let (oid, _, _, existing_alias) = self.local_decl_info(existing)?;
+            let name_ok = self
+                .local_type_name_str(oid, origin, &selection)
+                .is_none_or(|stored| stored == name);
+            let ann_ok = self
+                .local_type_annotation_raw(oid, origin)
+                .is_none_or(|stored| stored == annotation);
+            return (existing_alias == alias && name_ok && ann_ok).then_some(existing);
+        }
+        if self.local.local_origins.len() >= MAX_LOCAL_TYPES {
+            return None;
+        }
+        let open_src = self.workspace.open_source(origin);
+        let name_in_open = open_src
+            .and_then(|src| src.get(selection.clone()))
+            .is_some_and(|s| s == name);
+        let ann_in_open = open_src
+            .and_then(|src| src.get(annotation_span.clone()))
+            .is_some_and(|s| s == annotation);
+
+        let name_buf = if name_in_open {
+            SliceRef::default()
+        } else {
+            let buf_start = self.local.local_text.len();
+            if buf_start.checked_add(name.len())? > MAX_BYTES {
+                return None;
+            }
+            self.local.local_text.push_str(name);
+            SliceRef::from_range(buf_start..self.local.local_text.len())?
+        };
+        let (ann_start, ann_end, ann_in_buf) = if ann_in_open {
+            (
+                u32::try_from(annotation_span.start).ok()?,
+                u32::try_from(annotation_span.end).ok()?,
+                false,
+            )
+        } else {
+            let buf_start = self.local.local_text.len();
+            if buf_start.checked_add(annotation.len())? > MAX_BYTES {
+                return None;
+            }
+            self.local.local_text.push_str(annotation);
+            (
+                u32::try_from(buf_start).ok()?,
+                u32::try_from(self.local.local_text.len()).ok()?,
+                true,
+            )
+        };
+
+        let mut data = NamedOriginData::new(TypeOrigin::Local { origin, start, end }, alias);
+        data.state = NamedState::Loading;
+        let (origin_id, node) = self.local.pool.push_origin_node(data, alias)?;
+        self.local.local_origins.insert((origin, start, end), node);
+        self.local.local_type_meta.insert(
+            origin_id,
+            LocalTypeMeta {
+                name_buf,
+                ann_start,
+                ann_end,
+                ann_in_buf,
+            },
+        );
+        Some(node)
+    }
+
+    /// Populate (or fail) the RHS of a previously registered local `NamedOrigin`.
+    pub(crate) fn set_local_type_rhs(&mut self, local_ty: TypeId, rhs: Option<TypeId>) {
+        let Some(origin_id) = self.local_origin_id(local_ty) else {
+            return;
+        };
+        if let Some(data) = self.origin_data_mut(origin_id) {
+            match rhs {
+                Some(ty) => {
+                    data.rhs = ty;
+                    data.state = NamedState::Loaded;
+                }
+                None => {
+                    data.rhs = TypeId::INVALID;
+                    data.state = NamedState::Failed;
+                }
+            }
+        }
+    }
+
+    /// Lower an already-parsed `TypeSyntax` directly with an environment of
+    /// local types and type parameters (zero `LocalTypeDefinition` reconstruction).
+    pub(crate) fn lower_type_syntax_in(
+        &mut self,
+        origin: &Path,
+        text: &str,
+        parsed_syntax: &crate::syntax::TypeSyntax,
+        file_offset: Option<usize>,
+        environment: &[(&str, TypeId)],
+    ) -> Option<TypeId> {
+        self.lower_type_syntax_checked(origin, text, parsed_syntax, file_offset, environment)
+            .ok()
+    }
+
     /// Register query-local local-type facts and parse one written annotation in
     /// that environment. Identity is `(file, selection)`; the spelling is display only.
+    #[allow(dead_code)]
     pub(crate) fn declared_scope_type_in(
         &mut self,
         origin: &Path,
@@ -75,6 +176,7 @@ impl<'a> TypeArena<'a> {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn declared_scope_type_in_parsed(
         &mut self,
         origin: &Path,
@@ -88,7 +190,9 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
-        let mut environment: Vec<(&str, TypeId)> = Vec::new();
+        let mut environment: Vec<(&str, TypeId)> =
+            Vec::with_capacity(definitions.len() + extra_env.len());
+        let mut registered: Vec<TypeId> = Vec::with_capacity(definitions.len());
         for definition in definitions {
             if definition.name.is_empty()
                 || definition.annotation.is_empty()
@@ -96,16 +200,28 @@ impl<'a> TypeArena<'a> {
             {
                 return None;
             }
-            environment.push((definition.name, self.local_type_node(origin, definition)?));
+            let ann_end = definition
+                .annotation_start
+                .checked_add(definition.annotation.len())?;
+            let node = self.register_local_type(
+                origin,
+                definition.name,
+                definition.selection.clone(),
+                definition.annotation,
+                definition.annotation_start..ann_end,
+                definition.alias,
+            )?;
+            environment.push((definition.name, node));
+            registered.push(node);
         }
         for &(name, ty) in extra_env {
             if !environment.iter().any(|(existing, _)| *existing == name) {
                 environment.push((name, ty));
             }
         }
-        for definition in definitions {
-            let index = self.local_type_index(origin, &definition.selection)?;
-            if !matches!(self.local.local_types[index].state, LocalTypeState::Pending) {
+        for (definition, node) in definitions.iter().zip(registered) {
+            let origin_id = self.local_origin_id(node)?;
+            if self.origin_data(origin_id)?.state != NamedState::Loading {
                 continue;
             }
             let parsed = self.parse_in_at(
@@ -114,81 +230,20 @@ impl<'a> TypeArena<'a> {
                 definition.annotation_start,
                 &environment,
             );
-            self.local.local_types[index].state = match parsed {
-                Some(ty) => LocalTypeState::Ready(ty),
-                None => LocalTypeState::Failed,
-            };
+            self.set_local_type_rhs(node, parsed);
         }
         self.lower_type_syntax_checked(origin, text, parsed_syntax, file_offset, &environment)
             .ok()
     }
 
-    fn local_type_node(
-        &mut self,
-        origin: &'a Path,
-        definition: &LocalTypeDefinition<'_>,
-    ) -> Option<TypeId> {
-        if let Some(fact) = self
-            .local
-            .local_types
-            .iter()
-            .find(|fact| fact.origin == origin && fact.selection == definition.selection)
-        {
-            // One declaration has exactly one written definition. A conflict means
-            // the query mixed incompatible scopes; stay unknown rather than pick one.
-            return (fact.name.as_ref() == definition.name
-                && fact.alias == definition.alias
-                && fact.annotation.as_ref() == definition.annotation)
-                .then_some(fact.node);
-        }
-        if self.local.local_types.len() >= MAX_LOCAL_TYPES {
-            return None;
-        }
-        let bytes = self
-            .local
-            .local_type_bytes
-            .checked_add(definition.name.len())?
-            .checked_add(definition.annotation.len())?;
-        if bytes > MAX_BYTES {
-            return None;
-        }
-        let node = self.push_local_declaration(origin, definition.selection.clone(), false)?;
-        self.local.local_types.push(LocalTypeFact {
-            name: definition.name.into(),
-            origin,
-            selection: definition.selection.clone(),
-            annotation: definition.annotation.into(),
-            node,
-            alias: definition.alias,
-            state: LocalTypeState::Pending,
-        });
-        self.local.local_type_bytes = bytes;
-        Some(node)
-    }
-
-    pub(super) fn local_type_index(
-        &self,
-        origin: &Path,
-        selection: &Range<usize>,
-    ) -> Option<usize> {
-        self.local
-            .local_types
-            .iter()
-            .position(|fact| fact.origin == origin && fact.selection == *selection)
-    }
-
     pub(super) fn is_ready_defined_local(&self, input: TypeId) -> bool {
-        let Some((origin, selection, false, false)) = self.local_decl_info(input) else {
+        let Some((origin_id, _, _, false)) = self.local_decl_info(input) else {
             return false;
         };
-        let Some(index) = self.local_type_index(origin, &selection) else {
+        let Some(data) = self.origin_data(origin_id) else {
             return false;
         };
-        !self.local.local_types[index].alias
-            && matches!(
-                self.local.local_types[index].state,
-                LocalTypeState::Ready(_)
-            )
+        !data.is_alias() && data.state == NamedState::Loaded
     }
 
     pub(super) fn is_defined_type(&self, input: TypeId) -> bool {
@@ -198,48 +253,70 @@ impl<'a> TypeArena<'a> {
     }
 
     pub(super) fn is_known_non_opaque(&self, input: TypeId) -> bool {
-        self.local_decl_info(input).is_none() || self.is_ready_defined_local(input)
+        self.local_origin_id(input).is_none() || self.is_ready_defined_local(input)
+    }
+
+    fn local_type_name_str(
+        &self,
+        origin_id: OriginId,
+        origin: &Path,
+        selection: &Range<usize>,
+    ) -> Option<&str> {
+        if let Some(meta) = self.local.local_type_meta.get(&origin_id)
+            && !meta.name_buf.is_empty()
+        {
+            return self.local.local_text.get(meta.name_buf.range());
+        }
+        self.workspace
+            .open_source(origin)
+            .and_then(|src| src.get(selection.clone()))
+    }
+
+    fn local_type_annotation_raw(&self, origin_id: OriginId, origin: &Path) -> Option<&str> {
+        let meta = self.local.local_type_meta.get(&origin_id)?;
+        let span = meta.ann_start as usize..meta.ann_end as usize;
+        if meta.ann_in_buf {
+            self.local.local_text.get(span)
+        } else {
+            self.workspace
+                .open_source(origin)
+                .and_then(|src| src.get(span))
+        }
     }
 
     /// Display name of a registered local declaration; the spelling never proves
     /// identity. Unregistered opaque declarations fall back to a bounded read.
     pub(super) fn local_type_name(
         &self,
+        origin_id: OriginId,
         origin: &Path,
         selection: &Range<usize>,
     ) -> Option<String> {
-        if let Some(index) = self.local_type_index(origin, selection) {
-            return Some(self.local.local_types[index].name.to_string());
+        if let Some(name) = self.local_type_name_str(origin_id, origin, selection) {
+            return Some(name.to_owned());
         }
         self.workspace.source_slice(origin, selection.clone())
     }
 
     /// Expand the outer local declaration chain with an active set; the depth and
     /// node budgets bound every step. Package types are returned for the caller's
-    /// existing lazy expansion. Cycles, aliases without facts and generic local
-    /// type usage stay unknown.
+    /// existing lazy expansion.
     pub(super) fn local_declaration_underlying(&mut self, input: TypeId) -> Option<TypeId> {
-        let mut active: Vec<(&Path, Range<usize>)> = Vec::new();
+        let mut active: Vec<OriginId> = Vec::new();
         let mut current = input;
         for _ in 0..MAX_DEPTH {
-            let Some((origin, selection, formal, _)) = self.local_decl_info(current) else {
+            let Some(origin_id) = self.local_origin_id(current) else {
                 return Some(current);
             };
-            if formal {
+            if active.contains(&origin_id) {
                 return None;
             }
-            if active
-                .iter()
-                .any(|(file, span)| *file == origin && *span == selection)
-            {
+            active.push(origin_id);
+            let data = self.origin_data(origin_id)?;
+            if data.state != NamedState::Loaded {
                 return None;
             }
-            active.push((origin, selection.clone()));
-            let index = self.local_type_index(origin, &selection)?;
-            current = match self.local.local_types[index].state {
-                LocalTypeState::Ready(ty) => ty,
-                LocalTypeState::Pending | LocalTypeState::Failed => return None,
-            };
+            current = data.rhs_type()?;
         }
         None
     }
@@ -247,20 +324,17 @@ impl<'a> TypeArena<'a> {
     /// One alias step: `Some(Some(next))` for a registered local alias,
     /// `Some(None)` for a non-local or defined type, `None` when unknown.
     pub(super) fn local_alias(&self, input: TypeId) -> Option<Option<TypeId>> {
-        let Some((origin, selection, formal, _)) = self.local_decl_info(input) else {
+        let Some(origin_id) = self.local_origin_id(input) else {
             return Some(None);
         };
-        if formal {
-            return None;
-        }
-        let index = self.local_type_index(origin, &selection)?;
-        if !self.local.local_types[index].alias {
+        let data = self.origin_data(origin_id)?;
+        if !data.is_alias() {
             return Some(None);
         }
-        match self.local.local_types[index].state {
-            LocalTypeState::Ready(ty) => Some(Some(ty)),
-            LocalTypeState::Pending | LocalTypeState::Failed => None,
+        if data.state != NamedState::Loaded {
+            return None;
         }
+        Some(Some(data.rhs_type()?))
     }
 
     /// Whether a compound type contains a query-local declaration, so callers can
@@ -276,7 +350,7 @@ impl<'a> TypeArena<'a> {
                 return None;
             }
             visited.push(ty);
-            if self.local_decl_info(ty).is_some() {
+            if self.local_origin_id(ty).is_some() {
                 return Some(true);
             }
             match *self.node(ty)? {
@@ -316,39 +390,15 @@ impl<'a> TypeArena<'a> {
         Some(false)
     }
 
-    /// A declaration view imports its actual formal identities and bounds.
-    /// The caller keeps this within a bounded presentation projection.
+    /// A declaration view imports its actual formal identities and bounds from the
+    /// shared `DeclArena` origin template without re-reading or re-parsing.
     pub(crate) fn declaration_type(&mut self, declaration: DeclId<'a>) -> Option<TypeId> {
-        let mut arguments = Vec::new();
-        if declaration.symbol.generic {
-            let start = declaration.symbol.end;
-            let source = self.type_parameter_source(declaration)?;
-            let (header, signature) = super::named::parse_type_parameters_of(&source, true)?;
-            if !signature.diagnostics.is_empty() || signature.type_parameters.len() > 32 {
-                return None;
-            }
-            let formals = signature
-                .type_parameters
-                .iter()
-                .map(|parameter| {
-                    let name = parameter.name.as_ref()?;
-                    Some(super::LocalFormal {
-                        name: header.get(name.clone())?,
-                        selection: start.checked_add(name.start)?,
-                        bound: Some(header.get(parameter.annotation.clone())?),
-                    })
-                })
-                .collect::<Option<Vec<_>>>()?;
-            for formal in &formals {
-                arguments.push(self.parse_parameterized(
-                    declaration.file,
-                    formal.name,
-                    None,
-                    &formals,
-                    None,
-                )?);
-            }
-        }
+        let origin_id = self.get_or_insert_package_origin(declaration, declaration.symbol.alias)?;
+        let arguments = if declaration.symbol.generic {
+            self.ensure_origin_tparams(origin_id, true)?
+        } else {
+            Vec::new()
+        };
         self.push_named(declaration, &arguments, declaration.symbol.alias)
     }
 
@@ -448,7 +498,7 @@ impl<'a> TypeArena<'a> {
                 }
             }
         }
-        if names.len() > 32 {
+        if names.len() > self.active_node_limit() {
             return None;
         }
         let mut environment = Vec::new();
@@ -482,10 +532,8 @@ impl<'a> TypeArena<'a> {
             }
             if let Some((declaration, _, _)) = self.named_info(input) {
                 result.push(TypeDeclaration::Named(declaration.file, declaration.symbol));
-            } else if let Some((origin, selection, formal, _)) = self.local_decl_info(input) {
-                if !formal {
-                    result.push(TypeDeclaration::Local(origin, selection));
-                }
+            } else if let Some((_, origin, selection, _)) = self.local_decl_info(input) {
+                result.push(TypeDeclaration::Local(origin, selection));
             } else if self.error_interface(input).is_some() {
                 result.push(TypeDeclaration::Builtin("error"));
             } else {
@@ -565,13 +613,10 @@ impl<'a> TypeArena<'a> {
     }
 
     pub(crate) fn local_type_annotation(&self, id: TypeId) -> Option<(&'a Path, &str)> {
-        let (origin, selection, false, false) = self.local_decl_info(id)? else {
+        let (origin_id, origin, _, false) = self.local_decl_info(id)? else {
             return None;
         };
-        self.local
-            .local_types
-            .iter()
-            .find(|fact| fact.origin == origin && fact.selection == selection)
-            .map(|fact| (fact.origin, fact.annotation.as_ref()))
+        let annotation = self.local_type_annotation_raw(origin_id, origin)?;
+        Some((origin, annotation))
     }
 }

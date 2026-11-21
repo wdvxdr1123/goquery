@@ -70,25 +70,14 @@ impl ExprOutcome<'_, '_> {
 }
 
 #[derive(Clone)]
-pub(in crate::analysis::engine::check) struct LocalTypeDefEntry {
-    local_id: LocalId,
-    name: String,
-    selection: Range<usize>,
-    annotation: String,
-    annotation_start: usize,
-    alias: bool,
-}
-
-#[derive(Clone)]
 pub(crate) struct CheckEnv<'a> {
     source_base: usize,
     active_locals: Vec<bool>,
-    pub(in crate::analysis::engine::check) declaring_type: Option<LocalId>,
+    pub(in crate::analysis::engine::check) declaring_type: Option<(LocalId, Option<TypeId>)>,
     pub(in crate::analysis::engine::check) type_param_owner: Option<DeclId<'a>>,
     pub(in crate::analysis::engine::check) type_param_env: Vec<(String, TypeId)>,
     pub(in crate::analysis::engine::check) type_formals: Vec<(String, usize, Option<String>)>,
     recv_annotation: Option<String>,
-    pub(in crate::analysis::engine::check) local_type_defs: Vec<LocalTypeDefEntry>,
     pub(in crate::analysis::engine::check) result_types: Vec<Option<TypeId>>,
     pub(in crate::analysis::engine::check) named_results: bool,
 }
@@ -103,11 +92,68 @@ impl<'a> CheckEnv<'a> {
             type_param_env: Vec::new(),
             type_formals: Vec::new(),
             recv_annotation: None,
-            local_type_defs: Vec::new(),
             result_types: Vec::new(),
             named_results: false,
         }
     }
+
+    pub(in crate::analysis::engine::check) fn is_declaring(&self, id: LocalId) -> bool {
+        self.declaring_type
+            .is_some_and(|(decl_id, _)| decl_id == id)
+    }
+
+    pub(in crate::analysis::engine::check) fn is_active(&self, id: LocalId) -> bool {
+        self.active_locals
+            .get(id.0 as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+}
+
+pub(in crate::analysis::engine::check) fn collect_visible_type_env<'s>(
+    region: &'s RegionInfo<'_>,
+    env: &'s CheckEnv<'_>,
+    source: &'s str,
+    abs_offset: usize,
+) -> Vec<(&'s str, TypeId)> {
+    let mut seen: BTreeSet<&'s str> = BTreeSet::new();
+    let mut out = Vec::new();
+
+    for (name, local_id) in region.scopes.visible_bindings(source, abs_offset as u32) {
+        if !env.is_active(local_id) && !env.is_declaring(local_id) {
+            continue;
+        }
+        if !seen.insert(name) {
+            continue;
+        }
+        let Some(b) = region.scopes.bindings.get(local_id.0 as usize) else {
+            continue;
+        };
+        match b.kind {
+            LocalBindingKind::TypeDecl { .. } => {
+                if let Some((decl_id, Some(ty))) = env.declaring_type
+                    && decl_id == local_id
+                {
+                    out.push((name, ty));
+                } else if let Some(op) = region.local_type(local_id) {
+                    out.push((name, op.ty));
+                }
+            }
+            LocalBindingKind::TypeParam => {
+                if let Some(op) = region.local_type(local_id) {
+                    out.push((name, op.ty));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for (name, ty) in &env.type_param_env {
+        if seen.insert(name.as_str()) {
+            out.push((name.as_str(), *ty));
+        }
+    }
+    out
 }
 
 /// Checks a single function body or declaration initializer into [`RegionInfo`].
@@ -354,67 +400,12 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         self.flush_untyped();
     }
 
-    fn visible_type_env(
-        &self,
-        abs_offset: usize,
-    ) -> (Vec<LocalTypeDefEntry>, Vec<(String, TypeId)>) {
-        let mut seen = BTreeSet::new();
-        let mut defs = Vec::new();
-        let mut env = Vec::new();
-
-        for (name, local_id) in self
-            .region
-            .scopes
-            .visible_bindings(self.source, abs_offset as u32)
-        {
-            if !self.is_active(local_id) && self.env.declaring_type != Some(local_id) {
-                continue;
-            }
-            if !seen.insert(name.to_string()) {
-                continue;
-            }
-            let Some(b) = self.binding(local_id) else {
-                continue;
-            };
-            match b.kind {
-                LocalBindingKind::TypeDecl { .. } => {
-                    if self.env.declaring_type == Some(local_id) {
-                        if let Some(entry) = self
-                            .env
-                            .local_type_defs
-                            .iter()
-                            .rev()
-                            .find(|e| e.local_id == local_id)
-                        {
-                            defs.push(entry.clone());
-                        }
-                    } else if let Some(op) = self.region.local_type(local_id) {
-                        env.push((name.to_string(), op.ty));
-                    } else if let Some(entry) = self
-                        .env
-                        .local_type_defs
-                        .iter()
-                        .rev()
-                        .find(|e| e.local_id == local_id)
-                    {
-                        defs.push(entry.clone());
-                    }
-                }
-                LocalBindingKind::TypeParam => {
-                    if let Some(op) = self.region.local_type(local_id) {
-                        env.push((name.to_string(), op.ty));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        for (name, ty) in &self.env.type_param_env {
-            if seen.insert(name.clone()) {
-                env.push((name.clone(), *ty));
-            }
-        }
-        (defs, env)
+    fn visible_type_env(&self, abs_offset: usize) -> ((), Vec<(String, TypeId)>) {
+        let env = collect_visible_type_env(self.region, &self.env, self.source, abs_offset)
+            .into_iter()
+            .map(|(name, ty)| (name.to_string(), ty))
+            .collect();
+        ((), env)
     }
 
     pub(in crate::analysis::engine::check) fn resolve_pkg_qualified_type_use(
@@ -494,7 +485,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 .scopes
                 .resolve_at(self.source, name_span[0], name)
         {
-            let active = self.is_active(local_id) || self.env.declaring_type == Some(local_id);
+            let active = self.is_active(local_id) || self.env.is_declaring(local_id);
             if active {
                 let Some(b) = self.binding(local_id) else {
                     return false;
@@ -505,7 +496,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                         if let Some(obj) = self.local_object(local_id) {
                             self.record_use(name_span, obj);
                         }
-                        return op.is_some() || self.env.declaring_type == Some(local_id);
+                        return op.is_some() || self.env.is_declaring(local_id);
                     }
                     LocalBindingKind::TypeParam => {
                         let op = self.region.local_type(local_id);

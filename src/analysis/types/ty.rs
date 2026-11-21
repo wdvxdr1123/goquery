@@ -164,8 +164,28 @@ impl SliceRef {
     }
 }
 
+const ORIGIN_LOCAL_BIT: u32 = 0x8000_0000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct OriginId(pub(super) u32);
+
+impl OriginId {
+    pub(super) const fn decl(index: u32) -> Self {
+        Self(index & !ORIGIN_LOCAL_BIT)
+    }
+
+    pub(super) const fn local(index: u32) -> Self {
+        Self(ORIGIN_LOCAL_BIT | (index & !ORIGIN_LOCAL_BIT))
+    }
+
+    pub(super) const fn is_local(self) -> bool {
+        (self.0 & ORIGIN_LOCAL_BIT) != 0
+    }
+
+    pub(super) const fn index(self) -> usize {
+        (self.0 & !ORIGIN_LOCAL_BIT) as usize
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct StructId(pub(super) u32);
@@ -179,6 +199,28 @@ pub(super) struct SignatureId(pub(super) u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct TypeParamId(pub(super) u32);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum NamedState {
+    Unloaded,
+    Loading,
+    Loaded,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum NamedCheckState {
+    Pending,
+    Valid,
+    Invalid,
+}
+
+pub(super) const ORIGIN_FLAG_ALIAS: u8 = 1 << 0;
+pub(super) const ORIGIN_FLAG_TPARAMS_LOADED: u8 = 1 << 1;
+pub(super) const ORIGIN_FLAG_TPARAMS_LOADING: u8 = 1 << 2;
+pub(super) const ORIGIN_FLAG_BOUNDS_LOADED: u8 = 1 << 3;
+pub(super) const ORIGIN_FLAG_BOUNDS_LOADING: u8 = 1 << 4;
+pub(super) const ORIGIN_FLAG_RHS_CONCRETE: u8 = 1 << 5;
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(super) enum TypeOrigin<'a> {
     Package(DeclId<'a>),
@@ -186,11 +228,67 @@ pub(super) enum TypeOrigin<'a> {
         origin: &'a Path,
         start: u32,
         end: u32,
-        formal: bool,
     },
     BuiltinError {
         interface: TypeId,
     },
+}
+
+/// Shared declaration template for a defined/alias type (`DeclArena` for package
+/// declarations, `LocalArena` for function-local `type` declarations).
+#[derive(Clone)]
+pub(super) struct NamedOriginData<'a> {
+    pub(super) origin: TypeOrigin<'a>,
+    /// Type parameter `TypeId`s in the origin's pool (`DeclArena` for package origins).
+    pub(super) tparams: SliceRef,
+    /// Uninstantiated declaration RHS (`TypeId::INVALID` while unloaded/failed).
+    pub(super) rhs: TypeId,
+    pub(super) state: NamedState,
+    pub(super) flags: u8,
+}
+
+impl<'a> NamedOriginData<'a> {
+    pub(super) const fn new(origin: TypeOrigin<'a>, alias: bool) -> Self {
+        Self {
+            origin,
+            tparams: SliceRef { start: 0, len: 0 },
+            rhs: TypeId::INVALID,
+            state: NamedState::Unloaded,
+            flags: if alias { ORIGIN_FLAG_ALIAS } else { 0 },
+        }
+    }
+
+    pub(super) const fn is_alias(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_ALIAS) != 0
+    }
+
+    pub(super) const fn tparams_loaded(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_TPARAMS_LOADED) != 0
+    }
+
+    pub(super) const fn tparams_loading(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_TPARAMS_LOADING) != 0
+    }
+
+    pub(super) const fn bounds_loaded(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_BOUNDS_LOADED) != 0
+    }
+
+    pub(super) const fn bounds_loading(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_BOUNDS_LOADING) != 0
+    }
+
+    pub(super) const fn rhs_concrete(&self) -> bool {
+        (self.flags & ORIGIN_FLAG_RHS_CONCRETE) != 0
+    }
+
+    pub(super) const fn rhs_type(&self) -> Option<TypeId> {
+        if self.rhs.0 == 0 {
+            None
+        } else {
+            Some(self.rhs)
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -212,6 +310,7 @@ pub(super) struct InterfaceData<'a> {
     pub(super) embeddeds: SliceRef,
     pub(super) has_type_elements: bool,
     pub(super) comparable: bool,
+    pub(super) implicit: bool,
     pub(super) builtin_any: bool,
 }
 
@@ -223,9 +322,89 @@ pub(super) struct SignatureData {
     pub(super) variadic: bool,
 }
 
+const TP_NAME_LEN_MASK: u16 = 0x3FFF;
+const TP_FLAG_READY: u16 = 0x4000;
+const TP_FLAG_SYNTHETIC: u16 = 0x8000;
+
+/// Compact first-class type parameter owned by `ArenaPool::type_params`.
 #[derive(Clone, Copy)]
-pub(super) struct TypeParamData {
-    pub(super) index: usize,
+pub(super) struct TypeParamData<'a> {
+    pub(super) origin: Option<&'a Path>,
+    /// Constraint interface `TypeId` (`TypeId::INVALID` while unset).
+    pub(super) bound: TypeId,
+    pub(super) selection: u32,
+    pub(super) name_start: u32,
+    pub(super) name_len_and_flags: u16,
+    pub(super) index: u16,
+}
+
+impl<'a> TypeParamData<'a> {
+    pub(super) fn new(
+        origin: Option<&'a Path>,
+        selection: u32,
+        index: u16,
+        name_start: u32,
+        name_len: usize,
+        ready: bool,
+        synthetic: bool,
+    ) -> Option<Self> {
+        let len = u16::try_from(name_len).ok()?;
+        if len > TP_NAME_LEN_MASK {
+            return None;
+        }
+        let mut packed = len;
+        if ready {
+            packed |= TP_FLAG_READY;
+        }
+        if synthetic {
+            packed |= TP_FLAG_SYNTHETIC;
+        }
+        Some(Self {
+            origin,
+            bound: TypeId::INVALID,
+            selection,
+            name_start,
+            name_len_and_flags: packed,
+            index,
+        })
+    }
+
+    pub(super) const fn name_len(self) -> usize {
+        (self.name_len_and_flags & TP_NAME_LEN_MASK) as usize
+    }
+
+    pub(super) const fn name_range(self) -> Range<usize> {
+        let start = self.name_start as usize;
+        start..start + self.name_len()
+    }
+
+    pub(super) const fn is_ready(self) -> bool {
+        (self.name_len_and_flags & TP_FLAG_READY) != 0
+    }
+
+    pub(super) fn set_ready(&mut self, ready: bool) {
+        if ready {
+            self.name_len_and_flags |= TP_FLAG_READY;
+        } else {
+            self.name_len_and_flags &= !TP_FLAG_READY;
+        }
+    }
+
+    pub(super) const fn is_synthetic(self) -> bool {
+        (self.name_len_and_flags & TP_FLAG_SYNTHETIC) != 0
+    }
+
+    pub(super) const fn bound(self) -> Option<TypeId> {
+        if self.bound.0 == 0 {
+            None
+        } else {
+            Some(self.bound)
+        }
+    }
+
+    pub(super) fn set_bound(&mut self, bound: TypeId) {
+        self.bound = bound;
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -273,7 +452,11 @@ pub(super) enum Direction {
 }
 
 #[cfg(target_pointer_width = "64")]
-const _: () = assert!(std::mem::size_of::<Ty>() <= 24);
+const _: () = {
+    assert!(std::mem::size_of::<Ty>() <= 24);
+    assert!(std::mem::size_of::<TypeParamData<'_>>() <= 32);
+    assert!(std::mem::size_of::<NamedOriginData<'_>>() <= 48);
+};
 
 pub(super) static BUILTIN_TYS: [Ty; BasicKind::COUNT] = [
     Ty::Basic(BasicKind::Bool),

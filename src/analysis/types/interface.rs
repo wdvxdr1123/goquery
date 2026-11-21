@@ -3,62 +3,10 @@ use super::ty::Term;
 use super::{
     BasicKind, CheckOutcome, MAX_BYTES, MAX_DEPTH, Operand, Ty, TypeArena, TypeId, UnknownReason,
 };
-use crate::syntax::{Lexer, TokenKind};
+use crate::syntax::{InterfaceMemberNode, Lexer, TokenKind, TypeNodeId, TypeSyntax, TypeTreeKind};
 use std::collections::{BTreeMap, HashSet};
 use std::ops::Range;
 use std::path::Path;
-
-fn matching_outer_parens(text: &str) -> Option<&str> {
-    let mut tokens = Lexer::new(text);
-    let first = tokens.next()?;
-    if first.kind != TokenKind::LParen {
-        return None;
-    }
-    let mut depth = 1usize;
-    let mut close_start = None;
-    for token in tokens {
-        if close_start.is_some() {
-            return None;
-        }
-        match token.kind {
-            TokenKind::LParen => depth += 1,
-            TokenKind::RParen => {
-                depth -= 1;
-                if depth == 0 {
-                    close_start = Some(token.span.start);
-                }
-            }
-            _ => {}
-        }
-    }
-    close_start.map(|end| &text[first.span.end..end])
-}
-
-fn split_top_level_union(text: &str) -> Option<Vec<(usize, &str)>> {
-    let mut nesting = 0usize;
-    let mut start = 0usize;
-    let mut parts = Vec::new();
-    for token in Lexer::new(text) {
-        match token.kind {
-            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => nesting += 1,
-            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                nesting = nesting.checked_sub(1)?;
-            }
-            TokenKind::Or if nesting == 0 => {
-                parts.push((start, text.get(start..token.span.start)?));
-                start = token.span.end;
-            }
-            _ => {}
-        }
-    }
-    if nesting != 0 {
-        return None;
-    }
-    if !parts.is_empty() {
-        parts.push((start, text.get(start..)?));
-    }
-    Some(parts)
-}
 
 #[derive(Clone)]
 pub(super) struct Method<'a> {
@@ -73,6 +21,215 @@ pub(super) struct Method<'a> {
 }
 
 impl<'a> TypeArena<'a> {
+    /// Parse a type parameter constraint (bare term, union, `any`, `comparable`,
+    /// named interface, or interface literal) into a single unified interface `TypeId`.
+    pub(super) fn parse_constraint_checked(
+        &mut self,
+        origin: &Path,
+        source: &str,
+        file_offset: Option<usize>,
+        environment: &[(&str, TypeId)],
+        depth: usize,
+    ) -> CheckOutcome<TypeId> {
+        if self.step().is_none() || depth >= MAX_DEPTH || source.len() > MAX_BYTES {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        let Some(origin) = self
+            .workspace
+            .files
+            .get_key_value(origin)
+            .map(|(p, _)| p.as_path())
+        else {
+            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+        };
+        let parsed = crate::syntax::parse_constraint(source);
+        if !parsed.diagnostics.is_empty() || parsed.tree_overflowed() {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        }
+        let Some(root) = parsed.root() else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        self.lower_constraint_node(
+            origin,
+            source,
+            &parsed,
+            root,
+            file_offset,
+            environment,
+            depth,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn lower_constraint_node(
+        &mut self,
+        origin: &'a Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        mut node_id: TypeNodeId,
+        file_offset: Option<usize>,
+        environment: &[(&str, TypeId)],
+        depth: usize,
+    ) -> CheckOutcome<TypeId> {
+        if depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        let mut unwrap_depth = 0;
+        while let Some(node) = parsed.tree_node(node_id) {
+            match node.kind {
+                TypeTreeKind::Parenthesized(inner) => {
+                    unwrap_depth += 1;
+                    if unwrap_depth >= MAX_DEPTH {
+                        return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                    }
+                    node_id = inner;
+                }
+                _ => break,
+            }
+        }
+        let Some(node) = parsed.tree_node(node_id) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        let span = node.byte_range();
+        let Some(text) = source.get(span.clone()) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        let node_offset = file_offset.map(|base| base + span.start);
+        match node.kind {
+            TypeTreeKind::Missing => CheckOutcome::Unknown(UnknownReason::SyntaxError),
+            TypeTreeKind::Union { ref terms } => {
+                let term_ids = parsed.type_node_list(terms.clone());
+                if term_ids.len() > super::sets::MAX_TERMS {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                }
+                let mut lowered = Vec::with_capacity(term_ids.len());
+                for &term_id in term_ids {
+                    match self.lower_union_term_list(
+                        origin,
+                        source,
+                        parsed,
+                        term_id,
+                        file_offset,
+                        environment,
+                        depth + 1,
+                        &mut lowered,
+                    ) {
+                        CheckOutcome::Ok(()) => {}
+                        CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                        CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                    }
+                }
+                let Some(union_ty) = self.store_union(lowered) else {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                };
+                match self.store_interface_nodes(
+                    origin,
+                    Vec::new(),
+                    vec![union_ty],
+                    true,
+                    false,
+                    true,
+                    false,
+                ) {
+                    Some(id) => CheckOutcome::Ok(id),
+                    None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+                }
+            }
+            TypeTreeKind::Approx(_) => {
+                let term = match self.lower_single_term(
+                    origin,
+                    source,
+                    parsed,
+                    node_id,
+                    file_offset,
+                    environment,
+                    depth + 1,
+                ) {
+                    CheckOutcome::Ok(term) => term,
+                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                };
+                let Some(union_ty) = self.store_union(vec![term]) else {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                };
+                match self.store_interface_nodes(
+                    origin,
+                    Vec::new(),
+                    vec![union_ty],
+                    true,
+                    false,
+                    true,
+                    false,
+                ) {
+                    Some(id) => CheckOutcome::Ok(id),
+                    None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+                }
+            }
+            TypeTreeKind::Interface { ref members } => self.lower_interface_members_checked(
+                origin,
+                source,
+                parsed,
+                members.clone(),
+                file_offset,
+                environment,
+                depth + 1,
+            ),
+            TypeTreeKind::Name { .. }
+                if matches!(text, "any" | "comparable")
+                    && self.universe_constraint(origin, text, environment) == Some(true) =>
+            {
+                let id = if text == "comparable" {
+                    self.builtin_comparable_interface(origin)
+                } else {
+                    self.builtin_interface(origin, false)
+                };
+                match id {
+                    Some(id) => CheckOutcome::Ok(id),
+                    None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+                }
+            }
+            _ => {
+                if let Some((_, param_ty)) = environment.iter().find(|(name, _)| *name == text)
+                    && matches!(self.node(*param_ty), Some(Ty::TypeParam(_)))
+                {
+                    return CheckOutcome::Invalid(());
+                }
+                let ty = match self.parse_in_checked(origin, text, node_offset, environment) {
+                    CheckOutcome::Ok(ty) => ty,
+                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                };
+                match self.interface_constructor(ty) {
+                    Some(true) => CheckOutcome::Ok(ty),
+                    Some(false) => {
+                        let Some(unaliased) = self.unalias(ty) else {
+                            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+                        };
+                        if matches!(self.node(unaliased), Some(Ty::TypeParam(_))) {
+                            return CheckOutcome::Invalid(());
+                        }
+                        if self.underlying(unaliased).is_none() {
+                            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+                        }
+                        match self.store_interface_nodes(
+                            origin,
+                            Vec::new(),
+                            vec![unaliased],
+                            true,
+                            false,
+                            true,
+                            false,
+                        ) {
+                            Some(id) => CheckOutcome::Ok(id),
+                            None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+                        }
+                    }
+                    None => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
+                }
+            }
+        }
+    }
+
     pub(super) fn read_interface_at_checked(
         &mut self,
         origin: &Path,
@@ -93,77 +250,112 @@ impl<'a> TypeArena<'a> {
             return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
         };
         let parsed = crate::syntax::parse_type(source);
-        if !parsed.diagnostics.is_empty() {
+        if !parsed.diagnostics.is_empty() || parsed.tree_overflowed() {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         }
-        let Some(container) = Lexer::new(source).nth(1).map(|t| t.span.start) else {
+        let Some(root) = parsed.root() else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
+        let Some(TypeTreeKind::Interface { members }) = parsed.tree_node(root).map(|n| &n.kind)
+        else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        self.lower_interface_members_checked(
+            origin,
+            source,
+            &parsed,
+            members.clone(),
+            file_offset,
+            environment,
+            depth,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn lower_interface_members_checked(
+        &mut self,
+        origin: &'a Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        members_range: Range<u32>,
+        file_offset: Option<usize>,
+        environment: &[(&str, TypeId)],
+        depth: usize,
+    ) -> CheckOutcome<TypeId> {
+        if depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
         let mut methods = Vec::new();
         let mut embeddeds = Vec::new();
         let mut has_type_elements = false;
         let mut comparable = false;
         let mut explicit = HashSet::new();
-        for member in parsed
-            .interface_members
-            .iter()
-            .filter(|m| m.container == container)
-        {
-            if let Some(name_span) = &member.name {
-                let Some(name) = source.get(name_span.clone()) else {
-                    return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-                };
-                if name == "_" || !explicit.insert(name) {
-                    return CheckOutcome::Invalid(());
+        for member in parsed.interface_members(members_range) {
+            match member {
+                InterfaceMemberNode::Method {
+                    name: name_span,
+                    sig,
+                } => {
+                    let name_range = name_span.start as usize..name_span.end as usize;
+                    let Some(name) = source.get(name_range.clone()) else {
+                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                    };
+                    if name == "_" || !explicit.insert(name) {
+                        return CheckOutcome::Invalid(());
+                    }
+                    let Some(sig_node) = parsed.sig_node(*sig) else {
+                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                    };
+                    let sig_range = sig_node.span.start as usize..sig_node.span.end as usize;
+                    let Some(header) = source.get(sig_range.clone()) else {
+                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                    };
+                    let signature = crate::syntax::parse_method_signature(header);
+                    let Some(signature) = self.signature(
+                        origin,
+                        header,
+                        file_offset.map(|base| base + sig_range.start),
+                        &signature,
+                        environment,
+                        depth + 1,
+                    ) else {
+                        return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                    };
+                    let selection = file_offset
+                        .and_then(|base| {
+                            Some([
+                                u32::try_from(base + name_range.start).ok()?,
+                                u32::try_from(base + name_range.end).ok()?,
+                            ])
+                        })
+                        .unwrap_or([0, 0]);
+                    methods.push(Method {
+                        name: name.to_owned(),
+                        origin,
+                        signature,
+                        declared_on: None,
+                        selection,
+                        builtin: false,
+                    });
                 }
-                let Some(header) = source.get(member.annotation.clone()) else {
-                    return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-                };
-                let signature = crate::syntax::parse_method_signature(header);
-                let Some(signature) = self.signature(
-                    origin,
-                    header,
-                    file_offset.map(|base| base + member.annotation.start),
-                    &signature,
-                    environment,
-                    depth + 1,
-                ) else {
-                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
-                };
-                let selection = file_offset
-                    .and_then(|base| {
-                        Some([
-                            u32::try_from(base + name_span.start).ok()?,
-                            u32::try_from(base + name_span.end).ok()?,
-                        ])
-                    })
-                    .unwrap_or([0, 0]);
-                methods.push(Method {
-                    name: name.to_owned(),
-                    origin,
-                    signature,
-                    declared_on: None,
-                    selection,
-                    builtin: false,
-                });
-            } else {
-                let Some(text) = source.get(member.annotation.clone()) else {
-                    return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-                };
-                match self.read_interface_element_checked(
-                    origin,
-                    text,
-                    file_offset.map(|base| base + member.annotation.start),
-                    environment,
-                    depth + 1,
-                    &mut methods,
-                    &mut embeddeds,
-                    &mut has_type_elements,
-                    &mut comparable,
-                ) {
-                    CheckOutcome::Ok(()) => {}
-                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
-                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                InterfaceMemberNode::Embedded(emb_node) => {
+                    match self.lower_interface_embedded_node(
+                        origin,
+                        source,
+                        parsed,
+                        *emb_node,
+                        file_offset,
+                        environment,
+                        depth + 1,
+                        &mut methods,
+                        &mut embeddeds,
+                        &mut has_type_elements,
+                        &mut comparable,
+                    ) {
+                        CheckOutcome::Ok(()) => {}
+                        CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                        CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                    }
                 }
             }
             if methods.len() > self.active_node_limit()
@@ -178,14 +370,17 @@ impl<'a> TypeArena<'a> {
             embeddeds,
             has_type_elements,
             comparable,
+            false,
         )
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn read_interface_element_checked(
+    fn lower_interface_embedded_node(
         &mut self,
-        origin: &Path,
-        raw_text: &str,
+        origin: &'a Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
         depth: usize,
@@ -197,132 +392,143 @@ impl<'a> TypeArena<'a> {
         if depth >= MAX_DEPTH {
             return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         }
-        let tokens: Vec<_> = Lexer::new(raw_text).collect();
-        let (Some(first), Some(last)) = (
-            tokens.first(),
-            tokens.iter().rfind(|t| t.kind != TokenKind::Semicolon),
-        ) else {
+        let mut unwrap_depth = 0;
+        while let Some(node) = parsed.tree_node(node_id) {
+            match node.kind {
+                TypeTreeKind::Parenthesized(inner) => {
+                    unwrap_depth += 1;
+                    if unwrap_depth >= MAX_DEPTH {
+                        return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                    }
+                    node_id = inner;
+                }
+                _ => break,
+            }
+        }
+        let Some(node) = parsed.tree_node(node_id) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        let Some(text) = raw_text.get(first.span.start..last.span.end) else {
+        let span = node.byte_range();
+        let Some(text) = source.get(span.clone()) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        let element_offset = file_offset.map(|base| base + first.span.start);
-        if let Some(parts) = split_top_level_union(text) {
-            if !parts.is_empty() {
-                if parts.len() > super::sets::MAX_TERMS {
+        let element_offset = file_offset.map(|base| base + span.start);
+        match node.kind {
+            TypeTreeKind::Missing => CheckOutcome::Unknown(UnknownReason::SyntaxError),
+            TypeTreeKind::Union { ref terms } => {
+                let term_ids = parsed.type_node_list(terms.clone());
+                if term_ids.len() > super::sets::MAX_TERMS {
                     return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
                 }
                 *has_type_elements = true;
-                let mut terms = Vec::with_capacity(parts.len());
-                for (part_rel, part) in parts {
-                    match self.read_union_part_checked(
+                let mut lowered = Vec::with_capacity(term_ids.len());
+                for &term_id in term_ids {
+                    match self.lower_union_term_list(
                         origin,
-                        part,
-                        element_offset.map(|b| b + part_rel),
+                        source,
+                        parsed,
+                        term_id,
+                        file_offset,
                         environment,
                         depth + 1,
-                        &mut terms,
+                        &mut lowered,
                     ) {
                         CheckOutcome::Ok(()) => {}
                         CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
                         CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
                     }
                 }
-                let Some(union_ty) = self.store_union(terms) else {
+                let Some(union_ty) = self.store_union(lowered) else {
                     return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
                 };
                 embeddeds.push(union_ty);
-                return CheckOutcome::Ok(());
+                CheckOutcome::Ok(())
             }
-        } else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        }
-        if let Some(inner) = matching_outer_parens(text) {
-            let inner_offset = element_offset.map(|b| b + 1);
-            return self.read_interface_element_checked(
-                origin,
-                inner,
-                inner_offset,
-                environment,
-                depth + 1,
-                methods,
-                embeddeds,
-                has_type_elements,
-                comparable,
-            );
-        }
-        if matches!(text, "any" | "comparable")
-            && self.universe_constraint(origin, text, environment) == Some(true)
-        {
-            if text == "comparable" {
-                *comparable = true;
+            TypeTreeKind::Approx(_) => {
+                let term = match self.lower_single_term(
+                    origin,
+                    source,
+                    parsed,
+                    node_id,
+                    file_offset,
+                    environment,
+                    depth + 1,
+                ) {
+                    CheckOutcome::Ok(term) => term,
+                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                };
+                let Some(union_ty) = self.store_union(vec![term]) else {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                };
                 *has_type_elements = true;
+                embeddeds.push(union_ty);
+                CheckOutcome::Ok(())
             }
-            return CheckOutcome::Ok(());
-        }
-        if first.kind == TokenKind::Tilde {
-            let term = match self.read_single_term_checked(
-                origin,
-                text,
-                element_offset,
-                environment,
-                depth + 1,
-            ) {
-                CheckOutcome::Ok(term) => term,
-                CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
-                CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
-            };
-            let Some(union_ty) = self.store_union(vec![term]) else {
-                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
-            };
-            *has_type_elements = true;
-            embeddeds.push(union_ty);
-            return CheckOutcome::Ok(());
-        }
-        if environment.iter().any(|(name, _)| *name == text) {
-            return CheckOutcome::Invalid(());
-        }
-        let ty = match self.parse_in_checked(origin, text, element_offset, environment) {
-            CheckOutcome::Ok(ty) => ty,
-            CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
-            CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
-        };
-        match self.interface_constructor(ty) {
-            Some(true) => {
-                let Some(under) = self.underlying(ty) else {
-                    return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
-                };
-                let Some(iface) = self.interface_data(under).cloned() else {
-                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
-                };
-                methods.extend(self.methods_slice(under, iface.methods).iter().cloned());
-                *comparable |= iface.comparable;
-                *has_type_elements |= iface.has_type_elements;
-                if iface.has_type_elements || iface.comparable || !iface.embeddeds.is_empty() {
-                    embeddeds.push(ty);
+            TypeTreeKind::Name { .. }
+                if matches!(text, "any" | "comparable")
+                    && self.universe_constraint(origin, text, environment) == Some(true) =>
+            {
+                if text == "comparable" {
+                    *comparable = true;
+                    *has_type_elements = true;
                 }
                 CheckOutcome::Ok(())
             }
-            Some(false) => {
-                let Some(unaliased) = self.unalias(ty) else {
-                    return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
-                };
-                if matches!(self.node(unaliased), Some(Ty::TypeParam(_))) {
+            _ => {
+                if let Some((_, param_ty)) = environment.iter().find(|(name, _)| *name == text)
+                    && matches!(self.node(*param_ty), Some(Ty::TypeParam(_)))
+                {
                     return CheckOutcome::Invalid(());
                 }
-                *has_type_elements = true;
-                embeddeds.push(ty);
-                CheckOutcome::Ok(())
+                let ty = match self.parse_in_checked(origin, text, element_offset, environment) {
+                    CheckOutcome::Ok(ty) => ty,
+                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                };
+                match self.interface_constructor(ty) {
+                    Some(true) => {
+                        let Some(under) = self.underlying(ty) else {
+                            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+                        };
+                        let Some(iface) = self.interface_data(under).cloned() else {
+                            return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                        };
+                        methods.extend(self.methods_slice(under, iface.methods).iter().cloned());
+                        *comparable |= iface.comparable;
+                        *has_type_elements |= iface.has_type_elements;
+                        if iface.has_type_elements
+                            || iface.comparable
+                            || !iface.embeddeds.is_empty()
+                        {
+                            embeddeds.push(ty);
+                        }
+                        CheckOutcome::Ok(())
+                    }
+                    Some(false) => {
+                        let Some(unaliased) = self.unalias(ty) else {
+                            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+                        };
+                        if matches!(self.node(unaliased), Some(Ty::TypeParam(_))) {
+                            return CheckOutcome::Invalid(());
+                        }
+                        *has_type_elements = true;
+                        embeddeds.push(ty);
+                        CheckOutcome::Ok(())
+                    }
+                    None => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
+                }
             }
-            None => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
         }
     }
 
-    fn read_union_part_checked(
+    #[allow(clippy::too_many_arguments)]
+    fn lower_union_term_list(
         &mut self,
-        origin: &Path,
-        raw_part: &str,
+        origin: &'a Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
         depth: usize,
@@ -331,54 +537,46 @@ impl<'a> TypeArena<'a> {
         if depth >= MAX_DEPTH {
             return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         }
-        let tokens: Vec<_> = Lexer::new(raw_part).collect();
-        let (Some(first), Some(last)) = (
-            tokens.first(),
-            tokens.iter().rfind(|t| t.kind != TokenKind::Semicolon),
-        ) else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        };
-        let Some(text) = raw_part.get(first.span.start..last.span.end) else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        };
-        let part_offset = file_offset.map(|b| b + first.span.start);
-        if let Some(parts) = split_top_level_union(text) {
-            if !parts.is_empty() {
-                for (sub_rel, sub) in parts {
-                    match self.read_union_part_checked(
-                        origin,
-                        sub,
-                        part_offset.map(|b| b + sub_rel),
-                        environment,
-                        depth + 1,
-                        out,
-                    ) {
-                        CheckOutcome::Ok(()) => {}
-                        other => return other,
-                    }
-                    if out.len() > super::sets::MAX_TERMS {
+        let mut unwrap_depth = 0;
+        while let Some(node) = parsed.tree_node(node_id) {
+            match node.kind {
+                TypeTreeKind::Parenthesized(inner) => {
+                    unwrap_depth += 1;
+                    if unwrap_depth >= MAX_DEPTH {
                         return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
                     }
+                    node_id = inner;
                 }
-                return CheckOutcome::Ok(());
+                _ => break,
             }
-        } else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         }
-        if let Some(inner) = matching_outer_parens(text) {
-            return self.read_union_part_checked(
-                origin,
-                inner,
-                part_offset.map(|b| b + 1),
-                environment,
-                depth + 1,
-                out,
-            );
+        if let Some(TypeTreeKind::Union { terms }) = parsed.tree_node(node_id).map(|n| &n.kind) {
+            for &sub_id in parsed.type_node_list(terms.clone()) {
+                match self.lower_union_term_list(
+                    origin,
+                    source,
+                    parsed,
+                    sub_id,
+                    file_offset,
+                    environment,
+                    depth + 1,
+                    out,
+                ) {
+                    CheckOutcome::Ok(()) => {}
+                    other => return other,
+                }
+                if out.len() > super::sets::MAX_TERMS {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                }
+            }
+            return CheckOutcome::Ok(());
         }
-        let term = match self.read_single_term_checked(
+        let term = match self.lower_single_term(
             origin,
-            text,
-            part_offset,
+            source,
+            parsed,
+            node_id,
+            file_offset,
             environment,
             depth + 1,
         ) {
@@ -393,21 +591,54 @@ impl<'a> TypeArena<'a> {
         CheckOutcome::Ok(())
     }
 
-    fn read_single_term_checked(
+    #[allow(clippy::too_many_arguments)]
+    fn lower_single_term(
         &mut self,
-        origin: &Path,
-        text: &str,
+        origin: &'a Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
         depth: usize,
     ) -> CheckOutcome<Term> {
-        let Some(first) = Lexer::new(text).next() else {
+        if depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        let mut approximate = false;
+        let mut unwrap_depth = 0;
+        while let Some(node) = parsed.tree_node(node_id) {
+            match node.kind {
+                TypeTreeKind::Parenthesized(inner) => {
+                    unwrap_depth += 1;
+                    if unwrap_depth >= MAX_DEPTH {
+                        return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                    }
+                    node_id = inner;
+                }
+                TypeTreeKind::Approx(inner) if !approximate => {
+                    approximate = true;
+                    node_id = inner;
+                }
+                TypeTreeKind::Approx(_) => {
+                    return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                }
+                _ => break,
+            }
+        }
+        let Some(node) = parsed.tree_node(node_id) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        if matches!(text, "any" | "comparable")
-            && self.universe_constraint(origin, text, environment) == Some(true)
+        let span = node.byte_range();
+        let Some(term_str) = source.get(span.clone()) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        let term_offset = file_offset.map(|base| base + span.start);
+        if matches!(node.kind, TypeTreeKind::Name { .. })
+            && matches!(term_str, "any" | "comparable")
+            && self.universe_constraint(origin, term_str, environment) == Some(true)
         {
-            if text == "comparable" {
+            if approximate || term_str == "comparable" {
                 return CheckOutcome::Invalid(());
             }
             return match self.builtin_interface(origin, false) {
@@ -418,39 +649,21 @@ impl<'a> TypeArena<'a> {
                 None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
             };
         }
-        let approximate = first.kind == TokenKind::Tilde;
-        let term_offset = if approximate {
-            let rest = text.get(1..).unwrap_or("");
-            let trimmed = rest.trim();
-            let shift = rest.len() - rest.trim_start().len();
-            let _ = trimmed;
-            file_offset.map(|b| b + 1 + shift)
-        } else {
-            file_offset
-        };
-        let term_str = if approximate {
-            let Some(rest) = text.get(1..) else {
-                return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-            };
-            rest.trim()
-        } else {
-            text
-        };
-        if environment.iter().any(|(name, _)| *name == term_str) {
+        if let Some((_, param_ty)) = environment.iter().find(|(name, _)| *name == term_str)
+            && matches!(self.node(*param_ty), Some(Ty::TypeParam(_)))
+        {
             return CheckOutcome::Invalid(());
         }
-        if term_str.starts_with("interface")
-            && Lexer::new(term_str)
-                .next()
-                .is_some_and(|t| t.kind == TokenKind::Interface)
-        {
+        if let TypeTreeKind::Interface { ref members } = node.kind {
             if approximate {
                 return CheckOutcome::Invalid(());
             }
-            let iface = match self.read_interface_at_checked(
+            let iface = match self.lower_interface_members_checked(
                 origin,
-                term_str,
-                term_offset,
+                source,
+                parsed,
+                members.clone(),
+                file_offset,
                 environment,
                 depth + 1,
             ) {
@@ -471,8 +684,14 @@ impl<'a> TypeArena<'a> {
         let Some(is_iface) = self.interface_constructor(ty) else {
             return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
         };
-        if is_iface && approximate {
-            return CheckOutcome::Invalid(());
+        if is_iface {
+            if approximate {
+                return CheckOutcome::Invalid(());
+            }
+            return CheckOutcome::Ok(Term {
+                ty,
+                approximate: false,
+            });
         }
         let Some(unaliased) = self.unalias(ty) else {
             return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
@@ -489,6 +708,11 @@ impl<'a> TypeArena<'a> {
             ty: unaliased,
             approximate,
         })
+    }
+
+    pub(super) fn builtin_comparable_interface(&mut self, origin: &Path) -> Option<TypeId> {
+        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
+        self.store_interface_nodes(origin, Vec::new(), Vec::new(), true, true, false, false)
     }
 
     pub(super) fn builtin_interface(&mut self, origin: &Path, error: bool) -> Option<TypeId> {
@@ -508,7 +732,7 @@ impl<'a> TypeArena<'a> {
             Vec::new()
         };
         let interface =
-            self.store_interface_nodes(origin, methods, Vec::new(), false, false, !error)?;
+            self.store_interface_nodes(origin, methods, Vec::new(), false, false, false, !error)?;
         if error {
             self.push_builtin_error(interface)
         } else {
@@ -529,7 +753,7 @@ impl<'a> TypeArena<'a> {
         origin: &'a Path,
         methods: Vec<Method<'a>>,
     ) -> CheckOutcome<TypeId> {
-        self.store_unified_interface_checked(origin, methods, Vec::new(), false, false)
+        self.store_unified_interface_checked(origin, methods, Vec::new(), false, false, false)
     }
 
     pub(super) fn store_unified_interface_checked(
@@ -539,6 +763,7 @@ impl<'a> TypeArena<'a> {
         embeddeds: Vec<TypeId>,
         has_type_elements: bool,
         comparable: bool,
+        implicit: bool,
     ) -> CheckOutcome<TypeId> {
         let mut sorted: BTreeMap<(String, String), Method<'a>> = BTreeMap::new();
         for method in methods {
@@ -575,6 +800,7 @@ impl<'a> TypeArena<'a> {
             embeddeds,
             has_type_elements,
             comparable,
+            implicit,
             false,
         ) {
             Some(id) => CheckOutcome::Ok(id),

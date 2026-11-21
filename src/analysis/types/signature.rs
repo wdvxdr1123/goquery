@@ -22,7 +22,7 @@ impl TypeArena<'_> {
         let signature = crate::syntax::parse_signature(&header);
         if !signature.diagnostics.is_empty()
             || !signature.receiver.is_empty()
-            || signature.type_parameters.len() > 32
+            || signature.type_parameters.len() > self.active_node_limit()
         {
             return None;
         }
@@ -61,40 +61,50 @@ impl TypeArena<'_> {
             Ty::Pointer(base) => self.unalias(*base)?,
             _ => receiver,
         };
-        let (declaration, arguments, _) = self.named_info(base)?;
+        let (origin_id, declaration, arguments, _) = self.named_origin_info(base)?;
         let (file, symbol) = (declaration.file, declaration.symbol);
         if symbol.alias || !symbol.generic || !self.same_field_package(file, origin)? {
             return None;
         }
         let arguments = self.arguments_slice(base, arguments).to_vec();
-        if arguments.len() > 32
+        if arguments.len() > self.active_node_limit()
             || arguments.iter().enumerate().any(|(index, ty)| {
                 !matches!(self.node(*ty), Some(Ty::TypeParam(_))) || arguments[..index].contains(ty)
             })
         {
             return None;
         }
-        let source = self
-            .workspace
-            .source_slice(file, symbol.end..symbol.declaration()?.end)?;
-        let end = crate::syntax::type_parameter_end(&source)?;
-        let header = source.get(..end)?;
-        let signature = crate::syntax::parse_type_parameters(header);
-        if !signature.diagnostics.is_empty() {
+        // Reuse the cached DeclArena origin template instead of re-reading and
+        // re-parsing the owner type's parameter list from disk.
+        let owner_tparams = self.ensure_origin_tparams(origin_id, true)?;
+        if owner_tparams.len() != arguments.len() {
             return None;
         }
-        let names = constraints::parameter_names(header, &signature)?;
-        if names.len() != arguments.len() {
-            return None;
+        let bindings: Vec<Option<TypeId>> = arguments.iter().copied().map(Some).collect();
+        let mut bound_pairs = Vec::with_capacity(arguments.len());
+        for (&owner_tp, &recv_tp) in owner_tparams.iter().zip(&arguments) {
+            if self.type_param_bound(recv_tp).is_some() {
+                continue;
+            }
+            let owner_bound = self.type_param_bound(owner_tp)?;
+            let inst_bound =
+                self.substitute_for_params(owner_bound, &owner_tparams, &bindings, 0)?;
+            if !self.set_type_param_bound(recv_tp, inst_bound) {
+                return None;
+            }
+            bound_pairs.push((recv_tp, inst_bound));
         }
-        let environment: Vec<_> = names.into_iter().zip(arguments.iter().copied()).collect();
-        let bounds: Vec<_> = signature
-            .type_parameters
-            .iter()
-            .zip(&arguments)
-            .map(|(parameter, ty)| (*ty, &header[parameter.annotation.clone()]))
-            .collect();
-        self.import_parameter_bounds(file, &bounds, &environment)?;
+        for &(_, bound) in &bound_pairs {
+            if !matches!(
+                self.constraint_type_set_checked(bound, 0),
+                super::CheckOutcome::Ok(_)
+            ) {
+                for &(tp, _) in &bound_pairs {
+                    self.set_type_param_bound(tp, TypeId::INVALID);
+                }
+                return None;
+            }
+        }
         Some(base)
     }
 
@@ -176,7 +186,7 @@ impl TypeArena<'_> {
         if !signature.diagnostics.is_empty()
             || !signature.receiver.is_empty()
             || signature.type_parameters.is_empty()
-            || signature.type_parameters.len() > 32
+            || signature.type_parameters.len() > self.active_node_limit()
         {
             return None;
         }
@@ -257,12 +267,12 @@ impl TypeArena<'_> {
         if type_params.len() != arguments.len() {
             return None;
         }
-        let constraints: Vec<_> = type_params
+        let bounds: Vec<TypeId> = type_params
             .iter()
-            .map(|&tp| self.parameter_constraint(tp).cloned())
+            .map(|&tp| self.type_param_bound(tp))
             .collect::<Option<_>>()?;
         let bindings: Vec<_> = arguments.iter().copied().map(Some).collect();
-        self.prove_constraints(&type_params, &constraints, &bindings)?;
+        self.prove_constraints(&type_params, &bounds, &bindings)?;
         self.instantiate_signature_nodes(generic_ty, &type_params, &bindings)
     }
 

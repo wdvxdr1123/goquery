@@ -165,13 +165,14 @@ impl TypeArena<'_> {
     fn ordered_type(&mut self, input: TypeId) -> Option<bool> {
         let root = self.underlying(input)?;
         if matches!(self.node(root)?, Ty::TypeParam(_)) {
-            let Some(terms) = self.parameter_set(root)?.terms else {
+            let set = self.parameter_set(root)?;
+            let Some(terms) = set.terms.as_slice() else {
                 return Some(false);
             };
             if terms.is_empty() {
                 return None;
             }
-            for term in terms {
+            for &term in terms {
                 self.step()?;
                 let root = self.underlying(term.ty)?;
                 if !matches!(self.node(root)?, Ty::Basic(kind) if ordered(*kind)) {

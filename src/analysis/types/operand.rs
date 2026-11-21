@@ -210,11 +210,12 @@ impl TypeArena<'_> {
         if !matches!(self.node(root), Some(Ty::TypeParam(_))) {
             return None;
         }
-        let terms = self.parameter_set(root)?.terms?;
+        let set = self.parameter_set(root)?;
+        let terms = set.terms.as_slice()?;
         if terms.is_empty() {
             return None;
         }
-        for term in terms {
+        for &term in terms {
             self.step()?;
             let kind = self.basic_kind(term.ty)?;
             let valid = match operator {
@@ -438,11 +439,12 @@ impl TypeArena<'_> {
         let root = self.underlying(target)?;
         if matches!(self.node(root), Some(Ty::TypeParam(_))) {
             let value = operand.value?;
-            let terms = self.parameter_set(root)?.terms?;
+            let set = self.parameter_set(root)?;
+            let terms = set.terms.as_slice()?;
             if terms.is_empty() {
                 return None;
             }
-            for term in terms {
+            for &term in terms {
                 self.step()?;
                 let kind = self.basic_kind(term.ty)?;
                 if !kind.integer() || !representable(value, kind, int_bits) {
@@ -463,13 +465,14 @@ impl TypeArena<'_> {
                 Ty::Basic(kind) if kind.integer()
             ));
         }
-        let Some(terms) = self.parameter_set(root)?.terms else {
+        let set = self.parameter_set(root)?;
+        let Some(terms) = set.terms.as_slice() else {
             return Some(false);
         };
         if terms.is_empty() {
             return None;
         }
-        for term in terms {
+        for &term in terms {
             self.step()?;
             let root = self.underlying(term.ty)?;
             if !matches!(self.node(root)?, Ty::Basic(kind) if kind.integer()) {
@@ -515,13 +518,14 @@ impl TypeArena<'_> {
         };
 
         let root = self.underlying(param_ty)?;
-        let terms = self.parameter_set(root)?.terms?;
+        let set = self.parameter_set(root)?;
+        let terms = set.terms.as_slice()?;
         if terms.is_empty() {
             return None;
         }
         let comparison = matches!(operator, "==" | "!=" | "<" | "<=" | ">" | ">=");
         let mut all_integer = true;
-        for term in terms {
+        for &term in terms {
             self.step()?;
             let kind = self.basic_kind(term.ty);
             all_integer &= kind.is_some_and(BasicKind::integer);
