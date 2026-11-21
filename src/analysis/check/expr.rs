@@ -3,6 +3,7 @@
 use std::ops::Range;
 
 use crate::analysis::engine::check::diagnostics::Code;
+use crate::analysis::engine::check::region::WriteKind;
 use crate::analysis::engine::check::{
     ExprOutcome, FileSymbolLookup, RegionChecker, builtin_type_static_name, decl_object,
 };
@@ -377,6 +378,9 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                     .expression(self.unwrap_parens(operand))
                     .is_some_and(|e| matches!(e.kind, ExprKind::Composite { .. }));
                 if op.mode == Mode::Variable || is_composite {
+                    if op.mode == Mode::Variable {
+                        self.record_write_target(operand, WriteKind::AddrOf);
+                    }
                     match self.arena.pointer(op.ty) {
                         Some(ptr_ty) => ExprOutcome::Value(Operand {
                             mode: Mode::Value,
@@ -417,11 +421,56 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         if l.mode == Mode::TypeExpr || r.mode == Mode::TypeExpr {
             return ExprOutcome::invalid();
         }
+        let is_shift = matches!(op_str, "<<" | ">>");
+        let left_kind = self.arena.basic_kind(l.ty);
+        let right_kind = self.arena.basic_kind(r.ty);
+        let left_untyped = left_kind.is_some_and(BasicKind::untyped);
+        let right_untyped = right_kind.is_some_and(BasicKind::untyped);
+        if is_shift && left_untyped && r.mode != Mode::Constant {
+            // Mirror go/types/expr.go:751-755: mark the unparenthesized LHS so
+            // delayed type updates enforce integer type and representability.
+            let lhs = self.unwrap_parens(left);
+            self.untyped.mark_lhs_shift(lhs);
+        }
         match self
             .arena
             .checked_binary_expr(op_str, l, r, expected, int_bits)
         {
-            Some(Ok(res)) => ExprOutcome::Value(res),
+            Some(Ok(res)) => {
+                if is_shift {
+                    if left_untyped
+                        && r.mode != Mode::Constant
+                        && !self
+                            .arena
+                            .basic_kind(res.ty)
+                            .is_some_and(BasicKind::untyped)
+                    {
+                        self.update_expr_type(left, res.ty, int_bits);
+                    }
+                } else if left_untyped != right_untyped {
+                    if left_untyped && left_kind != Some(BasicKind::UntypedNil) {
+                        self.update_expr_type(left, r.ty, int_bits);
+                    } else if right_untyped && right_kind != Some(BasicKind::UntypedNil) {
+                        self.update_expr_type(right, l.ty, int_bits);
+                    }
+                } else if left_untyped
+                    && right_untyped
+                    && matches!(op_str, "==" | "!=" | "<" | "<=" | ">" | ">=")
+                    && !(l.mode == Mode::Constant && r.mode == Mode::Constant)
+                {
+                    if left_kind != Some(BasicKind::UntypedNil)
+                        && let Some(default_l) = self.arena.default_operand(l, int_bits)
+                    {
+                        self.update_expr_type(left, default_l, int_bits);
+                    }
+                    if right_kind != Some(BasicKind::UntypedNil)
+                        && let Some(default_r) = self.arena.default_operand(r, int_bits)
+                    {
+                        self.update_expr_type(right, default_r, int_bits);
+                    }
+                }
+                ExprOutcome::Value(res)
+            }
             Some(Err(error)) => {
                 self.binary_error(span, (left, l), (right, r), error);
                 ExprOutcome::invalid()

@@ -4,6 +4,7 @@ use std::ops::Range;
 
 use crate::analysis::engine::check::assign::ConstGroupState;
 use crate::analysis::engine::check::diagnostics::Code;
+use crate::analysis::engine::check::region::WriteKind;
 use crate::analysis::engine::check::{ExprOutcome, FileSymbolLookup, RegionChecker};
 use crate::analysis::engine::obj::{LocalId, ObjectRef, SymbolOrigin, VarKind};
 use crate::analysis::engine::scope::tree::{BindingInit, ScopeKind};
@@ -171,6 +172,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             } => self.check_case(values, statements, None),
             StmtKind::Return { values } => self.check_return_stmt(&stmt.span, values),
             StmtKind::Send { channel, value } => {
+                self.record_write_target(*channel, WriteKind::Modify);
                 let ch_op = self.check_expr(*channel, None);
                 let elem_ty = ch_op.and_then(|op| self.arena.send_element(op.ty));
                 let val_op = self.check_expr(*value, elem_ty);
@@ -182,6 +184,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 }
             }
             StmtKind::Increment { expression, .. } => {
+                self.record_write_target(*expression, WriteKind::Modify);
                 let _ = self.check_expr(*expression, None);
             }
             StmtKind::Go { call } | StmtKind::Defer { call } => {

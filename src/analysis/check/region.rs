@@ -70,6 +70,42 @@ pub(crate) struct InstanceInfo<'a> {
     pub(crate) instantiated: TypeId,
 }
 
+/// Classification of statement/expression write sites recorded under [`RecordMask::WRITES`].
+/// Kept separate from write-only [`RegionInfo::writes`] so `UnusedVar` diagnostics
+/// preserve exact read-vs-write semantics (`x++` and `&x` count as uses; `x = 1` does not).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WriteKind {
+    /// Write-only assignment target (`x = 1`, `for x = range s`, short-var re-assignment).
+    Assign,
+    /// Read-modify-write or channel send target (`x++`, `x--`, `ch <- v`, `(*p)++`).
+    Modify,
+    /// Address-of operand (`&x`, `&s.f`).
+    AddrOf,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SpanBounds {
+    max_len: u32,
+    max_end: u32,
+}
+
+impl SpanBounds {
+    const UNBOUNDED: Self = Self {
+        max_len: u32::MAX,
+        max_end: u32::MAX,
+    };
+
+    fn of<T>(entries: &[([u32; 2], T)]) -> Self {
+        let mut max_len = 0u32;
+        let mut max_end = 0u32;
+        for &(span, _) in entries {
+            max_len = max_len.max(span[1].saturating_sub(span[0]));
+            max_end = max_end.max(span[1]);
+        }
+        Self { max_len, max_end }
+    }
+}
+
 /// Semantic facts for a single function/method body or top-level declaration spec.
 /// Stored as flat sorted tables indexed by `[u32; 2]` file byte offsets so peak
 /// memory stays minimal and tables drop immediately after a request/stream step.
@@ -81,13 +117,18 @@ pub(crate) struct RegionInfo<'a> {
     pub(crate) local_types: Vec<Option<Operand>>,
     pub(crate) local_inits: Vec<Option<[u32; 2]>>,
     pub(crate) expr_types: Vec<([u32; 2], Operand)>,
+    expr_bounds: SpanBounds,
     pub(crate) defs: Vec<([u32; 2], ObjectRef<'a>)>,
+    def_bounds: SpanBounds,
     pub(crate) uses: Vec<([u32; 2], ObjectRef<'a>)>,
+    use_bounds: SpanBounds,
     /// Lightweight local-variable use tracking for `UnusedVar` diagnostics when
     /// `RecordMask::DIAGNOSTICS` is requested without `RecordMask::USES`.
     pub(super) local_var_uses: Vec<([u32; 2], LocalId)>,
     /// Bare identifiers assigned without reading their previous value.
     pub(crate) writes: Vec<[u32; 2]>,
+    /// Classified write/mutation sites gated solely by [`RecordMask::WRITES`].
+    pub(crate) write_sites: Vec<([u32; 2], WriteKind)>,
     /// False when recovery, cursor filtering, or budgets can omit reads.
     /// An unknown operand type alone does not affect this.
     pub(super) uses_complete: bool,
@@ -95,6 +136,7 @@ pub(crate) struct RegionInfo<'a> {
     pub(crate) selections: Vec<([u32; 2], Selection<'a>)>,
     pub(crate) instances: Vec<([u32; 2], InstanceInfo<'a>)>,
     pub(crate) expected_types: Vec<([u32; 2], TypeId)>,
+    expected_bounds: SpanBounds,
     expected_overflow: bool,
     literal_types: Vec<([u32; 2], TypeId)>,
     literal_overflow: bool,
@@ -123,15 +165,20 @@ impl<'a> RegionInfo<'a> {
             local_types: vec![None; binding_count],
             local_inits: vec![None; binding_count],
             expr_types: Vec::new(),
+            expr_bounds: SpanBounds::UNBOUNDED,
             defs: Vec::new(),
+            def_bounds: SpanBounds::UNBOUNDED,
             uses: Vec::new(),
+            use_bounds: SpanBounds::UNBOUNDED,
             local_var_uses: Vec::new(),
             writes: Vec::new(),
+            write_sites: Vec::new(),
             uses_complete: true,
             implicits: Vec::new(),
             selections: Vec::new(),
             instances: Vec::new(),
             expected_types: Vec::new(),
+            expected_bounds: SpanBounds::UNBOUNDED,
             expected_overflow: false,
             literal_types: Vec::new(),
             literal_overflow: false,
@@ -165,6 +212,15 @@ impl<'a> RegionInfo<'a> {
         sort_and_dedup_last(&mut self.instances);
         sort_and_dedup_last(&mut self.expected_types);
         sort_and_dedup_last(&mut self.literal_types);
+        sort_and_dedup_last(&mut self.write_sites);
+        if self.writes.len() > 1 {
+            self.writes.sort_unstable();
+            self.writes.dedup();
+        }
+        self.expr_bounds = SpanBounds::of(&self.expr_types);
+        self.def_bounds = SpanBounds::of(&self.defs);
+        self.use_bounds = SpanBounds::of(&self.uses);
+        self.expected_bounds = SpanBounds::of(&self.expected_types);
         self.calls
             .sort_by_key(|call| (call.span[0], std::cmp::Reverse(call.span[1])));
     }
@@ -229,19 +285,12 @@ impl<'a> RegionInfo<'a> {
     }
 
     pub(crate) fn expected_type_at(&self, offset: u32) -> Option<TypeId> {
-        let (_, ty) = self
-            .expected_types
-            .iter()
-            .filter(|(span, _)| span[0] <= offset && offset <= span[1])
-            .min_by_key(|(span, _)| span[1].saturating_sub(span[0]))?;
-        (*ty != TypeId::INVALID).then_some(*ty)
+        let (_, &ty) = exact_or_smallest_token(&self.expected_types, self.expected_bounds, offset)?;
+        (ty != TypeId::INVALID).then_some(ty)
     }
 
     pub(crate) fn literal_type(&self, span: [u32; 2]) -> Option<TypeId> {
-        self.literal_types
-            .iter()
-            .find(|(found, _)| *found == span)
-            .map(|(_, ty)| *ty)
+        lookup_exact(&self.literal_types, span).copied()
     }
 
     pub(super) fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
@@ -297,15 +346,16 @@ impl<'a> RegionInfo<'a> {
     }
 
     pub(crate) fn smallest_expr_at(&self, offset: u32) -> Option<([u32; 2], Operand)> {
-        smallest_containing(&self.expr_types, offset).map(|(span, op)| (span, *op))
+        smallest_containing(&self.expr_types, self.expr_bounds, offset)
+            .map(|(span, op)| (span, *op))
     }
 
     pub(crate) fn def_at(&self, offset: u32) -> Option<([u32; 2], ObjectRef<'a>)> {
-        exact_or_smallest_token(&self.defs, offset).map(|(span, obj)| (span, *obj))
+        exact_or_smallest_token(&self.defs, self.def_bounds, offset).map(|(span, obj)| (span, *obj))
     }
 
     pub(crate) fn use_at(&self, offset: u32) -> Option<([u32; 2], ObjectRef<'a>)> {
-        exact_or_smallest_token(&self.uses, offset).map(|(span, obj)| (span, *obj))
+        exact_or_smallest_token(&self.uses, self.use_bounds, offset).map(|(span, obj)| (span, *obj))
     }
 
     pub(crate) fn def_by_span(&self, span: [u32; 2]) -> Option<ObjectRef<'a>> {
@@ -328,6 +378,19 @@ impl<'a> RegionInfo<'a> {
         lookup_exact(&self.instances, span)
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn write_kind_at(&self, span: [u32; 2]) -> Option<WriteKind> {
+        lookup_exact(&self.write_sites, span).copied()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn is_write(&self, span: [u32; 2]) -> bool {
+        matches!(
+            self.write_kind_at(span),
+            Some(WriteKind::Assign | WriteKind::Modify)
+        ) || self.writes.binary_search(&span).is_ok()
+    }
+
     pub(crate) fn call_by_callee(&self, callee_span: [u32; 2]) -> Option<&CallSiteInfo<'a>> {
         self.calls
             .iter()
@@ -336,6 +399,9 @@ impl<'a> RegionInfo<'a> {
 }
 
 fn sort_and_dedup_last<T>(entries: &mut Vec<([u32; 2], T)>) {
+    if entries.len() <= 1 {
+        return;
+    }
     // Stable sort preserves insertion order so reversing puts the latest entry first.
     entries.reverse();
     entries.sort_by_key(|(span, _)| *span);
@@ -349,13 +415,30 @@ fn lookup_exact<T>(entries: &[([u32; 2], T)], span: [u32; 2]) -> Option<&T> {
     Some(&entries[index].1)
 }
 
-fn smallest_containing<T>(entries: &[([u32; 2], T)], offset: u32) -> Option<([u32; 2], &T)> {
+fn smallest_containing<T>(
+    entries: &[([u32; 2], T)],
+    bounds: SpanBounds,
+    offset: u32,
+) -> Option<([u32; 2], &T)> {
+    if entries.is_empty() || offset > bounds.max_end {
+        return None;
+    }
     let limit = entries.partition_point(|(span, _)| span[0] <= offset);
     let mut best: Option<(usize, u32)> = None;
-    for (index, (span, _)) in entries[..limit].iter().enumerate() {
+    for index in (0..limit).rev() {
+        let span = entries[index].0;
+        let dist = offset - span[0];
+        if dist > bounds.max_len {
+            break;
+        }
+        if let Some((_, best_len)) = best
+            && dist >= best_len
+        {
+            break;
+        }
         if offset <= span[1] {
-            let len = span[1].saturating_sub(span[0]);
-            if best.is_none_or(|(_, best_len)| len <= best_len) {
+            let len = span[1] - span[0];
+            if best.is_none_or(|(_, best_len)| len < best_len) {
                 best = Some((index, len));
             }
         }
@@ -386,13 +469,30 @@ fn record_context(
     entries.push((span, ty));
 }
 
-fn exact_or_smallest_token<T>(entries: &[([u32; 2], T)], offset: u32) -> Option<([u32; 2], &T)> {
+fn exact_or_smallest_token<T>(
+    entries: &[([u32; 2], T)],
+    bounds: SpanBounds,
+    offset: u32,
+) -> Option<([u32; 2], &T)> {
+    if entries.is_empty() || offset > bounds.max_end {
+        return None;
+    }
     let limit = entries.partition_point(|(span, _)| span[0] <= offset);
     let mut best: Option<(usize, u32)> = None;
-    for (index, (span, _)) in entries[..limit].iter().enumerate() {
+    for index in (0..limit).rev() {
+        let span = entries[index].0;
+        let dist = offset - span[0];
+        if dist > bounds.max_len {
+            break;
+        }
+        if let Some((_, best_len)) = best
+            && dist > best_len
+        {
+            break;
+        }
         if offset <= span[1] {
-            let len = span[1].saturating_sub(span[0]);
-            if best.is_none_or(|(_, best_len)| len < best_len) {
+            let len = span[1] - span[0];
+            if best.is_none_or(|(_, best_len)| len <= best_len) {
                 best = Some((index, len));
             }
         }
@@ -402,7 +502,44 @@ fn exact_or_smallest_token<T>(entries: &[([u32; 2], T)], offset: u32) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::RecordMask;
+    use super::{
+        RecordMask, RegionInfo, SpanBounds, WriteKind, exact_or_smallest_token,
+        smallest_containing, sort_and_dedup_last,
+    };
+    use crate::analysis::engine::scope::tree::ScopeTree;
+    use crate::analysis::engine::types::{BasicKind, Mode, Operand, TypeId};
+
+    fn naive_smallest_containing<T>(
+        entries: &[([u32; 2], T)],
+        offset: u32,
+    ) -> Option<([u32; 2], &T)> {
+        let mut best: Option<(usize, u32)> = None;
+        for (index, (span, _)) in entries.iter().enumerate() {
+            if span[0] <= offset && offset <= span[1] {
+                let len = span[1].saturating_sub(span[0]);
+                if best.is_none_or(|(_, best_len)| len <= best_len) {
+                    best = Some((index, len));
+                }
+            }
+        }
+        best.map(|(index, _)| (entries[index].0, &entries[index].1))
+    }
+
+    fn naive_exact_or_smallest<T>(
+        entries: &[([u32; 2], T)],
+        offset: u32,
+    ) -> Option<([u32; 2], &T)> {
+        let mut best: Option<(usize, u32)> = None;
+        for (index, (span, _)) in entries.iter().enumerate() {
+            if span[0] <= offset && offset <= span[1] {
+                let len = span[1].saturating_sub(span[0]);
+                if best.is_none_or(|(_, best_len)| len < best_len) {
+                    best = Some((index, len));
+                }
+            }
+        }
+        best.map(|(index, _)| (entries[index].0, &entries[index].1))
+    }
 
     #[test]
     fn record_mask_operations() {
@@ -424,5 +561,118 @@ mod tests {
                 | RecordMask::LITERALS
                 | RecordMask::CALLS
         ));
+    }
+
+    #[test]
+    fn range_lookups_match_linear_reference_and_tie_breaking() {
+        let mut entries: Vec<([u32; 2], u32)> = vec![
+            ([0, 0], 1),
+            ([0, 10], 2),
+            ([10, 20], 3),
+            ([10, 50], 4),
+            ([12, 18], 5),
+            ([0, 1000], 6),
+            ([10, 500], 7),
+            ([20, 40], 8),
+            ([25, 30], 9),
+            ([200, 210], 10),
+            ([210, 220], 11),
+            ([900, 905], 12),
+            // Duplicate span: latest value must win after sort_and_dedup_last.
+            ([25, 30], 99),
+        ];
+        sort_and_dedup_last(&mut entries);
+        let bounds = SpanBounds::of(&entries);
+
+        // Shared boundary between equal-length adjacent spans [200, 210] and [210, 220]:
+        // smallest_containing picks later index ([210, 220]); exact_or_smallest_token picks earlier ([200, 210]).
+        assert_eq!(
+            smallest_containing(&entries, bounds, 210).map(|(s, &v)| (s, v)),
+            Some(([210, 220], 11))
+        );
+        assert_eq!(
+            exact_or_smallest_token(&entries, bounds, 210).map(|(s, &v)| (s, v)),
+            Some(([200, 210], 10))
+        );
+        // Latest entry won for duplicate [25, 30].
+        assert_eq!(
+            smallest_containing(&entries, bounds, 27).map(|(s, &v)| (s, v)),
+            Some(([25, 30], 99))
+        );
+
+        // Exhaustively verify every offset including misses before, inside gaps, and beyond max_end.
+        for offset in 0..=1050 {
+            let expected_sc = naive_smallest_containing(&entries, offset).map(|(s, &v)| (s, v));
+            let actual_sc = smallest_containing(&entries, bounds, offset).map(|(s, &v)| (s, v));
+            assert_eq!(
+                actual_sc, expected_sc,
+                "smallest_containing mismatch at {offset}"
+            );
+
+            let expected_tok = naive_exact_or_smallest(&entries, offset).map(|(s, &v)| (s, v));
+            let actual_tok =
+                exact_or_smallest_token(&entries, bounds, offset).map(|(s, &v)| (s, v));
+            assert_eq!(
+                actual_tok, expected_tok,
+                "exact_or_smallest_token mismatch at {offset}"
+            );
+        }
+
+        // Empty table returns None even at offset 0.
+        let empty: Vec<([u32; 2], u32)> = Vec::new();
+        let empty_bounds = SpanBounds::of(&empty);
+        assert!(smallest_containing(&empty, empty_bounds, 0).is_none());
+        assert!(exact_or_smallest_token(&empty, empty_bounds, 0).is_none());
+    }
+
+    #[test]
+    fn region_info_expected_literal_and_write_lookups() {
+        let mut region = RegionInfo::with_mask(
+            None,
+            [0, 200],
+            ScopeTree::empty([0, 200]),
+            RecordMask::TYPES | RecordMask::EXPECTED | RecordMask::LITERALS | RecordMask::WRITES,
+        );
+        let t1 = TypeId::basic(BasicKind::Int);
+        let t2 = TypeId::basic(BasicKind::String);
+
+        region.record_expected([10, 50], Some(t1));
+        region.record_expected([20, 30], None); // INVALID barrier
+        region.record_expected([22, 26], Some(t2));
+        region.record_literal([40, 60], t1);
+        region.record_literal([5, 8], t2);
+        region.expr_types.push((
+            [10, 20],
+            Operand {
+                mode: Mode::Value,
+                ty: t1,
+                value: None,
+            },
+        ));
+        region.writes.push([70, 75]);
+        region.writes.push([30, 35]);
+        region.writes.push([30, 35]);
+        region.write_sites.push(([30, 35], WriteKind::Assign));
+        region.write_sites.push(([80, 84], WriteKind::Modify));
+        region.write_sites.push(([90, 94], WriteKind::AddrOf));
+        region.finalize();
+
+        assert_eq!(region.expected_type_at(15), Some(t1));
+        assert_eq!(region.expected_type_at(21), None);
+        assert_eq!(region.expected_type_at(24), Some(t2));
+        assert_eq!(region.expected_type_at(199), None);
+
+        assert_eq!(region.literal_type([5, 8]), Some(t2));
+        assert_eq!(region.literal_type([40, 60]), Some(t1));
+        assert_eq!(region.literal_type([1, 2]), None);
+
+        assert_eq!(region.write_kind_at([30, 35]), Some(WriteKind::Assign));
+        assert_eq!(region.write_kind_at([80, 84]), Some(WriteKind::Modify));
+        assert_eq!(region.write_kind_at([90, 94]), Some(WriteKind::AddrOf));
+        assert!(region.is_write([30, 35]));
+        assert!(region.is_write([70, 75]));
+        assert!(region.is_write([80, 84]));
+        assert!(!region.is_write([90, 94]));
+        assert!(!region.is_write([100, 104]));
     }
 }
