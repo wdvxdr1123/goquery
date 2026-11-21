@@ -5,9 +5,10 @@ mod lexical;
 mod roles;
 
 use crate::analysis::query::Context;
+use crate::analysis::query::documentation::{self, DocLinkTarget};
 use crate::analysis::sema::{
-    DeclId, LocalDeclKind, LocalId, MethodOrigin, PackageView, RegionView, SemanticObject,
-    SymbolOrigin, TypeForm, TypeHandle, TypeShape, VarKind, decl_object,
+    DeclId, LocalDeclKind, MethodOrigin, PackageView, RegionView, SemanticObject, SymbolOrigin,
+    TypeForm, TypeInspector, TypeRef, TypeShape, VarKind, decl_object,
     imported_name_in as imported_name, is_builtin_function as builtin_function,
     is_builtin_type as builtin_type, is_builtin_universe as builtin,
 };
@@ -194,6 +195,8 @@ impl<'a> Context<'a> {
             }
             if has_potential_format {
                 crate::analysis::query::highlight::collect_region_format_directives(
+                    workspace,
+                    file,
                     source,
                     view,
                     window_bounds,
@@ -312,11 +315,15 @@ impl<'r, 'a> SemaScope<'_, 'r, 'a> {
         }
     }
 
-    fn type_shape(&mut self, ty: TypeHandle<'r>, constant: bool) -> TypeShape {
+    fn types(&mut self) -> TypeInspector<'_, 'r, 'a> {
         match self {
-            Self::Region(view, _) => view.type_shape(ty, constant),
-            Self::Package(_) => TypeShape::Unknown,
+            Self::Region(view, _) => view.types(),
+            Self::Package(pkg) => pkg.types(),
         }
+    }
+
+    fn type_shape(&mut self, ty: TypeRef<'r>, constant: bool) -> TypeShape {
+        self.types().type_shape(ty, constant)
     }
 
     fn type_form_in_scope(
@@ -327,7 +334,7 @@ impl<'r, 'a> SemaScope<'_, 'r, 'a> {
     ) -> Option<TypeForm> {
         match self {
             Self::Region(view, _) => view.type_form_in_scope(file, annotation, scope_offset),
-            Self::Package(pkg) => pkg.type_form_in_scope(file, annotation),
+            Self::Package(pkg) => pkg.types().type_form_in_scope(file, annotation, |_| false),
         }
     }
 
@@ -338,11 +345,29 @@ impl<'r, 'a> SemaScope<'_, 'r, 'a> {
         }
     }
 
-    fn resolve_doc_link(&mut self, name: &str) -> Vec<crate::analysis::sema::DocLinkTarget<'a>> {
+    fn resolver(&self) -> crate::analysis::resolve::View<'a> {
         match self {
-            Self::Region(view, _) => view.resolve_doc_link(name),
-            Self::Package(pkg) => pkg.resolve_doc_link(name),
+            Self::Region(view, _) => view.resolver(),
+            Self::Package(pkg) => pkg.resolver(),
         }
+    }
+
+    fn declaration_member(
+        &mut self,
+        declaration: DeclId<'a>,
+        name: &str,
+    ) -> Option<SemanticObject<'a>> {
+        match self {
+            Self::Region(view, _) => view.declaration_member(declaration, name),
+            Self::Package(pkg) => pkg.declaration_member(declaration, name),
+        }
+    }
+
+    fn resolve_doc_link(&mut self, file: &Path, name: &str) -> Vec<DocLinkTarget<'a>> {
+        let resolver = self.resolver();
+        documentation::resolve_doc_link(resolver, file, name, |decl, member| {
+            self.declaration_member(decl, member)
+        })
     }
 
     fn imported_name(&self, qualifier: &str) -> bool {
@@ -379,9 +404,9 @@ fn emit_raw_lexical_token<'r, 'a>(
         };
     match kind {
         SemanticTokenKind::Comment => {
-            for (s, k, m) in
-                comments::split(state.source, &span, |name| scope.resolve_doc_link(name))
-            {
+            for (s, k, m) in comments::split(state.source, &span, |name| {
+                scope.resolve_doc_link(state.file, name)
+            }) {
                 push_if_valid(s, k, m, tokens);
             }
         }
@@ -471,9 +496,9 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
 
         let mut is_def = false;
         let mut obj = None;
-        let mut local_ty: Option<TypeHandle<'r>> = None;
-        let mut expr_ty: Option<TypeHandle<'r>> = None;
-        let mut sel_ty: Option<TypeHandle<'r>> = None;
+        let mut local_ty: Option<TypeRef<'r>> = None;
+        let mut expr_ty: Option<TypeRef<'r>> = None;
+        let mut sel_ty: Option<TypeRef<'r>> = None;
 
         if let Some(region) = scope.region() {
             if let Some(found) = region.def_by_span(span_u32) {
@@ -567,9 +592,9 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
         spelling: &str,
         is_def: bool,
         obj: SemanticObject<'a>,
-        local_ty: Option<TypeHandle<'r>>,
-        expr_ty: Option<TypeHandle<'r>>,
-        sel_ty: Option<TypeHandle<'r>>,
+        local_ty: Option<TypeRef<'r>>,
+        expr_ty: Option<TypeRef<'r>>,
+        sel_ty: Option<TypeRef<'r>>,
     ) -> (SemanticTokenKind, u64) {
         let mut mods = if matches!(name.role, TokenRole::FieldDeclaration(_)) {
             modifiers::DEFINITION
@@ -630,13 +655,13 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                             0
                         }
                     }
-                    SymbolOrigin::Local {
-                        id, span: def_span, ..
-                    } => {
+                    SymbolOrigin::Local { span: def_span, .. } => {
                         mods |=
                             self.local_def_modifiers(scope, is_def, def_span, span_u32, spelling);
                         if self.include_shapes {
-                            self.local_type_shape(scope, id, local_ty.or(expr_ty), false, false)
+                            local_ty
+                                .or(expr_ty)
+                                .map_or(0, |ty| shape_of_handle(scope, ty, false))
                         } else {
                             0
                         }
@@ -655,13 +680,13 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                             0
                         }
                     }
-                    SymbolOrigin::Local {
-                        id, span: def_span, ..
-                    } => {
+                    SymbolOrigin::Local { span: def_span, .. } => {
                         mods |=
                             self.local_def_modifiers(scope, is_def, def_span, span_u32, spelling);
                         if self.include_shapes {
-                            self.local_type_shape(scope, id, local_ty.or(expr_ty), true, false)
+                            local_ty
+                                .or(expr_ty)
+                                .map_or(0, |ty| shape_of_handle(scope, ty, true))
                         } else {
                             0
                         }
@@ -703,16 +728,18 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                         {
                             mods &= !modifiers::SHADOWING;
                         }
-                        if scope
-                            .region()
-                            .is_some_and(|region| region.local_has_func_syntax(id))
-                        {
+                        let ty = local_ty.or(expr_ty);
+                        if ty.is_some_and(|ty| {
+                            scope
+                                .region_mut()
+                                .is_some_and(|region| region.types().is_callable(ty) == Some(true))
+                        }) {
                             mods |= modifiers::SIGNATURE;
                         }
                         if !self.include_shapes {
                             0
                         } else {
-                            self.local_type_shape(scope, id, local_ty.or(expr_ty), false, true)
+                            ty.map_or(0, |ty| shape_of_handle(scope, ty, false))
                         }
                     }
                 };
@@ -779,7 +806,7 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
         scope: &mut SemaScope<'_, 'r, 'a>,
         name: &TokenName,
         spelling: &str,
-        expr_ty: Option<TypeHandle<'r>>,
+        expr_ty: Option<TypeRef<'r>>,
     ) -> (SemanticTokenKind, u64) {
         let span_u32 = [name.span.start as u32, name.span.end as u32];
         if let Some(binding) = scope
@@ -815,23 +842,27 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                 LocalDeclKind::TypeParam => return (SemanticTokenKind::TypeParameter, mods),
                 _ => {}
             }
-            if scope
-                .region()
-                .is_some_and(|region| region.local_has_func_syntax(binding.id))
-            {
-                mods |= modifiers::SIGNATURE;
-            }
-            let shape = if !self.include_shapes
-                || (binding.is_def && binding.kind == LocalDeclKind::TypeSwitchVar)
-            {
-                0
-            } else if let Some(ty) = expr_ty {
-                shape_of_handle(scope, ty, binding.kind == LocalDeclKind::Const)
+            let ty = if binding.is_def && binding.kind == LocalDeclKind::TypeSwitchVar {
+                None
             } else {
                 scope
+                    .region()
+                    .and_then(|region| region.local_operand(binding.id).map(|tv| tv.ty))
+                    .or(expr_ty)
+            };
+            if ty.is_some_and(|ty| {
+                scope
                     .region_mut()
-                    .and_then(|region| region.local_binding_annotation_form(binding.id))
-                    .map_or(0, shape_of_form)
+                    .is_some_and(|region| region.types().is_callable(ty) == Some(true))
+            }) {
+                mods |= modifiers::SIGNATURE;
+            }
+            let shape = if !self.include_shapes {
+                0
+            } else {
+                ty.map_or(0, |ty| {
+                    shape_of_handle(scope, ty, binding.kind == LocalDeclKind::Const)
+                })
             };
             return (kind, mods | shape);
         }
@@ -1014,9 +1045,13 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
                     }
                     && let (Ok(s0), Ok(s1)) =
                         (u32::try_from(operand.start), u32::try_from(operand.end))
-                    && scope
-                        .region_mut()
-                        .is_some_and(|region| region.receiver_is_error_type([s0, s1]))
+                    && scope.region_mut().is_some_and(|region| {
+                        let ty = region.expr_type([s0, s1]).map(|tv| tv.ty).or_else(|| {
+                            let binding = region.local_binding_at_span([s0, s1])?;
+                            region.local_operand(binding.id).map(|tv| tv.ty)
+                        });
+                        ty.is_some_and(|ty| region.types().is_error(ty))
+                    })
                 {
                     kind = SemanticTokenKind::Method;
                     mods |= modifiers::DEFAULT_LIBRARY | modifiers::SIGNATURE;
@@ -1080,29 +1115,6 @@ impl<'a, 'q> ClassifyEnv<'a, 'q> {
             .is_some_and(|region| region.local_shadows(def_span, spelling));
         has_outer_local || self.has_outer_name(spelling) || builtin(spelling)
     }
-
-    fn local_type_shape<'r>(
-        &self,
-        scope: &mut SemaScope<'_, 'r, 'a>,
-        id: LocalId,
-        ty: Option<TypeHandle<'r>>,
-        constant: bool,
-        fallback_on_none: bool,
-    ) -> u64 {
-        if let Some(ty) = ty {
-            match scope.type_shape(ty, constant) {
-                TypeShape::Form(form) => return shape_of_form(form),
-                TypeShape::Suppressed => return 0,
-                TypeShape::Unknown => {}
-            }
-        } else if !fallback_on_none {
-            return 0;
-        }
-        scope
-            .region_mut()
-            .and_then(|region| region.local_binding_annotation_form(id))
-            .map_or(0, shape_of_form)
-    }
 }
 
 fn shape_of_form(form: TypeForm) -> u64 {
@@ -1130,7 +1142,7 @@ fn shape_of_result(shape: TypeShape) -> u64 {
 
 fn shape_of_handle<'r, 'a>(
     scope: &mut SemaScope<'_, 'r, 'a>,
-    ty: TypeHandle<'r>,
+    ty: TypeRef<'r>,
     constant: bool,
 ) -> u64 {
     shape_of_result(scope.type_shape(ty, constant))

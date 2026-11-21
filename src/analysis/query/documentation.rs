@@ -1,6 +1,159 @@
 //! Bounded comment attachment and Go CommentGroup.Text shared by document features.
+use crate::analysis::resolve;
+use crate::analysis::sema::{DeclId, Object};
+use crate::index::IndexedSymbol;
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
+use std::path::Path;
+
+/// Resolved doc-link component inside a Go doc comment.
+pub(crate) struct DocLinkTarget<'a> {
+    pub(crate) name: String,
+    pub(crate) kind: DocLinkKind<'a>,
+}
+
+pub(crate) enum DocLinkKind<'a> {
+    Namespace,
+    Symbol(&'a IndexedSymbol),
+    Member(Object<'a>),
+}
+
+/// Resolves a Go doc-comment link (`[Sym]`, `[pkg.Sym]`, `[Type.Member]`, or
+/// `[pkg.Type.Member]`) using package/import resolution and semantic member lookup.
+pub(crate) fn resolve_doc_link<'a>(
+    resolver: resolve::View<'a>,
+    file: &Path,
+    name: &str,
+    lookup_member: impl FnOnce(DeclId<'a>, &str) -> Option<Object<'a>>,
+) -> Vec<DocLinkTarget<'a>> {
+    let parts: Vec<&str> = name.split('.').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return Vec::new();
+    }
+    if parts.len() > 1 {
+        if resolver.imported_name(file, parts[0]) {
+            return imported_doc_link(resolver, file, parts[0], &parts[1..], lookup_member);
+        }
+        return current_member_doc_link(
+            resolver,
+            file,
+            parts[0],
+            parts[1],
+            parts.len() == 3,
+            lookup_member,
+        );
+    }
+    let Some((_, symbol)) = resolver.package_symbol(file, parts[0]) else {
+        return Vec::new();
+    };
+    if !resolve::exported(&symbol.name) {
+        return Vec::new();
+    }
+    vec![DocLinkTarget {
+        name: parts[0].to_owned(),
+        kind: DocLinkKind::Symbol(symbol),
+    }]
+}
+
+fn imported_doc_link<'a>(
+    resolver: resolve::View<'a>,
+    file: &Path,
+    alias: &str,
+    rest: &[&str],
+    lookup_member: impl FnOnce(DeclId<'a>, &str) -> Option<Object<'a>>,
+) -> Vec<DocLinkTarget<'a>> {
+    let mut objects = vec![DocLinkTarget {
+        name: alias.to_owned(),
+        kind: DocLinkKind::Namespace,
+    }];
+    if rest.len() == 1 {
+        let name = rest[0];
+        let Some((_, symbol)) = resolver
+            .imported_symbol_candidates(
+                file,
+                alias,
+                Some(crate::bloom::Fingerprint::new(name.as_bytes())),
+            )
+            .find(|(_, symbol)| symbol.name == name && symbol.receiver.is_none())
+        else {
+            return Vec::new();
+        };
+        if !resolve::exported(name) {
+            return Vec::new();
+        }
+        objects.push(DocLinkTarget {
+            name: name.to_owned(),
+            kind: DocLinkKind::Symbol(symbol),
+        });
+        return objects;
+    }
+    if rest.len() != 2 {
+        return Vec::new();
+    }
+    let (receiver_name, member_name) = (rest[0], rest[1]);
+    let Some((origin, receiver)) = resolver
+        .resolve_type_declaration(file, &format!("{alias}.{receiver_name}"))
+        .filter(|(_, receiver)| !receiver.alias)
+    else {
+        return Vec::new();
+    };
+    let Some(member) = lookup_member(
+        DeclId {
+            file: origin,
+            symbol: receiver,
+        },
+        member_name,
+    ) else {
+        return Vec::new();
+    };
+    objects.push(DocLinkTarget {
+        name: receiver_name.to_owned(),
+        kind: DocLinkKind::Symbol(receiver),
+    });
+    objects.push(DocLinkTarget {
+        name: member_name.to_owned(),
+        kind: DocLinkKind::Member(member),
+    });
+    objects
+}
+
+fn current_member_doc_link<'a>(
+    resolver: resolve::View<'a>,
+    file: &Path,
+    receiver_name: &str,
+    member_name: &str,
+    has_extra: bool,
+    lookup_member: impl FnOnce(DeclId<'a>, &str) -> Option<Object<'a>>,
+) -> Vec<DocLinkTarget<'a>> {
+    if has_extra {
+        return Vec::new();
+    }
+    let Some((origin, receiver)) = resolver
+        .package_symbol(file, receiver_name)
+        .filter(|(_, symbol)| symbol.is_type() && !symbol.alias)
+    else {
+        return Vec::new();
+    };
+    let Some(member) = lookup_member(
+        DeclId {
+            file: origin,
+            symbol: receiver,
+        },
+        member_name,
+    ) else {
+        return Vec::new();
+    };
+    vec![
+        DocLinkTarget {
+            name: receiver_name.to_owned(),
+            kind: DocLinkKind::Symbol(receiver),
+        },
+        DocLinkTarget {
+            name: member_name.to_owned(),
+            kind: DocLinkKind::Member(member),
+        },
+    ]
+}
 
 /// gopls only attaches assignment docs to single-name short declarations.
 pub(crate) fn multi_name_short_declaration(source: &str, offset: usize) -> bool {

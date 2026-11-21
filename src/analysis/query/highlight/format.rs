@@ -1,6 +1,9 @@
 //! Signature-based format calls, shared by tokens and document highlights.
 use super::{MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
-use crate::analysis::sema::{RegionMode, RegionView, Semantics};
+use crate::analysis::budget::MAX_BYTES;
+use crate::analysis::sema::{
+    DeclId, MethodOrigin, Object, RegionMode, RegionView, Semantics, TypeRef,
+};
 use crate::syntax::{self, Lexer, Token, TokenKind};
 use crate::workspace::Workspace;
 use std::collections::HashMap;
@@ -109,7 +112,7 @@ fn calls(
         }
 
         let sig_phase = workspace.trace.queries.then(std::time::Instant::now);
-        let call = view.format_call_at(open_byte, close_end);
+        let call = format_call_at(workspace, file, source, &mut view, open_byte, close_end);
         if let Some(phase) = sig_phase {
             signature_time += phase.elapsed();
         }
@@ -160,18 +163,132 @@ fn is_single_string_literal(text: &str) -> bool {
     }
 }
 
+struct FormatCall<'r> {
+    span: [u32; 2],
+    arg_spans: &'r [[u32; 2]],
+    format_index: usize,
+}
+
+fn format_call_at<'r, 'a>(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    view: &mut RegionView<'r, 'a>,
+    open_byte: u32,
+    close_end: u32,
+) -> Option<FormatCall<'r>> {
+    let call = view.calls().find(|c| {
+        !c.is_conversion
+            && c.span[1] == close_end
+            && (c.open_paren == open_byte
+                || (c.callee_span[1] <= open_byte
+                    && source
+                        .get(c.callee_span[1] as usize..open_byte as usize)
+                        .is_some_and(|gap| Lexer::new(gap).next().is_none())))
+    })?;
+    let format_index = call_format_parameter(
+        workspace,
+        file,
+        source,
+        view,
+        call.callee_obj,
+        call.signature,
+    )?;
+    Some(FormatCall {
+        span: call.span,
+        arg_spans: call.arg_spans,
+        format_index,
+    })
+}
+
+fn call_format_parameter<'r, 'a>(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    view: &mut RegionView<'r, 'a>,
+    callee_obj: Option<Object<'a>>,
+    signature: Option<TypeRef<'r>>,
+) -> Option<usize> {
+    let sig_param = |view: &mut RegionView<'r, 'a>| {
+        signature.and_then(|ty| view.types().format_parameter_index(ty))
+    };
+    match callee_obj {
+        Some(Object::Func(decl)) | Some(Object::Method(MethodOrigin::Concrete(decl))) => {
+            sig_param(view).or_else(|| decl_format_parameter(workspace, file, source, decl))
+        }
+        _ => sig_param(view),
+    }
+}
+
+fn decl_format_parameter(
+    workspace: &Workspace,
+    file: &Path,
+    source: &str,
+    decl: DeclId<'_>,
+) -> Option<usize> {
+    if !decl.symbol.is_callable() {
+        return None;
+    }
+    let range = decl.symbol.declaration()?;
+    let end = decl.symbol.body().map_or(range.end, |body| body.start);
+    if end.checked_sub(range.start)? > MAX_BYTES {
+        return None;
+    }
+    let header = if decl.file == file {
+        std::borrow::Cow::Borrowed(source.get(range.start..end)?)
+    } else {
+        std::borrow::Cow::Owned(workspace.source_slice(decl.file, range.start..end)?)
+    };
+    let signature = syntax::parse_signature(&header);
+    (signature.diagnostics.is_empty() && signature.parameters.last().is_some_and(|p| p.variadic))
+        .then(|| signature.parameters.len().checked_sub(2))
+        .flatten()
+}
+
 pub(crate) fn collect_region_format_directives<'a>(
+    workspace: &Workspace,
+    file: &Path,
     source: &str,
     view: &mut RegionView<'_, 'a>,
     window: Option<(usize, usize)>,
     candidates: &mut usize,
     out: &mut HashMap<Range<usize>, Vec<Range<usize>>>,
 ) {
-    let spans = view.collect_format_spans(MAX_PRINTF_CALLS, candidates, |text| {
-        (text.contains('%') || text.contains('\\'))
-            && is_single_string_literal(text)
-            && syntax::decode_string_literal(text.trim()).is_some_and(|bytes| bytes.contains(&b'%'))
-    });
+    let mut spans = Vec::new();
+    for call in view.calls() {
+        if *candidates >= MAX_PRINTF_CALLS {
+            break;
+        }
+        if call.is_conversion || call.arg_spans.is_empty() {
+            continue;
+        }
+        if !call.arg_spans.iter().any(|&[start, end]| {
+            source
+                .get(start as usize..end as usize)
+                .is_some_and(|text| {
+                    (text.contains('%') || text.contains('\\'))
+                        && is_single_string_literal(text)
+                        && syntax::decode_string_literal(text.trim())
+                            .is_some_and(|bytes| bytes.contains(&b'%'))
+                })
+        }) {
+            continue;
+        }
+        *candidates += 1;
+        let Some(format_index) = call_format_parameter(
+            workspace,
+            file,
+            source,
+            view,
+            call.callee_obj,
+            call.signature,
+        ) else {
+            continue;
+        };
+        if let Some(&span) = call.arg_spans.get(format_index) {
+            spans.push(span);
+        }
+    }
     for [s, e] in spans {
         let format_span = s as usize..e as usize;
         if window.is_some_and(|(w_start, w_end)| {

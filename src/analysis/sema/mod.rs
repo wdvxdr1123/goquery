@@ -10,6 +10,7 @@ mod navigation;
 mod region_cache;
 mod relations;
 mod signatures;
+mod ty;
 mod view;
 
 use std::path::Path;
@@ -45,10 +46,8 @@ pub(crate) use members::{CallableView, MemberTypeView};
 use region_cache::{CachedRegion, RegionCoverage};
 pub(crate) use relations::TypeRelationQuery;
 pub(crate) use signatures::CheckedCallable;
-pub(crate) use view::{
-    DocLinkKind, DocLinkTarget, LocalBindingView, LocalDeclKind, PackageView, RegionMode,
-    RegionView, TypeHandle, TypeShape,
-};
+pub(crate) use ty::{TypeAndValue, TypeHandle, TypeInspector, TypeRef, TypeShape};
+pub(crate) use view::{LocalBindingView, LocalDeclKind, PackageView, RegionMode, RegionView};
 
 /// Transition alias while `query/` callers adopt `SemanticSession`.
 pub(crate) type Semantics<'a> = SemanticSession<'a>;

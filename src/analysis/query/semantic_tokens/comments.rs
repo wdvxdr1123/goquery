@@ -10,7 +10,8 @@
 //! Mirrors `tokenVisitor.comment`'s `lookupObjects`: an optional import
 //! qualifier, then either a package-scope name or `Type.Member`. Unresolved links stay comments. Bare non-exported names also stay comments;
 //! members of a named package type follow native package visibility.
-use crate::analysis::sema::{DocLinkKind, DocLinkTarget, MethodOrigin, SemanticObject};
+use crate::analysis::query::documentation::{DocLinkKind, DocLinkTarget};
+use crate::analysis::sema::{MethodOrigin, SemanticObject};
 use crate::syntax::TypeConstructor;
 use std::ops::Range;
 

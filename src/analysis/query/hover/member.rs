@@ -31,7 +31,7 @@ pub(super) fn checked(
                     .selection_by_span(selected)
                     .map(|selection| selection.ty)
                     .or_else(|| view.expr_type(selected).map(|operand| operand.ty))?;
-                let rendered = view.format_type(ty, Qualifier::Presentation(file))?;
+                let rendered = view.types().format(ty, Qualifier::Presentation(file))?;
                 (member, Some(rendered))
             }
             _ => return None,

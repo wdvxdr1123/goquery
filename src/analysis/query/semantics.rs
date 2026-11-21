@@ -1,7 +1,9 @@
 //! Read-only semantic operations over the admitted request source and metadata.
 use super::locations::NavigationLocation;
 use super::{Context, Location, SourceRange};
-use crate::analysis::sema::{CursorBody, RegionMode, TypeDeclaration};
+use crate::analysis::sema::{
+    CursorBody, LocalDeclKind, Object, RegionMode, SymbolOrigin, TypeDeclaration,
+};
 use crate::syntax::{Lexer, TokenKind};
 use std::borrow::Cow;
 
@@ -92,9 +94,98 @@ impl<'a> Context<'a> {
         }
         let mode = RegionMode::from_cursor((offset == source.len()).then_some(offset));
         let (doc, sema) = self.split();
-        let Some(mut view) = sema.region_at(doc.file(), doc.source(), off, mode) else {
+        let workspace = doc.workspace();
+        let source = doc.source();
+        let Some(mut view) = sema.region_at(doc.file(), source, off, mode) else {
             return Ok(Vec::new());
         };
-        view.type_declarations_at(off, selected)
+        if let Some((span, obj)) = view.object_at(off) {
+            return match obj {
+                Object::PkgName { .. }
+                | Object::Label { .. }
+                | Object::Nil
+                | Object::BuiltinFunction(_) => Ok(Vec::new()),
+                Object::TypeParam { span: tp_span, .. } => {
+                    match source.get(tp_span[0] as usize..tp_span[1] as usize) {
+                        Some(name) => {
+                            Err((0, format!("cannot find type name(s) from type {name}")))
+                        }
+                        None => Ok(Vec::new()),
+                    }
+                }
+                Object::TypeName {
+                    origin:
+                        SymbolOrigin::Local {
+                            file: f, span: s, ..
+                        },
+                    ..
+                } => Ok(match workspace.files.get_key_value(f) {
+                    Some((file_buf, _)) => {
+                        vec![TypeDeclaration::Local(
+                            file_buf,
+                            s[0] as usize..s[1] as usize,
+                        )]
+                    }
+                    None => Vec::new(),
+                }),
+                Object::TypeName {
+                    origin: SymbolOrigin::Package(decl),
+                    ..
+                } => Ok(match workspace.files.get_key_value(decl.file) {
+                    Some((file_buf, _)) => vec![TypeDeclaration::Named(file_buf, decl.symbol)],
+                    None => Vec::new(),
+                }),
+                _ => {
+                    let Some(ty) = view.type_of_object(obj, span) else {
+                        return Ok(Vec::new());
+                    };
+                    view.types()
+                        .projected_type_declarations(ty)
+                        .unwrap_or_else(|| Ok(Vec::new()))
+                }
+            };
+        }
+        if let Some((ident_span, false)) = selected {
+            let key = [ident_span.start as u32, ident_span.end as u32];
+            let guard_ty = view
+                .local_binding_at_span(key)
+                .filter(|binding| binding.is_def && binding.kind == LocalDeclKind::TypeSwitchVar)
+                .and_then(|binding| view.local_init_span(binding.id))
+                .and_then(|guard_span| view.expr_type(guard_span))
+                .map(|tv| tv.ty);
+            return guard_ty
+                .and_then(|ty| view.types().projected_type_declarations(ty))
+                .unwrap_or_else(|| Ok(Vec::new()));
+        }
+        if selected.is_none() {
+            let expr_cand = view.smallest_expr_at(off);
+            let call_cand = view
+                .calls()
+                .filter(|call| {
+                    !call.is_conversion
+                        && call.signature.is_some()
+                        && call.span[0] <= off
+                        && off <= call.span[1]
+                })
+                .min_by_key(|call| call.span[1].saturating_sub(call.span[0]));
+            let target_ty = match (expr_cand, call_cand) {
+                (Some((es, tv)), Some(call)) => {
+                    let call_len = call.span[1].saturating_sub(call.span[0]);
+                    let expr_len = es[1].saturating_sub(es[0]);
+                    if call_len < expr_len {
+                        call.signature
+                    } else {
+                        Some(tv.ty)
+                    }
+                }
+                (Some((_, tv)), None) => Some(tv.ty),
+                (None, Some(call)) => call.signature,
+                (None, None) => None,
+            };
+            return target_ty
+                .and_then(|ty| view.types().projected_type_declarations(ty))
+                .unwrap_or_else(|| Ok(Vec::new()));
+        }
+        Ok(Vec::new())
     }
 }

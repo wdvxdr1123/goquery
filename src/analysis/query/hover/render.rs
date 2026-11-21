@@ -521,7 +521,8 @@ use super::{HoverLink, doc};
 use crate::analysis::query::Context;
 use crate::analysis::resolve::MemberDescription;
 use crate::analysis::sema::{
-    LocalDeclKind, LocalId, RegionMode, SemanticObject, SymbolOrigin, VarKind,
+    Constant, LocalDeclKind, LocalId, Qualifier, RegionMode, SemanticObject, SymbolOrigin,
+    TypeAndValue, VarKind, named_root, named_type,
 };
 use crate::syntax::TokenKind;
 use crate::text::SourceMap;
@@ -691,13 +692,24 @@ pub(super) fn local_by_parts(
         LocalDeclKind::Var | LocalDeclKind::Param | LocalDeclKind::TypeSwitchVar => {
             let rendered = {
                 let (doc_view, sema) = context.split();
-                sema.region_at(
-                    doc_view.file(),
-                    doc_view.source(),
-                    def_span[0],
-                    RegionMode::Full,
-                )
-                .and_then(|mut view| view.local_var_hover_type(id?, def_span, doc_view.file()))
+                let doc_file = doc_view.file();
+                let doc_source = doc_view.source();
+                sema.region_at(doc_file, doc_source, def_span[0], RegionMode::Full)
+                    .and_then(|mut view| {
+                        if let Some(tv) = view.local_operand(id?)
+                            && let Some(rendered) = view.types().format_for_local(
+                                tv.ty,
+                                doc_file,
+                                Qualifier::Presentation(doc_file),
+                            )
+                        {
+                            return Some(rendered);
+                        }
+                        let ann = annotation_after_decl_name(doc_source, def_span[1] as usize)?;
+                        let named = named_type(ann)?;
+                        let qualifier = named_root(&named).split('.').next()?;
+                        (!view.is_local_defined_at(def_span[1], qualifier)).then_some(named)
+                    })
             };
             rendered.map(|ty| {
                 let formatted =
@@ -755,8 +767,18 @@ fn local_constant(
     let sel0 = u32::try_from(selection.start).ok()?;
     let (ty, value, span) = {
         let (doc, sema) = context.split();
-        let mut view = sema.region_at(doc.file(), doc.source(), sel0, RegionMode::Full)?;
-        let (ty, int_val, span) = view.local_constant_info_by_id(id)?;
+        let doc_file = doc.file();
+        let mut view = sema.region_at(doc_file, doc.source(), sel0, RegionMode::Full)?;
+        let tv: TypeAndValue<'_> = view.local_operand(id)?;
+        tv.mode_is_const.then_some(())?;
+        let span = view.local_init_span(id)?;
+        let ty = view
+            .types()
+            .format(tv.ty, Qualifier::Presentation(doc_file))?;
+        let int_val = match tv.value {
+            Some(Constant::Int(v)) => Some(v),
+            _ => None,
+        };
         (ty, int_val, span[0] as usize..span[1] as usize)
     };
     let source = context.source();
@@ -782,6 +804,61 @@ fn local_constant(
         literal.assigned()
     )
     .into()
+}
+
+/// Scans after a declared variable/parameter name (`a, b T`) to locate its trailing type annotation.
+fn annotation_after_decl_name(source: &str, name_end: usize) -> Option<&str> {
+    let tail = source.get(name_end..name_end.saturating_add(4096).min(source.len()))?;
+    let mut tokens = crate::syntax::Lexer::new(tail).peekable();
+    while tokens
+        .peek()
+        .is_some_and(|tok| tok.kind == TokenKind::Comma)
+    {
+        tokens.next();
+        if tokens.next()?.kind != TokenKind::Ident {
+            return None;
+        }
+    }
+    let first = tokens.peek()?;
+    if matches!(
+        first.kind,
+        TokenKind::Assign | TokenKind::RParen | TokenKind::Semicolon | TokenKind::RBrace
+    ) {
+        return None;
+    }
+    let start = name_end + first.span.start;
+    let mut depth = 0usize;
+    let mut end = start;
+    for tok in tokens {
+        if matches!(
+            tok.kind,
+            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace
+        ) {
+            depth += 1;
+        } else if depth > 0
+            && matches!(
+                tok.kind,
+                TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace
+            )
+        {
+            depth -= 1;
+        } else if depth == 0
+            && matches!(
+                tok.kind,
+                TokenKind::Assign
+                    | TokenKind::Comma
+                    | TokenKind::RParen
+                    | TokenKind::Semicolon
+                    | TokenKind::LBrace
+            )
+        {
+            break;
+        }
+        end = name_end + tok.span.end;
+    }
+    (start < end)
+        .then(|| source.get(start..end).map(str::trim_end))
+        .flatten()
 }
 
 fn local_type_annotation(source: &str, name_end: usize) -> Option<&str> {
