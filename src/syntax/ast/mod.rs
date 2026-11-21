@@ -11,6 +11,7 @@ pub use expression::{Diagnostic, Expr, ExprId, ExprKind, ExpressionTree};
 pub use signature::{Parameter, Signature};
 pub use statement::{BlockTree, LocalTypeParameters, Statement, StmtId, StmtKind};
 pub use types::{
-    InterfaceMember, SignatureName, SignatureNameKind, TypeField, TypeNode, TypeNodeKind,
-    TypeReference, TypeSyntax,
+    ChanDir, FieldNode, InterfaceMember, InterfaceMemberNode, ParamNode, SigNode, SigNodeId,
+    SignatureName, SignatureNameKind, TypeField, TypeNode, TypeNodeId, TypeNodeKind, TypeReference,
+    TypeSyntax, TypeTreeKind, TypeTreeNode,
 };

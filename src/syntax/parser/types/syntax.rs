@@ -1,13 +1,14 @@
-//! Type syntax consumed on demand without constructing a recursive type tree.
+//! Type syntax consumed on demand with a compact `u32`-indexed AST tree.
 use crate::syntax::ast::types::{
-    SignatureName, SignatureNameKind, TypeNodeKind, TypeReference, TypeSyntax,
+    ChanDir, MAX_TYPE_NODES, TypeNodeId, TypeNodeKind, TypeReference, TypeSyntax, TypeTreeKind,
 };
 use crate::syntax::parser::expression::Parser;
-use crate::syntax::parser::signature::ParameterContext;
+use crate::syntax::parser::types::tree::TypeTreeBuilder;
 use crate::syntax::token::TokenKind;
 use std::ops::Range;
 
-/// Parses one type, collecting name spans and array-length expressions.
+/// Parses one type, collecting name spans, array-length expressions, and a
+/// compact indexed type AST.
 pub fn parse_type(source: &str) -> TypeSyntax {
     parse(source, End::Complete, false)
 }
@@ -32,10 +33,11 @@ enum End {
 
 fn parse(source: &str, end: End, constraint: bool) -> TypeSyntax {
     let mut parser = Parser::new(source);
-    let span = if constraint {
-        parser.type_elem(0)
+    let mut builder = TypeTreeBuilder::new();
+    let (span, root) = if constraint {
+        parser.type_elem_tree(0, Some(&mut builder))
     } else {
-        parser.type_syntax(0)
+        parser.type_with_inference(0, true, Some(&mut builder))
     };
     while parser
         .tokens
@@ -49,6 +51,7 @@ fn parse(source: &str, end: End, constraint: bool) -> TypeSyntax {
     {
         parser.error(token.span, "unexpected token after type");
     }
+    let tree = builder.finish(root);
     TypeSyntax {
         span,
         references: parser.type_references,
@@ -58,84 +61,70 @@ fn parse(source: &str, end: End, constraint: bool) -> TypeSyntax {
         expressions: parser.nodes,
         diagnostics: parser.diagnostics,
         type_nodes: parser.type_nodes,
+        tree_root: tree.root,
+        tree_nodes: tree.nodes,
+        field_nodes: tree.fields,
+        interface_member_nodes: tree.interface_members,
+        sig_nodes: tree.sigs,
+        param_nodes: tree.params,
+        type_node_lists: tree.lists,
+        tree_overflowed: tree.overflowed,
     }
 }
 
 impl Parser<'_> {
-    pub(in crate::syntax::parser) fn function_type_signature(&mut self, depth: usize) -> usize {
-        // Function types cannot have type parameters, but go/parser still consumes
-        // and reports them before parsing the parameter list. Consuming the list
-        // keeps trailing conversions/calls and function-literal bodies recoverable
-        // (e.g. `(func [P any]())(nil)` and `func [P any]() {}`).
-        if self
-            .tokens
-            .peek()
-            .is_some_and(|token| token.kind == TokenKind::LBrack)
-        {
-            let start = self
-                .tokens
-                .peek()
-                .expect("peeked type parameter list")
-                .span
-                .start;
-            let (_, end) = self.parameter_list(ParameterContext::TypeParameters, depth);
-            self.error(start..end, "function type must have no type parameters");
-        }
-        let (parameters, end) = self.parameter_list(ParameterContext::Inputs, depth);
-        let (results, end) = self.result_parameters(depth, end);
-        for (parameters, kind) in [
-            (parameters, SignatureNameKind::Parameter),
-            (results, SignatureNameKind::Result),
-        ] {
-            self.signature_names
-                .extend(parameters.into_iter().filter_map(|parameter| {
-                    parameter.name.map(|name| SignatureName {
-                        name,
-                        kind,
-                        annotation: parameter.annotation,
-                        variadic: parameter.variadic,
-                    })
-                }));
-        }
-        end
-    }
-
     pub(in crate::syntax::parser) fn type_syntax(&mut self, depth: usize) -> Range<usize> {
-        self.type_with_inference(depth, true)
+        self.type_with_inference(depth, true, None).0
     }
 
     pub(in crate::syntax::parser) fn array_field_type(&mut self, depth: usize) -> Range<usize> {
-        self.type_with_inference(depth, false)
+        self.type_with_inference(depth, false, None).0
     }
 
-    fn type_with_inference(&mut self, depth: usize, inferred_array: bool) -> Range<usize> {
+    pub(super) fn type_with_inference(
+        &mut self,
+        depth: usize,
+        inferred_array: bool,
+        mut tree: Option<&mut TypeTreeBuilder>,
+    ) -> (Range<usize>, Option<TypeNodeId>) {
         let Some(token) = self.tokens.peek().cloned() else {
             let end = self.source.len();
             self.error(end..end, "expected type");
-            return end..end;
+            let id = tree.map(|t| t.push_missing(end..end));
+            return (end..end, id);
         };
         if depth >= 128 {
             self.tokens.next();
             self.error(token.span.clone(), "type nesting limit exceeded");
-            return token.span;
+            let id = tree.map(|t| t.push_missing(token.span.clone()));
+            return (token.span, id);
         }
         let start = token.span.start;
         let spelling = &self.source[token.span.clone()];
-        let end = match (token.kind, spelling) {
+        let (end, id) = match (token.kind, spelling) {
             (TokenKind::Mul, _) => {
                 self.tokens.next();
                 let node = self.begin_type_node(TypeNodeKind::Pointer, start);
-                let end = self.type_syntax(depth + 1).end;
+                let (inner, inner_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
+                let end = inner.end;
                 self.end_type_node(node, end);
-                end
+                let id = tree
+                    .zip(inner_id)
+                    .map(|(t, elem)| t.push_node(TypeTreeKind::Pointer(elem), start..end));
+                (end, id)
             }
             (TokenKind::LParen, _) => {
                 self.tokens.next();
                 let node = self.begin_type_node(TypeNodeKind::Parenthesized, start);
-                let inner = self.type_syntax(depth + 1);
+                let (inner, inner_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
                 let end = self.close(TokenKind::RParen, "expected ')' in type", inner.end);
                 self.end_type_node(node, end);
-                end
+                let id = tree
+                    .zip(inner_id)
+                    .map(|(t, inner)| t.push_node(TypeTreeKind::Parenthesized(inner), start..end));
+                (end, id)
             }
             (TokenKind::LBrack, _) => {
                 self.tokens.next();
@@ -159,44 +148,73 @@ impl Parser<'_> {
                     },
                     start,
                 );
-                if !inferred_length && !slice {
-                    self.expression_without_type_nodes(1, depth + 1);
-                }
+                let len_expr = if !inferred_length && !slice {
+                    Some(self.expression_without_type_nodes(1, depth + 1))
+                } else {
+                    None
+                };
                 self.close(
                     TokenKind::RBrack,
                     "expected ']' in array type",
                     token.span.end,
                 );
-                let end = self.type_syntax(depth + 1).end;
+                let (elem_span, elem_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
+                let end = elem_span.end;
                 self.end_type_node(node, end);
-                end
+                let id = tree.zip(elem_id).map(|(t, elem)| {
+                    let kind = if slice {
+                        TypeTreeKind::Slice(elem)
+                    } else {
+                        TypeTreeKind::Array { len_expr, elem }
+                    };
+                    t.push_node(kind, start..end)
+                });
+                (end, id)
             }
             (TokenKind::Map, _) => {
                 self.tokens.next();
                 let node = self.begin_type_node(TypeNodeKind::Map, start);
                 self.expect_kind(TokenKind::LBrack, "expected '[' after map");
-                let key = self.type_syntax(depth + 1);
-                self.close(TokenKind::RBrack, "expected ']' after map key", key.end);
-                let end = self.type_syntax(depth + 1).end;
+                let (key_span, key_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
+                self.close(
+                    TokenKind::RBrack,
+                    "expected ']' after map key",
+                    key_span.end,
+                );
+                let (val_span, val_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
+                let end = val_span.end;
                 self.end_type_node(node, end);
-                end
+                let id = tree.and_then(|t| {
+                    let key = key_id?;
+                    let value = val_id?;
+                    Some(t.push_node(TypeTreeKind::Map { key, value }, start..end))
+                });
+                (end, id)
             }
             (TokenKind::Chan, _) | (TokenKind::Arrow, _) => {
                 self.tokens.next();
-                let kind = if spelling == "<-" {
+                let (kind, dir) = if spelling == "<-" {
                     if !self.eat_spelling("chan") {
                         self.error(token.span.clone(), "expected chan after '<-' in type");
                     }
-                    TypeNodeKind::RecvChan
+                    (TypeNodeKind::RecvChan, ChanDir::Recv)
                 } else if self.eat_spelling("<-") {
-                    TypeNodeKind::SendChan
+                    (TypeNodeKind::SendChan, ChanDir::Send)
                 } else {
-                    TypeNodeKind::Chan
+                    (TypeNodeKind::Chan, ChanDir::Both)
                 };
                 let node = self.begin_type_node(kind, start);
-                let end = self.type_syntax(depth + 1).end;
+                let (elem_span, elem_id) =
+                    self.type_with_inference(depth + 1, true, tree.as_deref_mut());
+                let end = elem_span.end;
                 self.end_type_node(node, end);
-                end
+                let id = tree
+                    .zip(elem_id)
+                    .map(|(t, elem)| t.push_node(TypeTreeKind::Chan { dir, elem }, start..end));
+                (end, id)
             }
             (TokenKind::Struct | TokenKind::Interface, _) => {
                 self.tokens.next();
@@ -209,22 +227,31 @@ impl Parser<'_> {
                     },
                     start,
                 );
-                let end = self.aggregate_type(interface, depth + 1);
+                let (end, kind) =
+                    self.aggregate_type_tree(interface, depth + 1, tree.as_deref_mut());
                 self.end_type_node(node, end);
-                end
+                let id = tree
+                    .zip(kind)
+                    .map(|(t, kind)| t.push_node(kind, start..end));
+                (end, id)
             }
             (TokenKind::Func, _) => {
                 self.tokens.next();
                 let node = self.begin_type_node(TypeNodeKind::Function, start);
-                let end = self.function_type_signature(depth + 1);
+                let (end, sig_id) =
+                    self.function_type_signature_tree(depth + 1, tree.as_deref_mut());
                 self.end_type_node(node, end);
-                end
+                let id = tree
+                    .zip(sig_id)
+                    .map(|(t, sig)| t.push_node(TypeTreeKind::Func(sig), start..end));
+                (end, id)
             }
             (TokenKind::Ident, _) => {
                 self.tokens.next();
                 let mut end = token.span.end;
                 let mut qualifier = None;
                 let name = token.span.clone();
+                let mut id = None;
                 if self
                     .tokens
                     .peek()
@@ -246,8 +273,19 @@ impl Parser<'_> {
                             name: name.span.clone(),
                         });
                         self.record_type_node(TypeNodeKind::Qualified, start..end);
+                        if let Some(t) = tree.as_deref_mut() {
+                            let qual = TypeTreeBuilder::span32(token.span.clone());
+                            let ident = TypeTreeBuilder::span32(name.span);
+                            id = Some(t.push_node(
+                                TypeTreeKind::Qualified { qual, name: ident },
+                                start..end,
+                            ));
+                        }
                     } else {
                         self.error(end..end, "expected qualified type name");
+                        if let Some(t) = tree.as_deref_mut() {
+                            id = Some(t.push_missing(start..end));
+                        }
                     }
                 }
                 if qualifier.is_none() {
@@ -256,6 +294,10 @@ impl Parser<'_> {
                         name,
                     });
                     self.record_type_node(TypeNodeKind::Name, token.span.clone());
+                    if let Some(t) = tree.as_deref_mut() {
+                        let span = TypeTreeBuilder::span32(token.span.clone());
+                        id = Some(t.push_node(TypeTreeKind::Name { span }, token.span));
+                    }
                 }
                 if self
                     .tokens
@@ -265,15 +307,24 @@ impl Parser<'_> {
                     self.tokens.next();
                     let node = self.begin_type_node(TypeNodeKind::Instantiation, start);
                     let mut count = 0;
+                    let mut local_args = Vec::new();
                     while self.tokens.peek().is_some_and(|t| {
                         !matches!(
                             t.kind,
                             TokenKind::RBrack | TokenKind::Semicolon | TokenKind::RParen
                         )
                     }) {
-                        let argument = self.type_syntax(depth + 1);
+                        let (argument, arg_id) =
+                            self.type_with_inference(depth + 1, true, tree.as_deref_mut());
                         end = argument.end;
                         count += 1;
+                        if let (Some(t), Some(arg_id)) = (tree.as_deref_mut(), arg_id) {
+                            if t.is_overflowed() || local_args.len() >= MAX_TYPE_NODES {
+                                t.mark_overflow();
+                            } else {
+                                local_args.push(arg_id);
+                            }
+                        }
                         if !self.eat_spelling(",") {
                             break;
                         }
@@ -283,8 +334,14 @@ impl Parser<'_> {
                     }
                     end = self.close(TokenKind::RBrack, "expected ']' after type arguments", end);
                     self.end_type_node(node, end);
+                    if let (Some(t), Some(base)) = (tree, id) {
+                        let args = t.push_type_list(local_args);
+                        id = Some(
+                            t.push_node(TypeTreeKind::Instantiation { base, args }, start..end),
+                        );
+                    }
                 }
-                end
+                (end, id)
             }
             _ => {
                 self.error(token.span.clone(), "expected type");
@@ -294,10 +351,11 @@ impl Parser<'_> {
                 ) {
                     self.tokens.next();
                 }
-                start
+                let id = tree.map(|t| t.push_missing(start..start));
+                (start, id)
             }
         };
-        start..end
+        (start..end, id)
     }
 
     fn eat_spelling(&mut self, spelling: &str) -> bool {

@@ -11,11 +11,12 @@ pub mod view;
 
 pub use ast::{AggregateMember, Import, ImportName, MemberKind, MemberName};
 pub use ast::{BlockTree, LocalTypeParameters, Statement, StmtId, StmtKind};
-pub use ast::{Diagnostic, Expr, ExprId, ExprKind, ExpressionTree, Stub, Symbol, SymbolKind};
 pub use ast::{
-    InterfaceMember, SignatureName, SignatureNameKind, TypeField, TypeNode, TypeNodeKind,
-    TypeReference, TypeSyntax,
+    ChanDir, FieldNode, InterfaceMember, InterfaceMemberNode, ParamNode, SigNode, SigNodeId,
+    SignatureName, SignatureNameKind, TypeField, TypeNode, TypeNodeId, TypeNodeKind, TypeReference,
+    TypeSyntax, TypeTreeKind, TypeTreeNode,
 };
+pub use ast::{Diagnostic, Expr, ExprId, ExprKind, ExpressionTree, Stub, Symbol, SymbolKind};
 pub use ast::{Parameter, Signature};
 pub use ast::{TypeConstructor, TypeInfo, TypeTarget};
 pub use lexer::{Lexer, is_exported_name, is_identifier_continue, is_identifier_start};
