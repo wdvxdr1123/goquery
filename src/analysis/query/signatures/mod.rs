@@ -5,8 +5,6 @@ pub(in crate::analysis::query) mod instantiated;
 pub(in crate::analysis::query) mod label;
 pub(in crate::analysis::query) use self::label::CallableSignature;
 use super::Context;
-use crate::analysis::check::region::RegionInfo;
-use crate::analysis::obj::{LocalId, ObjectRef, SymbolOrigin};
 use crate::syntax::{self, Expr, ExprId, ExprKind, Lexer, TokenKind};
 use crate::text::SourceMap;
 
@@ -44,48 +42,50 @@ struct CallSite {
 
 impl Context<'_> {
     pub(crate) fn signature_help(
-        &self,
+        &mut self,
         offset: usize,
         trigger: SignatureTrigger,
     ) -> Result<Option<SignatureHelp>, (i32, String)> {
-        let context = self;
-        let workspace = context.workspace();
-        let file = context.file();
-        let source = context.source();
-        let map = SourceMap::new(source);
-        let scope =
-            context.cursor_scope_with_hint(offset, (offset == source.len()).then_some(offset))?;
-        if !scope.available {
-            return Ok(None);
-        }
-        if let Some(body) = &scope.body {
+        let workspace = self.workspace();
+        let file = self.file();
+        let body = self.cursor_body(offset)?;
+        if let Some(body) = &body {
             return Ok(help_in_expressions(
-                context,
+                self,
                 offset,
                 trigger,
                 (&body.tree.expressions, body.base),
             ));
         }
         // Outside a function, inspect only the containing value declaration.
-        for symbol in &workspace.files[file].symbols {
-            if !symbol.is_value() {
-                continue;
+        let mut init_range = None;
+        {
+            let source = self.source();
+            let map = SourceMap::new(source);
+            for symbol in &workspace.files[file].symbols {
+                if !symbol.is_value() {
+                    continue;
+                }
+                let Some(end) = map.offset(symbol.range.end) else {
+                    continue;
+                };
+                if !(symbol.end..=end).contains(&offset) {
+                    continue;
+                }
+                let Some(assignment) = Lexer::new(&source[symbol.end..end])
+                    .find(|token| token.kind == TokenKind::Assign)
+                else {
+                    continue;
+                };
+                init_range = Some(symbol.end + assignment.span.end..end);
+                break;
             }
-            let Some(end) = map.offset(symbol.range.end) else {
-                continue;
-            };
-            if !(symbol.end..=end).contains(&offset) {
-                continue;
-            }
-            let Some(assignment) =
-                Lexer::new(&source[symbol.end..end]).find(|token| token.kind == TokenKind::Assign)
-            else {
-                continue;
-            };
-            let start = symbol.end + assignment.span.end;
-            let parsed = syntax::parse_expression(&source[start..end]);
+        }
+        if let Some(range) = init_range {
+            let start = range.start;
+            let parsed = syntax::parse_expression(&self.source()[range]);
             return Ok(help_in_expressions(
-                context,
+                self,
                 offset,
                 trigger,
                 (&parsed.nodes, start),
@@ -96,12 +96,12 @@ impl Context<'_> {
 }
 
 fn help_in_expressions(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     trigger: SignatureTrigger,
     body: (&[Expr], usize),
 ) -> Option<SignatureHelp> {
-    let source = context.source();
+    let source_len = context.source().len();
     let (expressions, base) = body;
     if !trigger.explicit
         && !trigger.retrigger
@@ -113,45 +113,64 @@ fn help_in_expressions(
     {
         return None;
     }
-    let cursor_offset = (offset == source.len()).then_some(offset);
+    let cursor_offset = (offset == source_len).then_some(offset);
     let mut selected_information: Option<(ExprId, HelpInformation)> = None;
-    let call = call_site(source, offset, trigger, expressions, base, |function| {
-        let Some(information) = help_information(
-            context,
-            body,
-            function,
-            direct_call(expressions, function),
-            cursor_offset,
-        ) else {
-            return false;
-        };
-        if selected_information
-            .as_ref()
-            .is_none_or(|(id, _)| expressions[function.0].span.len() < expressions[id.0].span.len())
-        {
-            selected_information = Some((function, information));
+    let selected_fn = {
+        let (doc, sema) = context.split();
+        call_site(
+            doc.source(),
+            offset,
+            trigger,
+            expressions,
+            base,
+            |function| {
+                let Some(information) = help_information(
+                    doc,
+                    sema,
+                    body,
+                    function,
+                    direct_call(expressions, function),
+                    cursor_offset,
+                ) else {
+                    return false;
+                };
+                if selected_information.as_ref().is_none_or(|(id, _)| {
+                    expressions[function.0].span.len() < expressions[id.0].span.len()
+                }) {
+                    selected_information = Some((function, information));
+                }
+                true
+            },
+        )
+    }?;
+    let selected_information = selected_information.filter(|(id, _)| *id == selected_fn.function);
+    let information = match selected_information {
+        Some((_, information)) => information,
+        None => {
+            let (doc, sema) = context.split();
+            help_information(
+                doc,
+                sema,
+                body,
+                selected_fn.function,
+                selected_fn.expression,
+                cursor_offset,
+            )?
         }
-        true
-    })?;
-    let selected_information = selected_information.filter(|(id, _)| *id == call.function);
-    let information = selected_information
-        .map(|(_, information)| information)
-        .or_else(|| {
-            help_information(context, body, call.function, call.expression, cursor_offset)
-        })?;
-    let documentation = information
-        .documentation
-        .or_else(|| documentation::for_function(context, body, call.function, cursor_offset));
+    };
+    let documentation = information.documentation.or_else(|| {
+        documentation::for_function(context, body, selected_fn.function, cursor_offset)
+    });
     let mut information = information.callable;
     if !matches!(
-        expressions[call.function.0].kind,
+        expressions[selected_fn.function.0].kind,
         ExprKind::Name | ExprKind::Selector { .. }
     ) {
         let opening = information.0.label.find('(')?;
         information.0.label.replace_range(..opening, "func");
     }
-    if call.in_arguments && !information.0.parameters.is_empty() {
-        let mut active = call
+    if selected_fn.in_arguments && !information.0.parameters.is_empty() {
+        let mut active = selected_fn
             .arguments
             .iter()
             .take_while(|end| offset > **end)
@@ -175,7 +194,8 @@ fn direct_call(expressions: &[Expr], selected: ExprId) -> Option<ExprId> {
 }
 
 fn help_information(
-    context: &Context<'_>,
+    doc: super::DocumentView<'_, '_>,
+    sema: &mut crate::analysis::sema::SemanticSession<'_>,
     body: (&[Expr], usize),
     function: ExprId,
     call: Option<ExprId>,
@@ -192,7 +212,7 @@ fn help_information(
         _ => None,
     };
     let name = ident
-        .and_then(|span| context.source().get(body.1 + span.start..body.1 + span.end))
+        .and_then(|span| doc.source().get(body.1 + span.start..body.1 + span.end))
         .unwrap_or("func");
     let ident = ident.and_then(|span| {
         Some([
@@ -200,21 +220,19 @@ fn help_information(
             u32::try_from(body.1 + span.end).ok()?,
         ])
     });
-    let callable = context.with_sema(|sema| {
-        sema.checked_callable(
-            context.file(),
-            context.source(),
-            span,
-            ident,
-            cursor_offset,
-            call.is_some(),
-        )
-    })?;
+    let callable = sema.checked_callable(
+        doc.file(),
+        doc.source(),
+        span,
+        ident,
+        cursor_offset,
+        call.is_some(),
+    )?;
     match callable {
         crate::analysis::sema::CheckedCallable::Builtin(function)
             if matches!(expression.kind, ExprKind::Name) =>
         {
-            builtin::for_name(context, function.name())
+            builtin::for_name(doc, function.name())
         }
         crate::analysis::sema::CheckedCallable::Builtin(_) => None,
         crate::analysis::sema::CheckedCallable::Signature(view) => {
@@ -324,57 +342,22 @@ fn call_site(
     best
 }
 
-impl Context<'_> {
-    pub(in crate::analysis::query) fn local_binding_signature(
-        &self,
-        selection: &std::ops::Range<usize>,
-        scope_start: usize,
-        display_name: &str,
-    ) -> Option<(CallableSignature, bool)> {
-        let span = [
-            u32::try_from(selection.start).ok()?,
-            u32::try_from(selection.end).ok()?,
-        ];
-        let view = self.with_sema(|sema| {
-            sema.binding_callable(
-                self.file(),
-                self.source(),
-                span,
-                u32::try_from(scope_start).ok()?,
-            )
-        })?;
-        label::signature_from_native(display_name, &view)
-    }
-}
-
-pub(super) fn resolve_local_binding_id(
-    region: &RegionInfo<'_>,
-    selection: [u32; 2],
+pub(in crate::analysis::query) fn local_binding_signature_with_sema(
+    doc: super::DocumentView<'_, '_>,
+    sema: &mut crate::analysis::sema::SemanticSession<'_>,
+    selection: &std::ops::Range<usize>,
     scope_start: usize,
-) -> Option<(LocalId, u32)> {
-    if let Some(
-        ObjectRef::Var {
-            origin: SymbolOrigin::Local { id, .. },
-            ..
-        }
-        | ObjectRef::Const(SymbolOrigin::Local { id, .. }),
-    ) = region.def_by_span(selection)
-    {
-        return Some((id, selection[0]));
-    }
-    let case_pos = u32::try_from(scope_start).ok()?;
-    region.implicits.iter().find_map(|&(cspan, obj)| {
-        if cspan[0] <= case_pos
-            && case_pos < cspan[1]
-            && let ObjectRef::Var {
-                origin: SymbolOrigin::Local { id, span, .. },
-                ..
-            } = obj
-            && span == selection
-        {
-            Some((id, case_pos))
-        } else {
-            None
-        }
-    })
+    display_name: &str,
+) -> Option<(CallableSignature, bool)> {
+    let span = [
+        u32::try_from(selection.start).ok()?,
+        u32::try_from(selection.end).ok()?,
+    ];
+    let view = sema.binding_callable(
+        doc.file(),
+        doc.source(),
+        span,
+        u32::try_from(scope_start).ok()?,
+    )?;
+    label::signature_from_native(display_name, &view)
 }

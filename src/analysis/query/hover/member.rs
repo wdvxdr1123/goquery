@@ -1,12 +1,11 @@
 //! Checked anonymous fields and universe methods, with source-only presentation.
 use super::{Context, HoverContent, SourceRange, doc, render, size};
-use crate::analysis::obj::{MemberDeclId, MethodOrigin, ObjectRef};
-use crate::analysis::types::Qualifier;
+use crate::analysis::sema::{MemberDeclId, MethodOrigin, Qualifier, RegionMode, SemanticObject};
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
 
 pub(super) fn checked(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     span: &Range<usize>,
     range: SourceRange,
 ) -> Option<HoverContent> {
@@ -14,30 +13,30 @@ pub(super) fn checked(
         u32::try_from(span.start).ok()?,
         u32::try_from(span.end).ok()?,
     ];
-    let (identity, ty) = context.with_sema(|sema| {
-        let (region, arena) =
-            sema.region_and_arena_at(context.file(), context.source(), selected[0], None)?;
-        let (found, object) = region.object_at(selected[0])?;
+    let (identity, ty) = {
+        let (doc, sema) = context.split();
+        let workspace = doc.workspace();
+        let file = doc.file();
+        let mut view = sema.region_at(file, doc.source(), selected[0], RegionMode::Full)?;
+        let (found, object) = view.object_at(selected[0])?;
         if found != selected {
             return None;
         }
         match object {
-            ObjectRef::Method(MethodOrigin::Interface(member)) if member.builtin => {
-                Some((member, None))
+            SemanticObject::Method(MethodOrigin::Interface(member)) if member.builtin => {
+                (member, None)
             }
-            ObjectRef::Field(member) if member.indexed(context.workspace()).is_none() => {
-                let ty = region
+            SemanticObject::Field(member) if member.indexed(workspace).is_none() => {
+                let ty = view
                     .selection_by_span(selected)
                     .map(|selection| selection.ty)
-                    .or_else(|| region.expr_type(selected).map(|operand| operand.ty))?;
-                Some((
-                    member,
-                    Some(arena.format_type(ty, Qualifier::Presentation(context.file()))?),
-                ))
+                    .or_else(|| view.expr_type(selected).map(|operand| operand.ty))?;
+                let rendered = view.format_type(ty, Qualifier::Presentation(file))?;
+                (member, Some(rendered))
             }
-            _ => None,
+            _ => return None,
         }
-    })?;
+    };
     let mut content = HoverContent::new(range);
     if identity.builtin {
         content.code = Some("func (error).Error() string".to_owned());
@@ -45,7 +44,8 @@ pub(super) fn checked(
     }
     let declaration = identity.selection[0] as usize..identity.selection[1] as usize;
     let source_text = render::declaration_source(context, identity.file)?;
-    let source = source_text.text();
+    let source_owned = source_text.text().to_owned();
+    let source = source_owned.as_str();
     let name = source.get(declaration.clone())?;
     content.code = Some(format!("field {name} {}", render::normalize_type(&ty?)));
     attach(context, identity, source, span, &mut content);
@@ -55,7 +55,7 @@ pub(super) fn checked(
 /// Locate presentation metadata by the already-proven declaration byte span.
 /// A bounded window may omit docs/layout, but never changes the field identity.
 fn attach(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     identity: MemberDeclId<'_>,
     source: &str,
     selected: &Range<usize>,

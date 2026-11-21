@@ -4,7 +4,7 @@ use super::{
     AssignmentError, BasicKind, CheckError, Constant, Direction, Mode, Operand, Ty, TypeArena,
     TypeId,
 };
-use crate::analysis::obj::BuiltinFunction;
+use crate::analysis::engine::obj::BuiltinFunction;
 use CheckError::{Invalid, Unknown};
 
 pub(crate) enum MakeError {
@@ -64,7 +64,7 @@ impl TypeArena<'_> {
     ) -> Result<Operand, CheckError<()>> {
         self.step().ok_or(Unknown)?;
         let root = self.underlying(input.ty).ok_or(Unknown)?;
-        if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
             let terms = self
                 .parameter_set(root)
                 .ok_or(Unknown)?
@@ -105,13 +105,13 @@ impl TypeArena<'_> {
         capacity: bool,
     ) -> Result<Option<u64>, CheckError<()>> {
         let mut root = self.underlying(input).ok_or(Unknown)?;
-        if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
+        if let Ty::Pointer(element) = *self.node(root).ok_or(Unknown)? {
             root = self.underlying(element).ok_or(Unknown)?;
-            if !matches!(self.nodes[usize::from(root.0)], Ty::Array { .. }) {
+            if !matches!(self.node(root).ok_or(Unknown)?, Ty::Array { .. }) {
                 return Err(Invalid(()));
             }
         }
-        match self.nodes[usize::from(root.0)] {
+        match *self.node(root).ok_or(Unknown)? {
             Ty::Array { length, .. } => Ok(Some(length)),
             Ty::Slice(_) | Ty::Chan { .. } => Ok(None),
             Ty::Map { key, .. } if !capacity => {
@@ -128,7 +128,7 @@ impl TypeArena<'_> {
     fn int_result(&mut self, length: Option<u64>, int_bits: u32) -> Option<Operand> {
         let value = length.map(|value| Constant::Int(i128::from(value)));
         if let Some(value) = value {
-            super::operand::representable(value, BasicKind::Int, int_bits).then_some(())?;
+            super::constant::representable(value, BasicKind::Int, int_bits).then_some(())?;
         }
         Some(Operand {
             mode: if value.is_some() {
@@ -151,7 +151,7 @@ impl TypeArena<'_> {
         self.step().ok_or(Unknown)?;
         self.constructor_map_keys(ty).ok_or(Unknown)?;
         let root = self.common_under(ty).ok_or(Unknown)?;
-        let minimum = match self.nodes[usize::from(root.0)] {
+        let minimum = match *self.node(root).ok_or(Unknown)? {
             Ty::Slice(_) => 1,
             Ty::Map { key, .. } => {
                 self.comparable(key, 0)
@@ -210,10 +210,7 @@ impl TypeArena<'_> {
             if depth >= super::MAX_DEPTH || seen.len() >= super::MAX_NODES {
                 return None;
             }
-            if matches!(
-                self.nodes[usize::from(ty.0)],
-                Ty::Named { .. } | Ty::Alias { .. }
-            ) {
+            if matches!(self.node(ty)?, Ty::Named { .. } | Ty::Alias { .. }) {
                 self.check_named_arguments(ty)?;
                 continue;
             }
@@ -222,34 +219,36 @@ impl TypeArena<'_> {
                 continue;
             }
             seen.push(root);
-            let children: Vec<_> = match self.nodes[usize::from(root.0)].clone() {
+            let children: Vec<_> = match *self.node(root)? {
                 Ty::Map { key, value } => {
                     self.comparable(key, 0)?.then_some(())?;
                     vec![key, value]
                 }
-                Ty::Error(element)
-                | Ty::Pointer(element)
+                Ty::Pointer(element)
                 | Ty::Slice(element)
                 | Ty::Array { element, .. }
                 | Ty::Chan { element, .. } => vec![element],
-                Ty::Tuple(elements) => self.arguments[elements.range()].to_vec(),
-                Ty::Struct { fields, .. } => {
-                    self.fields[fields].iter().map(|field| field.ty).collect()
-                }
-                Ty::Signature {
-                    parameters,
-                    results,
-                    ..
-                } => parameters
-                    .chain(results)
-                    .map(|index| self.arguments[index])
+                Ty::Tuple(elements) => self.arguments_slice(root, elements).to_vec(),
+                Ty::Struct(_) => self
+                    .fields_slice(root, self.struct_data(root)?.fields.clone())?
+                    .iter()
+                    .map(|field| field.ty)
                     .collect(),
-                Ty::Interface { methods, .. } => self.methods[methods]
+                Ty::Signature(_) => {
+                    let sig = self.signature_data(root)?.clone();
+                    self.arg_range(root, sig.parameters)
+                        .iter()
+                        .chain(self.arg_range(root, sig.results))
+                        .copied()
+                        .collect()
+                }
+                Ty::Interface(_) => self
+                    .methods_slice(root, self.interface_data(root)?.methods.clone())
                     .iter()
                     .map(|method| method.signature)
                     .collect(),
-                Ty::Basic(_) | Ty::Parameter(_) => Vec::new(),
-                _ => return None,
+                Ty::Basic(_) | Ty::TypeParam(_) => Vec::new(),
+                Ty::Invalid | Ty::Named { .. } | Ty::Alias { .. } | Ty::Union(_) => return None,
             };
             if pending.len().checked_add(children.len())? > super::MAX_NODES {
                 return None;
@@ -281,7 +280,7 @@ impl TypeArena<'_> {
             {
                 let source = arguments[1];
                 let root = self.underlying(source.ty).ok_or(Unknown)?;
-                if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+                if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
                     let source_element =
                         self.checked_slice_element(source.ty).ok().ok_or(Unknown)?;
                     self.identical(element, source_element)
@@ -356,7 +355,7 @@ impl TypeArena<'_> {
 
     fn checked_slice_element(&mut self, input: TypeId) -> Result<TypeId, CheckError<()>> {
         let root = self.common_under(input).ok_or(Unknown)?;
-        match self.nodes[usize::from(root.0)] {
+        match *self.node(root).ok_or(Unknown)? {
             Ty::Slice(element) => Ok(element),
             _ => Err(Invalid(())),
         }
@@ -369,7 +368,7 @@ impl TypeArena<'_> {
             return Some(false);
         }
         let root = self.underlying(source.ty)?;
-        let terms = if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        let terms = if matches!(self.node(root)?, Ty::TypeParam(_)) {
             self.parameter_set(root)?
                 .terms?
                 .into_iter()
@@ -384,7 +383,7 @@ impl TypeArena<'_> {
         for ty in terms {
             self.step()?;
             let root = self.underlying(ty)?;
-            match self.nodes[usize::from(root.0)] {
+            match *self.node(root)? {
                 Ty::Basic(kind) if kind.string() => {}
                 Ty::Slice(element) => {
                     if !self.identical(element, byte)? {
@@ -406,7 +405,7 @@ impl TypeArena<'_> {
     ) -> Result<Option<TypeId>, CheckError<ProcedureError>> {
         let root = self.underlying(input).ok_or(Unknown)?;
         let mut key = None;
-        if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
             let terms = self
                 .parameter_set(root)
                 .ok_or(Unknown)?
@@ -432,7 +431,7 @@ impl TypeArena<'_> {
         root: TypeId,
         key: &mut Option<TypeId>,
     ) -> Result<(), CheckError<ProcedureError>> {
-        match (function, &self.nodes[usize::from(root.0)]) {
+        match (function, self.node(root).ok_or(Unknown)?) {
             (BuiltinFunction::Clear, Ty::Map { .. } | Ty::Slice(_)) => {}
             (
                 BuiltinFunction::Close,

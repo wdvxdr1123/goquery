@@ -2,15 +2,10 @@
 mod implication;
 mod parse;
 use super::constraints::Constraint;
-use super::{Direction, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId};
+pub(super) use super::ty::Term;
+use super::{CheckOutcome, Direction, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId, UnknownReason};
 
 pub(super) const MAX_TERMS: usize = 100;
-
-#[derive(Clone, Copy)]
-pub(super) struct Term {
-    pub(super) ty: TypeId,
-    pub(super) approximate: bool,
-}
 
 #[derive(Clone)]
 pub(super) struct TypeSet {
@@ -117,22 +112,15 @@ impl TypeArena<'_> {
             a.methods = Some(if let Some(previous) = a.methods {
                 let previous = self.underlying(previous)?;
                 let methods = self.underlying(methods)?;
-                let Ty::Interface {
-                    origin,
-                    methods: left,
-                    ..
-                } = self.nodes[usize::from(previous.0)].clone()
-                else {
-                    return None;
-                };
-                let Ty::Interface { methods: right, .. } =
-                    self.nodes[usize::from(methods.0)].clone()
-                else {
-                    return None;
-                };
-                let mut values = self.methods[left].to_vec();
-                values.extend(self.methods[right].iter().cloned());
-                self.store_interface(origin, values)?
+                let left_data = self.interface_data(previous)?.clone();
+                let right_data = self.interface_data(methods)?.clone();
+                let mut values = self.methods_slice(previous, left_data.methods).to_vec();
+                values.extend(
+                    self.methods_slice(methods, right_data.methods)
+                        .iter()
+                        .cloned(),
+                );
+                self.store_interface(left_data.origin, values)?
             } else {
                 methods
             });
@@ -166,11 +154,17 @@ impl TypeArena<'_> {
             return None;
         }
         let input = self.underlying(input)?;
-        match self.nodes[usize::from(input.0)].clone() {
-            Ty::Interface { .. } => Some(false),
+        match *self.node(input)? {
+            Ty::Interface(_) => Some(false),
             Ty::Array { element, .. } => self.strict_comparable(element, depth + 1),
-            Ty::Struct { fields, .. } => {
-                for ty in self.fields[fields].iter().map(|f| f.ty).collect::<Vec<_>>() {
+            Ty::Struct(_) => {
+                let fields = self.struct_data(input)?.fields.clone();
+                let field_tys = self
+                    .fields_slice(input, fields)?
+                    .iter()
+                    .map(|f| f.ty)
+                    .collect::<Vec<_>>();
+                for ty in field_tys {
                     if !self.strict_comparable(ty, depth + 1)? {
                         return Some(false);
                     }
@@ -201,10 +195,7 @@ impl TypeArena<'_> {
                         direction: b,
                         element: y,
                     },
-                ) = (
-                    self.nodes[usize::from(core.0)].clone(),
-                    self.nodes[usize::from(ty.0)].clone(),
-                )
+                ) = (*self.node(core)?, *self.node(ty)?)
                 else {
                     return None;
                 };
@@ -236,21 +227,22 @@ impl TypeArena<'_> {
     pub(super) fn substitute_set(
         &mut self,
         set: &TypeSet,
+        tparams: &[TypeId],
         bindings: &[Option<TypeId>],
     ) -> Option<TypeSet> {
         let mut result = set.clone();
         if let Some(terms) = &mut result.terms {
             for term in terms.iter_mut() {
-                term.ty = self.substitute(term.ty, bindings, 0)?;
+                term.ty = self.substitute_for_params(term.ty, tparams, bindings, 0)?;
             }
             result.terms = Some(self.normalize_terms(terms.clone())?);
         }
         if let Some(methods) = result.methods {
-            result.methods = Some(self.substitute(methods, bindings, 0)?);
+            result.methods = Some(self.substitute_for_params(methods, tparams, bindings, 0)?);
         }
         for (constraint, ty) in &mut result.checks {
-            *constraint = self.substitute_constraint(constraint, bindings)?;
-            *ty = self.substitute(*ty, bindings, 0)?;
+            *constraint = self.substitute_constraint(constraint, tparams, bindings)?;
+            *ty = self.substitute_for_params(*ty, tparams, bindings, 0)?;
         }
         self.filter_comparable(result)
     }
@@ -258,16 +250,19 @@ impl TypeArena<'_> {
     pub(super) fn substitute_constraint(
         &mut self,
         c: &Constraint,
+        tparams: &[TypeId],
         bindings: &[Option<TypeId>],
     ) -> Option<Constraint> {
         Some(match c {
             Constraint::Any => Constraint::Any,
             Constraint::Comparable => Constraint::Comparable,
-            Constraint::Exact(ty) => Constraint::Exact(self.substitute(*ty, bindings, 0)?),
-            Constraint::Approximate(ty) => {
-                Constraint::Approximate(self.substitute(*ty, bindings, 0)?)
+            Constraint::Exact(ty) => {
+                Constraint::Exact(self.substitute_for_params(*ty, tparams, bindings, 0)?)
             }
-            Constraint::Set(set) => Constraint::Set(self.substitute_set(set, bindings)?),
+            Constraint::Approximate(ty) => {
+                Constraint::Approximate(self.substitute_for_params(*ty, tparams, bindings, 0)?)
+            }
+            Constraint::Set(set) => Constraint::Set(self.substitute_set(set, tparams, bindings)?),
         })
     }
 
@@ -306,5 +301,157 @@ impl TypeArena<'_> {
             self.prove_constraint(constraint, *ty, depth + 1)?;
         }
         Some(())
+    }
+
+    pub(in crate::analysis::engine::types) fn interface_type_set_checked(
+        &mut self,
+        iface: TypeId,
+        depth: usize,
+    ) -> CheckOutcome<TypeSet> {
+        if self.step().is_none() || depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        if let Some(cached) = self.pool_for(iface).interface_sets.get(&iface) {
+            return CheckOutcome::Ok(cached.clone());
+        }
+        let Some(data) = self.interface_data(iface).cloned() else {
+            return CheckOutcome::Unknown(UnknownReason::Unsupported);
+        };
+        if data.builtin_any {
+            return CheckOutcome::Ok(TypeSet::all());
+        }
+        let mut set = TypeSet {
+            comparable: data.comparable,
+            interface: true,
+            ..TypeSet::all()
+        };
+        if !data.methods.is_empty() {
+            if !data.has_type_elements && !data.comparable {
+                set.methods = Some(iface);
+            } else {
+                let methods = self.methods_slice(iface, data.methods).to_vec();
+                set.methods = match self.store_interface_checked(data.origin, methods) {
+                    CheckOutcome::Ok(id) => Some(id),
+                    CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+                    CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+                };
+            }
+        }
+        let embeddeds = self.arguments_slice(iface, data.embeddeds).to_vec();
+        for embedded in embeddeds {
+            let embedded_set = match self.embedded_type_set(embedded, depth + 1) {
+                CheckOutcome::Ok(sub) => sub,
+                other => return other,
+            };
+            let Some(merged) = self.intersect_sets(set, embedded_set) else {
+                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+            };
+            set = merged;
+        }
+        let Some(set) = self.filter_comparable(set) else {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        };
+        let pool = self.pool_for_mut(iface);
+        if pool.interface_sets.len() < pool.node_limit {
+            pool.interface_sets.insert(iface, set.clone());
+        }
+        CheckOutcome::Ok(set)
+    }
+
+    fn embedded_type_set(&mut self, embedded: TypeId, depth: usize) -> CheckOutcome<TypeSet> {
+        if depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        match *self.node(embedded).unwrap_or(&Ty::Invalid) {
+            Ty::Invalid => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
+            Ty::Union(slice) => {
+                let terms = self.terms_slice(embedded, slice).to_vec();
+                let mut union_set = TypeSet {
+                    terms: Some(Vec::new()),
+                    ..TypeSet::all()
+                };
+                let mut direct: Vec<Term> = Vec::new();
+                for term in terms {
+                    let sub = if !term.approximate
+                        && self.interface_constructor(term.ty) == Some(true)
+                    {
+                        match self.embedded_type_set(term.ty, depth + 1) {
+                            CheckOutcome::Ok(sub) => {
+                                if sub.comparable || sub.methods.is_some() {
+                                    return CheckOutcome::Invalid(());
+                                }
+                                sub
+                            }
+                            other => return other,
+                        }
+                    } else {
+                        for &prev in &direct {
+                            match self.term_intersection(term, prev) {
+                                Some(Some(_)) => return CheckOutcome::Invalid(()),
+                                Some(None) => {}
+                                None => {
+                                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                                }
+                            }
+                        }
+                        direct.push(term);
+                        TypeSet {
+                            terms: Some(vec![term]),
+                            interface: false,
+                            ..TypeSet::all()
+                        }
+                    };
+                    union_set.terms = match (union_set.terms, sub.terms) {
+                        (Some(mut left), Some(right)) => {
+                            left.extend(right);
+                            match self.normalize_terms(left) {
+                                Some(norm) => Some(norm),
+                                None => {
+                                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    union_set.checks.extend(sub.checks);
+                    if union_set.checks.len() > MAX_NODES {
+                        return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                    }
+                }
+                CheckOutcome::Ok(union_set)
+            }
+            Ty::Interface(_) => self.interface_type_set_checked(embedded, depth + 1),
+            Ty::Named { .. } | Ty::Alias { .. } => {
+                if self.interface_constructor(embedded) == Some(true) {
+                    if self.named_info(embedded).is_some() {
+                        match self.named_set(embedded, depth + 1) {
+                            Some(set) => CheckOutcome::Ok(set),
+                            None => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
+                        }
+                    } else if let Some(root) = self.underlying(embedded) {
+                        self.interface_type_set_checked(root, depth + 1)
+                    } else {
+                        CheckOutcome::Unknown(UnknownReason::MissingMetadata)
+                    }
+                } else {
+                    CheckOutcome::Ok(TypeSet {
+                        terms: Some(vec![Term {
+                            ty: embedded,
+                            approximate: false,
+                        }]),
+                        interface: false,
+                        ..TypeSet::all()
+                    })
+                }
+            }
+            _ => CheckOutcome::Ok(TypeSet {
+                terms: Some(vec![Term {
+                    ty: embedded,
+                    approximate: false,
+                }]),
+                interface: false,
+                ..TypeSet::all()
+            }),
+        }
     }
 }

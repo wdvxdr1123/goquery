@@ -3,12 +3,13 @@ use super::content::HoverContent;
 use super::doc;
 use crate::analysis::query::Context;
 use crate::analysis::query::builtin::{
-    declaration as builtin_declaration, replace_placeholder_types,
+    declaration as builtin_declaration, declaration_in as builtin_declaration_in,
+    replace_placeholder_types,
 };
 use crate::syntax::{Lexer, TokenKind};
 
 pub(super) fn hover(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     name: &str,
     range: super::SourceRange,
 ) -> Option<HoverContent> {
@@ -55,11 +56,11 @@ pub(super) fn hover(
 }
 
 /// Declaration position of a predeclared identifier in the SDK builtin file.
-pub(super) fn location(
-    context: &Context<'_>,
+pub(super) fn location_in(
+    workspace: &crate::workspace::Workspace,
     name: &str,
 ) -> Option<(std::path::PathBuf, (u32, u32))> {
-    let builtin = builtin_declaration(context, name)?;
+    let builtin = builtin_declaration_in(workspace, name)?;
     let file = builtin.file;
     let source = builtin.source;
     let symbol = builtin.symbol;
@@ -183,7 +184,7 @@ fn declaration_keyword(source: &str, start: usize) -> Option<usize> {
 }
 
 fn attach(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     file: &std::path::Path,
     source: &str,
     start: usize,

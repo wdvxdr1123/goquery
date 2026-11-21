@@ -1,6 +1,6 @@
 //! Render established operand failures at their parsed source ranges.
 use super::{Code, RegionChecker};
-use crate::analysis::types::{
+use crate::analysis::engine::types::{
     AssignmentError, BasicKind, BinaryError, CheckError, ConstAssignError, Constant,
     ConversionError, IndexError, IndexValueError, Mode, Operand, TypeId,
 };
@@ -8,7 +8,7 @@ use crate::syntax::ExprId;
 use std::ops::Range;
 
 impl RegionChecker<'_, '_> {
-    pub(in crate::analysis::check) fn check_assignment(
+    pub(in crate::analysis::engine::check) fn check_assignment(
         &mut self,
         source: Operand,
         target: TypeId,
@@ -17,13 +17,17 @@ impl RegionChecker<'_, '_> {
     ) -> Option<()> {
         let int_bits = self.int_bits()?;
         let result = self.arena.check_assignment(source, target, int_bits);
-        if let Err(CheckError::Invalid(reason)) = result {
-            self.assignment_error(source, target, expr, context, reason);
+        match result {
+            Ok(()) => self.update_expr_type(expr, target, int_bits),
+            Err(CheckError::Invalid(reason)) => {
+                self.assignment_error(source, target, expr, context, reason);
+            }
+            Err(CheckError::Unknown) => {}
         }
         result.ok()
     }
 
-    pub(in crate::analysis::check) fn assignment_error(
+    pub(in crate::analysis::engine::check) fn assignment_error(
         &mut self,
         source: Operand,
         target: TypeId,
@@ -76,7 +80,7 @@ impl RegionChecker<'_, '_> {
         );
     }
 
-    pub(in crate::analysis::check) fn operand_description(
+    pub(in crate::analysis::engine::check) fn operand_description(
         &mut self,
         id: ExprId,
         operand: Operand,
@@ -109,7 +113,9 @@ impl RegionChecker<'_, '_> {
             _ => return None,
         };
         let value = match operand.value {
-            Some(Constant::Int(value)) => value.to_string(),
+            Some(value @ (Constant::Int(_) | Constant::WideInt(_))) => {
+                value.format_int().unwrap_or_default()
+            }
             Some(Constant::Float { approximate, .. }) => approximate.to_string(),
             _ => String::new(),
         };
@@ -121,7 +127,7 @@ impl RegionChecker<'_, '_> {
         Some(format!("{text} ({prefix}{mode}{value}{suffix})"))
     }
 
-    pub(in crate::analysis::check) fn index_value_error(
+    pub(in crate::analysis::engine::check) fn index_value_error(
         &mut self,
         id: ExprId,
         mut operand: Operand,
@@ -162,7 +168,7 @@ impl RegionChecker<'_, '_> {
         self.compiler_error(&expr.span, code, &message);
     }
 
-    pub(in crate::analysis::check) fn index_error(
+    pub(in crate::analysis::engine::check) fn index_error(
         &mut self,
         container: (ExprId, Operand),
         index: (ExprId, Operand),
@@ -198,7 +204,7 @@ impl RegionChecker<'_, '_> {
         }
     }
 
-    pub(in crate::analysis::check) fn binary_error(
+    pub(in crate::analysis::engine::check) fn binary_error(
         &mut self,
         span: &Range<usize>,
         left: (ExprId, Operand),
@@ -264,7 +270,7 @@ impl RegionChecker<'_, '_> {
         self.compiler_error(&expr.span, code, &message);
     }
 
-    pub(in crate::analysis::check) fn conversion_error(
+    pub(in crate::analysis::engine::check) fn conversion_error(
         &mut self,
         id: ExprId,
         operand: Operand,

@@ -1,6 +1,6 @@
 //! Bounded complex constants and the numeric builtin type functions.
-use super::conversion;
-use super::operand;
+use super::bigint::ConstInt;
+use super::constant::{self, constant_value};
 use super::{BasicKind, Constant, Mode, Operand, Ty, TypeArena, TypeId};
 
 pub(crate) enum ComplexError {
@@ -13,6 +13,7 @@ pub(crate) enum ComplexError {
 #[derive(Clone, Copy)]
 pub(crate) enum ComplexPart {
     Integer(i128),
+    WideInteger([u64; 3]),
     Float {
         approximate: f64,
         rounded32: Option<f32>,
@@ -20,9 +21,25 @@ pub(crate) enum ComplexPart {
 }
 
 impl ComplexPart {
+    fn from_wide(value: ConstInt) -> Option<Self> {
+        if let Some(small) = value.to_i128() {
+            return Some(Self::Integer(small));
+        }
+        Some(Self::WideInteger(value.to_limbs3()?))
+    }
+
+    pub(crate) fn as_wide(self) -> Option<ConstInt> {
+        match self {
+            Self::Integer(value) => Some(ConstInt::from_i128(value)),
+            Self::WideInteger(limbs) => Some(ConstInt::from_limbs3(limbs)),
+            Self::Float { .. } => None,
+        }
+    }
+
     fn from_constant(value: Constant) -> Option<Self> {
         match value {
             Constant::Int(value) => Some(Self::Integer(value)),
+            Constant::WideInt(limbs) => Self::from_wide(ConstInt(limbs)),
             Constant::Float {
                 integral: Some(value),
                 ..
@@ -44,6 +61,7 @@ impl ComplexPart {
     fn approximate(self) -> Option<f64> {
         match self {
             Self::Integer(value) => (value.unsigned_abs() <= (1u128 << 53)).then_some(value as f64),
+            Self::WideInteger(_) => None,
             Self::Float { approximate, .. } => approximate.is_finite().then_some(approximate),
         }
     }
@@ -61,6 +79,7 @@ impl ComplexPart {
     pub(super) fn constant(self) -> Constant {
         match self {
             Self::Integer(value) => Constant::Int(value),
+            Self::WideInteger(limbs) => Constant::from_wide(ConstInt::from_limbs3(limbs)),
             Self::Float {
                 approximate,
                 rounded32,
@@ -80,6 +99,9 @@ impl ComplexPart {
     fn negate(self) -> Option<Self> {
         Some(match self {
             Self::Integer(value) => Self::Integer(value.checked_neg()?),
+            Self::WideInteger(limbs) => {
+                Self::from_wide(ConstInt::from_limbs3(limbs).checked_neg()?)?
+            }
             Self::Float {
                 approximate,
                 rounded32,
@@ -129,21 +151,17 @@ pub(super) fn negate(value: Constant) -> Option<Constant> {
 pub(super) fn binary(operator: &str, left: Constant, right: Constant) -> Option<Constant> {
     let (a, b) = parts(left)?;
     let (c, d) = parts(right)?;
-    if let (
-        ComplexPart::Integer(a),
-        ComplexPart::Integer(b),
-        ComplexPart::Integer(c),
-        ComplexPart::Integer(d),
-    ) = (a, b, c, d)
+    if let (Some(a), Some(b), Some(c), Some(d)) =
+        (a.as_wide(), b.as_wide(), c.as_wide(), d.as_wide())
     {
         if let Some(value) = integer_binary(operator, a, b, c, d) {
             return Some(value);
         }
-        // Inexact division or overflow may fall through only when f64 holds every
-        // input exactly; larger bounded integers stay unknown.
+        let max_exact = ConstInt::from_i128(1i128 << 53);
+        let min_exact = ConstInt::from_i128(-(1i128 << 53));
         if [a, b, c, d]
             .iter()
-            .any(|value| value.unsigned_abs() > (1u128 << 53))
+            .any(|v| *v > max_exact || *v < min_exact)
         {
             return None;
         }
@@ -176,7 +194,13 @@ pub(super) fn binary(operator: &str, left: Constant, right: Constant) -> Option<
 /// Exact bounded integer components. Division only succeeds when both resulting
 /// components are integral; otherwise the caller may round as Go does at the
 /// value boundary, but never claims an exact fraction or an overflowed value.
-fn integer_binary(operator: &str, a: i128, b: i128, c: i128, d: i128) -> Option<Constant> {
+fn integer_binary(
+    operator: &str,
+    a: ConstInt,
+    b: ConstInt,
+    c: ConstInt,
+    d: ConstInt,
+) -> Option<Constant> {
     let (real, imaginary) = match operator {
         "+" => (a.checked_add(c)?, b.checked_add(d)?),
         "-" => (a.checked_sub(c)?, b.checked_sub(d)?),
@@ -188,22 +212,21 @@ fn integer_binary(operator: &str, a: i128, b: i128, c: i128, d: i128) -> Option<
             let denominator = c.checked_mul(c)?.checked_add(d.checked_mul(d)?)?;
             let real = a.checked_mul(c)?.checked_add(b.checked_mul(d)?)?;
             let imaginary = b.checked_mul(c)?.checked_sub(a.checked_mul(d)?)?;
-            if denominator == 0
-                || real.checked_rem(denominator)? != 0
-                || imaginary.checked_rem(denominator)? != 0
-            {
+            if denominator.is_zero() {
                 return None;
             }
-            (
-                real.checked_div(denominator)?,
-                imaginary.checked_div(denominator)?,
-            )
+            let (rq, rr) = real.checked_div_rem(denominator)?;
+            let (iq, ir) = imaginary.checked_div_rem(denominator)?;
+            if !rr.is_zero() || !ir.is_zero() {
+                return None;
+            }
+            (rq, iq)
         }
         _ => return None,
     };
     Some(Constant::Complex {
-        real: ComplexPart::Integer(real),
-        imaginary: ComplexPart::Integer(imaginary),
+        real: ComplexPart::from_wide(real)?,
+        imaginary: ComplexPart::from_wide(imaginary)?,
     })
 }
 
@@ -216,11 +239,11 @@ pub(super) fn representable(value: Constant, target: BasicKind, int_bits: u32) -
         BasicKind::Complex128 => BasicKind::Float64,
         _ => {
             return imaginary.is_zero()
-                && operand::representable(real.constant(), target, int_bits);
+                && constant::representable(real.constant(), target, int_bits);
         }
     };
-    operand::representable(real.constant(), component, int_bits)
-        && operand::representable(imaginary.constant(), component, int_bits)
+    constant::representable(real.constant(), component, int_bits)
+        && constant::representable(imaginary.constant(), component, int_bits)
 }
 
 pub(super) fn converted(value: Constant, target: BasicKind) -> Option<Constant> {
@@ -231,11 +254,8 @@ pub(super) fn converted(value: Constant, target: BasicKind) -> Option<Constant> 
         _ => return None,
     };
     Some(Constant::Complex {
-        real: ComplexPart::from_constant(conversion::constant_value(real.constant(), component)?)?,
-        imaginary: ComplexPart::from_constant(conversion::constant_value(
-            imaginary.constant(),
-            component,
-        )?)?,
+        real: ComplexPart::from_constant(constant_value(real.constant(), component)?)?,
+        imaginary: ComplexPart::from_constant(constant_value(imaginary.constant(), component)?)?,
     })
 }
 
@@ -325,9 +345,9 @@ impl TypeArena<'_> {
     ) -> Option<Result<Operand, ()>> {
         self.step()?;
         let root = self.underlying(input.ty)?;
-        let kind = match self.nodes[usize::from(root.0)] {
+        let kind = match *self.node(root)? {
             Ty::Basic(kind) => kind,
-            Ty::Parameter(_) => return None,
+            Ty::TypeParam(_) => return None,
             _ => return Some(Err(())),
         };
         let target = match kind {

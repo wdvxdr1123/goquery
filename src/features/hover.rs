@@ -4,7 +4,7 @@ use crate::analysis::query::hover::{self as hover_query, HoverContent};
 use crate::features::document;
 use serde_json::{Value, json};
 
-pub(super) fn execute(context: &Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
+pub(super) fn execute(context: &mut Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
     let Some(content) = hover_query::execute(context, offset)? else {
         return Ok(Value::Null);
     };

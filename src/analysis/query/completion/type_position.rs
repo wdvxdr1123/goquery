@@ -1,6 +1,6 @@
 //! Expected syntactic type positions, including incomplete qualified names.
 use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::scope::CursorScope;
+use crate::analysis::sema::CursorBody;
 use crate::syntax::{Diagnostic, Lexer, TokenKind, TypeReference};
 use crate::workspace::Workspace;
 use std::path::Path;
@@ -10,9 +10,9 @@ pub(in crate::analysis::query) fn type_position(
     file: &Path,
     source: &str,
     offset: usize,
-    scope: &CursorScope,
+    body: Option<&CursorBody>,
 ) -> bool {
-    if let Some(body) = &scope.body
+    if let Some(body) = body
         && type_context_at(
             &body.tree.type_references,
             &body.tree.diagnostics,

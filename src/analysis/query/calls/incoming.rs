@@ -1,9 +1,9 @@
 //! Incoming edges follow symbol references, including callback values and closures.
 use super::{CallGroup, Groups, finish, record_call};
 use crate::analysis::query::{Context, SourceRange};
-use crate::analysis::resolve::NameProbe;
-use crate::analysis::scope::occurrences::Occurrences;
-use crate::analysis::sema::{Identity, IdentityResolver};
+use crate::analysis::sema::{
+    MethodOrigin, SemanticObject, SymbolOrigin, lexical_name_spans, lexical_qualified_name_spans,
+};
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
@@ -11,13 +11,15 @@ use std::path::Path;
 
 impl<'a, View> Context<'a, View> {
     pub(crate) fn incoming_calls(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
     ) -> Result<Vec<CallGroup<'a>>, (i32, String)> {
+        if target.name == "_" {
+            return Ok(Vec::new());
+        }
         let mut groups = Groups::new();
         let mut count = 0;
-        let index = NameProbe::new(&target.name);
         let mut candidates = self.resolver().reference_candidates(file, target);
         let scope = self.workspace.reference_scope(file);
         candidates.retain(|(candidate, _)| scope.contains(candidate, file));
@@ -26,6 +28,7 @@ impl<'a, View> Context<'a, View> {
             "incomingCalls",
             candidates.len(),
         );
+        let package_global_only = target.receiver.is_none();
         let fingerprint = Fingerprint::new(target.name.as_bytes());
         for (candidate, stub) in candidates {
             if !stub.identifiers.may_contain_fingerprint(fingerprint) {
@@ -47,39 +50,52 @@ impl<'a, View> Context<'a, View> {
                 .filter(|import| Some(import.path.as_str()) == import_path.as_deref())
                 .filter_map(|import| self.resolver().import_name(candidate, import))
                 .collect();
-            let analysis =
-                if target.receiver.is_none() && !same_package && !qualifiers.contains(&".") {
-                    Occurrences::for_qualified_name(&source, stub, &target.name, &qualifiers)?
-                } else {
-                    Occurrences::for_name(&source, stub, &target.name)?
-                };
-            let mut resolver =
-                IdentityResolver::for_reference(self.workspace, candidate, &index, target);
-            for name in &analysis.names {
-                if candidate == file && name.span.start == target.start {
+            let spans = if package_global_only && !same_package && !qualifiers.contains(&".") {
+                lexical_qualified_name_spans(&source, stub, &target.name, &qualifiers)
+            } else {
+                lexical_name_spans(&source, stub, &target.name)
+            };
+            for span in spans {
+                if candidate == file && span.start == target.start {
                     continue;
                 }
-                if !matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Global(path, symbol)) if path == file && symbol.start == target.start)
-                {
+                let key = [span.start as u32, span.end as u32];
+                let Some(obj) = self.with_sema(|sema| sema.resolve_offset(candidate, &source, key))
+                else {
+                    continue;
+                };
+                let decl = match obj {
+                    SemanticObject::Const(SymbolOrigin::Package(decl))
+                    | SemanticObject::TypeName {
+                        origin: SymbolOrigin::Package(decl),
+                        ..
+                    }
+                    | SemanticObject::Var {
+                        origin: SymbolOrigin::Package(decl),
+                        ..
+                    }
+                    | SemanticObject::Func(decl) => Some(decl),
+                    SemanticObject::Method(MethodOrigin::Concrete(decl))
+                        if !package_global_only =>
+                    {
+                        Some(decl)
+                    }
+                    _ => None,
+                };
+                if !decl.is_some_and(|d| d.file == file && d.symbol.start == target.start) {
                     continue;
                 }
                 let Some(caller) = stub
                     .symbols
                     .iter()
-                    .find(|symbol| {
-                        symbol
-                            .body()
-                            .is_some_and(|body| body.contains(&name.span.start))
-                    })
+                    .find(|symbol| symbol.body().is_some_and(|body| body.contains(&span.start)))
                     .or_else(|| {
                         stub.symbols.iter().find(|symbol| {
                             symbol.is_value()
                                 && map
                                     .offset(symbol.range.start)
                                     .zip(map.offset(symbol.range.end))
-                                    .is_some_and(|(start, end)| {
-                                        (start..end).contains(&name.span.start)
-                                    })
+                                    .is_some_and(|(start, end)| (start..end).contains(&span.start))
                         })
                     })
                 else {
@@ -89,7 +105,7 @@ impl<'a, View> Context<'a, View> {
                     &mut groups,
                     candidate,
                     caller,
-                    SourceRange::new(&map, name.span.clone()),
+                    SourceRange::new(&map, span),
                     &mut count,
                 )?;
             }

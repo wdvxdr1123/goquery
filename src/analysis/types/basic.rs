@@ -36,6 +36,39 @@ impl BasicKind {
     pub(super) const fn index(self) -> usize {
         self as usize
     }
+
+    pub(super) const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Bool),
+            1 => Some(Self::Int),
+            2 => Some(Self::Int8),
+            3 => Some(Self::Int16),
+            4 => Some(Self::Int32),
+            5 => Some(Self::Int64),
+            6 => Some(Self::Uint),
+            7 => Some(Self::Uint8),
+            8 => Some(Self::Uint16),
+            9 => Some(Self::Uint32),
+            10 => Some(Self::Uint64),
+            11 => Some(Self::Uintptr),
+            12 => Some(Self::Float32),
+            13 => Some(Self::Float64),
+            14 => Some(Self::Complex64),
+            15 => Some(Self::Complex128),
+            16 => Some(Self::String),
+            17 => Some(Self::Byte),
+            18 => Some(Self::Rune),
+            19 => Some(Self::UnsafePointer),
+            20 => Some(Self::UntypedBool),
+            21 => Some(Self::UntypedInt),
+            22 => Some(Self::UntypedRune),
+            23 => Some(Self::UntypedFloat),
+            24 => Some(Self::UntypedComplex),
+            25 => Some(Self::UntypedString),
+            26 => Some(Self::UntypedNil),
+            _ => None,
+        }
+    }
 }
 
 const _: () = assert!((BasicKind::UntypedNil as usize) == BasicKind::COUNT - 1);

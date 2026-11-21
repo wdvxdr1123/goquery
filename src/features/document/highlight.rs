@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use tower_lsp::lsp_types::DocumentHighlightKind as LspHighlightKind;
 
 pub(crate) fn execute(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     cancellation: Option<&AtomicBool>,
 ) -> Result<Value, (i32, String)> {

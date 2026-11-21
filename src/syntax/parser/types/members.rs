@@ -136,6 +136,33 @@ impl Parser<'_> {
         }
     }
 
+    pub(in crate::syntax::parser) fn type_elem(&mut self, depth: usize) -> std::ops::Range<usize> {
+        let start = self
+            .tokens
+            .peek()
+            .map_or(self.source.len(), |token| token.span.start);
+        let mut end;
+        loop {
+            if self
+                .tokens
+                .peek()
+                .is_some_and(|token| token.kind == TokenKind::Tilde)
+            {
+                self.tokens.next();
+            }
+            end = self.type_syntax(depth + 1).end;
+            if !self
+                .tokens
+                .peek()
+                .is_some_and(|token| token.kind == TokenKind::Or)
+            {
+                break;
+            }
+            self.tokens.next();
+        }
+        start..end
+    }
+
     fn interface_member(&mut self, depth: usize, container: usize) {
         if self
             .tokens
@@ -161,29 +188,10 @@ impl Parser<'_> {
                 container,
             });
         } else {
-            let start = self.tokens.peek().expect("interface member").span.start;
-            let mut end;
-            loop {
-                if self
-                    .tokens
-                    .peek()
-                    .is_some_and(|token| token.kind == TokenKind::Tilde)
-                {
-                    self.tokens.next();
-                }
-                end = self.type_syntax(depth + 1).end;
-                if !self
-                    .tokens
-                    .peek()
-                    .is_some_and(|token| token.kind == TokenKind::Or)
-                {
-                    break;
-                }
-                self.tokens.next();
-            }
+            let annotation = self.type_elem(depth);
             self.interface_members.push(InterfaceMember {
                 name: None,
-                annotation: start..end,
+                annotation,
                 container,
             });
         }

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub(super) fn prepare(context: &Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
+pub(super) fn prepare(context: &mut Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
     let Some(item) = context.prepare_rename(offset)? else {
         return Ok(Value::Null);
     };

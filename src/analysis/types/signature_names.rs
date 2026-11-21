@@ -44,9 +44,10 @@ impl TypeArena<'_> {
             .chain(&names.parameters)
             .chain(&names.results);
         let bytes: usize = strings.clone().map(|name| name.len() + 1).sum();
-        if self.signature_names.len() >= self.node_limit
+        let pool = self.pool_for_mut(ty);
+        if pool.signature_names.len() >= pool.node_limit
             || bytes > MAX_BYTES
-            || self.signature_name_bytes.len() + bytes > self.byte_limit.min(MAX_BYTES)
+            || pool.signature_name_bytes.len() + bytes > pool.byte_limit.min(MAX_BYTES)
         {
             return;
         }
@@ -56,15 +57,15 @@ impl TypeArena<'_> {
         ) else {
             return;
         };
-        let start = self.signature_name_bytes.len() as u32;
+        let start = pool.signature_name_bytes.len() as u32;
         for name in strings {
-            self.signature_name_bytes.push_str(name);
-            self.signature_name_bytes.push('\0');
+            pool.signature_name_bytes.push_str(name);
+            pool.signature_name_bytes.push('\0');
         }
-        self.signature_names.push(SignatureNames {
+        pool.signature_names.push(SignatureNames {
             ty,
             start,
-            end: self.signature_name_bytes.len() as u32,
+            end: pool.signature_name_bytes.len() as u32,
             parameters,
             results,
         });
@@ -89,12 +90,13 @@ impl TypeArena<'_> {
     }
 
     pub(super) fn signature_name_text(&self, ty: TypeId) -> Option<(&str, u16, u16)> {
-        let names = self
+        let pool = self.pool_for(ty);
+        let names = pool
             .signature_names
             .iter()
             .rev()
             .find(|names| names.ty == ty)?;
-        let text = self
+        let text = pool
             .signature_name_bytes
             .get(names.start as usize..names.end as usize)?;
         Some((text, names.parameters, names.results))

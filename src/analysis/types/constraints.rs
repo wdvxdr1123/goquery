@@ -51,15 +51,27 @@ impl TypeArena<'_> {
         text: &str,
         environment: &[(&str, TypeId)],
     ) -> Option<Constraint> {
+        self.constraint_checked(origin, text, environment).ok()
+    }
+
+    pub(super) fn constraint_checked(
+        &mut self,
+        origin: &Path,
+        text: &str,
+        environment: &[(&str, TypeId)],
+    ) -> super::CheckOutcome<Constraint> {
+        use super::{CheckOutcome, UnknownReason};
         if self.constraint_depth >= MAX_DEPTH {
-            return None;
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         }
         self.constraint_depth += 1;
-        let result = self
-            .constraint_set(origin, text, environment, 0)
-            .map(TypeSet::constraint);
+        let result = self.constraint_set_checked(origin, text, environment, 0);
         self.constraint_depth -= 1;
-        result
+        match result {
+            CheckOutcome::Ok(set) => CheckOutcome::Ok(set.constraint()),
+            CheckOutcome::Invalid(()) => CheckOutcome::Invalid(()),
+            CheckOutcome::Unknown(reason) => CheckOutcome::Unknown(reason),
+        }
     }
 
     pub(super) fn universe_constraint(
@@ -81,15 +93,19 @@ impl TypeArena<'_> {
         )
     }
 
-    pub(super) fn infer_constraints(
-        &mut self,
+    pub(super) fn infer_constraints_with_unifier<'a>(
+        unifier: &mut super::unify::Unifier<'_, 'a>,
+        params: &[TypeId],
         constraints: &[Constraint],
-        bindings: &mut [Option<TypeId>],
     ) -> Option<()> {
         for _ in 0..MAX_DEPTH {
-            let known = bindings.iter().filter(|slot| slot.is_some()).count();
+            let known = unifier
+                .snapshot(params)
+                .iter()
+                .filter(|slot| slot.is_some())
+                .count();
             for (index, constraint) in constraints.iter().enumerate() {
-                self.step()?;
+                unifier.store_mut().step()?;
                 let core = match constraint {
                     Constraint::Exact(ty) => Some((
                         super::sets::Term {
@@ -105,37 +121,53 @@ impl TypeArena<'_> {
                         },
                         true,
                     )),
-                    Constraint::Set(set) => self.set_core(set),
+                    Constraint::Set(set) => unifier.store_mut().set_core(set),
                     _ => None,
                 };
                 if let Some((term, single)) = core {
+                    let bindings = unifier.snapshot(params);
                     if let Some(actual) = bindings[index] {
                         let actual = if term.approximate || !single {
-                            self.underlying(actual)?
+                            unifier.store_mut().underlying(actual)?
                         } else {
                             actual
                         };
-                        self.unify(term.ty, actual, bindings, usize::from(single))?;
+                        if !unifier.unify(term.ty, actual, usize::from(single))? {
+                            return None;
+                        }
                     } else if single
                         && !term.approximate
-                        && let Some(ty) = self.substitute(term.ty, bindings, 0)
+                        && let Some(ty) = super::unify::Unifier::substitute_for_params(
+                            unifier.store_mut(),
+                            term.ty,
+                            params,
+                            &bindings,
+                            0,
+                        )
                     {
-                        bindings[index] = Some(ty);
+                        unifier.bind_param(params[index], ty)?;
                     }
                 }
+                let bindings = unifier.snapshot(params);
                 if let Constraint::Set(set) = constraint
                     && let Some(methods) = set.methods
                     && let Some(actual) = bindings[index]
                 {
                     // An unsuccessful speculative method match must not retain
                     // partial bindings. Final satisfaction remains mandatory.
-                    let mut inferred = bindings.to_vec();
-                    if self.unify(methods, actual, &mut inferred, 0).is_some() {
-                        bindings.copy_from_slice(&inferred);
+                    let saved = unifier.save_state();
+                    if unifier.unify(methods, actual, 0) != Some(true) {
+                        unifier.restore_state(saved);
                     }
                 }
             }
-            if bindings.iter().filter(|slot| slot.is_some()).count() == known {
+            if unifier
+                .snapshot(params)
+                .iter()
+                .filter(|slot| slot.is_some())
+                .count()
+                == known
+            {
                 return Some(());
             }
         }
@@ -144,12 +176,13 @@ impl TypeArena<'_> {
 
     pub(super) fn prove_constraints(
         &mut self,
+        tparams: &[TypeId],
         constraints: &[Constraint],
         bindings: &[Option<TypeId>],
     ) -> Option<()> {
         for (constraint, binding) in constraints.iter().zip(bindings) {
             let actual = (*binding)?;
-            let instantiated = self.substitute_constraint(constraint, bindings)?;
+            let instantiated = self.substitute_constraint(constraint, tparams, bindings)?;
             self.prove_constraint(&instantiated, actual, 0)?;
         }
         Some(())
@@ -169,7 +202,7 @@ impl TypeArena<'_> {
         }
         if !matches!(constraint, Constraint::Any) {
             let root = self.unalias(actual)?;
-            if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+            if matches!(self.node(root)?, Ty::TypeParam(_)) {
                 return self.prove_parameter_constraint(root, constraint, depth + 1);
             }
         }
@@ -192,17 +225,14 @@ impl TypeArena<'_> {
     }
 
     pub(super) fn parameter_constraint(&self, input: TypeId) -> Option<&Constraint> {
-        self.parameter_constraints
-            .iter()
-            .find(|(ty, _)| *ty == input)
-            .map(|(_, constraint)| constraint)
+        self.pool_for(input).parameter_constraints.get(&input)
     }
 
     /// The common underlying type, including compatible channel directions.
     pub(super) fn common_under(&mut self, input: TypeId) -> Option<TypeId> {
         self.step()?;
         let input = self.underlying(input)?;
-        if !matches!(self.nodes[usize::from(input.0)], Ty::Parameter(_)) {
+        if !matches!(self.node(input)?, Ty::TypeParam(_)) {
             return Some(input);
         }
         let set = self.parameter_set(input)?;
@@ -224,12 +254,14 @@ impl TypeArena<'_> {
             return None;
         }
         let input = self.underlying(input)?;
-        match self.nodes[usize::from(input.0)] {
+        match *self.node(input)? {
             Ty::Basic(kind) => Some(!kind.untyped()),
-            Ty::Pointer(_) | Ty::Chan { .. } | Ty::Interface { .. } => Some(true),
+            Ty::Pointer(_) | Ty::Chan { .. } | Ty::Interface(_) => Some(true),
             Ty::Array { element, .. } => self.comparable(element, depth + 1),
-            Ty::Struct { ref fields, .. } => {
-                let types: Vec<_> = self.fields[fields.clone()]
+            Ty::Struct(_) => {
+                let fields = self.struct_data(input)?.fields.clone();
+                let types: Vec<_> = self
+                    .fields_slice(input, fields)?
                     .iter()
                     .map(|field| field.ty)
                     .collect();
@@ -240,8 +272,8 @@ impl TypeArena<'_> {
                 }
                 Some(true)
             }
-            Ty::Slice(_) | Ty::Map { .. } | Ty::Signature { .. } => Some(false),
-            Ty::Parameter(_) => {
+            Ty::Slice(_) | Ty::Map { .. } | Ty::Signature(_) => Some(false),
+            Ty::TypeParam(_) => {
                 let constraint = self.parameter_constraint(input)?.clone();
                 self.constraint_comparable(&constraint, depth + 1)
             }

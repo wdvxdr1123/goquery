@@ -1,6 +1,11 @@
 //! Bounded operands: match untyped types before operator checks and defaulting.
+use super::bigint::ConstInt;
+use super::constant::{
+    ConstAssignError, Constant, constant_value, fold_integer_shift, parse_float_literal,
+    parse_integer_literal, representable,
+};
 use super::{BasicKind, Ty, TypeArena, TypeId};
-use crate::analysis::obj::BuiltinFunction;
+use crate::analysis::engine::obj::BuiltinFunction;
 use crate::syntax::TokenKind;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,52 +31,6 @@ impl Mode {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum Constant {
-    Int(i128),
-    Complex {
-        real: super::complex::ComplexPart,
-        imaginary: super::complex::ComplexPart,
-    },
-    Float {
-        approximate: f64,
-        integral: Option<i128>,
-        rounded32: Option<f32>,
-        fractional: bool,
-    },
-    Boolean,
-    String {
-        length: Option<u64>,
-    },
-}
-
-impl Constant {
-    pub(super) fn integer_value(self) -> Option<i128> {
-        match self {
-            Self::Int(value)
-            | Self::Float {
-                integral: Some(value),
-                ..
-            } => Some(value),
-            Self::Complex { .. } => match super::complex::real(self)?.constant() {
-                Self::Int(value) => Some(value),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
-    pub(super) fn definitely_fractional(self) -> bool {
-        matches!(
-            self,
-            Self::Float {
-                fractional: true,
-                ..
-            }
-        )
-    }
-}
-
-#[derive(Clone, Copy)]
 pub(crate) enum BinaryError {
     DivisionByZero,
     NegativeShift,
@@ -80,13 +39,6 @@ pub(crate) enum BinaryError {
     InvalidShiftCount,
     ShiftCountConversion(ConstAssignError),
     Overflow(Operand),
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum ConstAssignError {
-    Incompatible,
-    Overflow,
-    Truncated,
 }
 
 #[derive(Clone, Copy)]
@@ -122,17 +74,17 @@ impl TypeArena<'_> {
             return None;
         }
         let (kind, value) = match kind {
-            TokenKind::Int => (BasicKind::UntypedInt, integer(text).map(Constant::Int)),
+            TokenKind::Int => (BasicKind::UntypedInt, parse_integer_literal(text)),
             TokenKind::Char => (
                 BasicKind::UntypedRune,
                 crate::syntax::decode_rune_literal(text)
                     .map(|value| Constant::Int(i128::from(value))),
             ),
-            TokenKind::Float => (BasicKind::UntypedFloat, float(text)),
+            TokenKind::Float => (BasicKind::UntypedFloat, parse_float_literal(text)),
             TokenKind::Imag => (
                 BasicKind::UntypedComplex,
-                float(text.strip_suffix('i')?)
-                    .or_else(|| integer(text.strip_suffix('i')?).map(Constant::Int))
+                parse_float_literal(text.strip_suffix('i')?)
+                    .or_else(|| parse_integer_literal(text.strip_suffix('i')?))
                     .and_then(super::complex::imaginary),
             ),
             TokenKind::String => (
@@ -191,10 +143,7 @@ impl TypeArena<'_> {
         }
         if operand.mode == Mode::Constant {
             representable(operand.value?, target_kind, int_bits).then_some(())?;
-            operand.value = Some(super::conversion::constant_value(
-                operand.value?,
-                target_kind,
-            )?);
+            operand.value = Some(constant_value(operand.value?, target_kind)?);
         }
         operand.ty = target;
         Some(operand)
@@ -238,7 +187,7 @@ impl TypeArena<'_> {
     pub(crate) fn indirect(&mut self, input: Operand) -> Option<Operand> {
         self.step()?;
         let root = self.common_under(input.ty)?;
-        let Ty::Pointer(ty) = self.nodes[usize::from(root.0)] else {
+        let Ty::Pointer(ty) = *self.node(root)? else {
             return None;
         };
         Some(Operand {
@@ -258,7 +207,7 @@ impl TypeArena<'_> {
             return Some(res);
         }
         let root = self.underlying(operand.ty)?;
-        if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+        if !matches!(self.node(root), Some(Ty::TypeParam(_))) {
             return None;
         }
         let terms = self.parameter_set(root)?.terms?;
@@ -297,6 +246,9 @@ impl TypeArena<'_> {
                 if operator == "-" {
                     operand.value = match operand.value {
                         Some(Constant::Int(value)) => value.checked_neg().map(Constant::Int),
+                        Some(Constant::WideInt(limbs)) => {
+                            ConstInt(limbs).checked_neg().map(Constant::from_wide)
+                        }
                         Some(Constant::Float {
                             approximate,
                             integral,
@@ -314,14 +266,15 @@ impl TypeArena<'_> {
                 }
             }
             "^" if kind.integer() => {
-                operand.value = match operand.value {
-                    Some(Constant::Int(value)) => {
-                        let mask = if let Some((false, bits)) = kind.integer_width(int_bits) {
-                            (1i128 << bits) - 1
+                operand.value = match operand.value.and_then(Constant::as_wide) {
+                    Some(value) => {
+                        let res = if let Some((false, bits)) = kind.integer_width(int_bits) {
+                            let mask = ConstInt::from_i128((1i128 << bits) - 1);
+                            value.bitxor(mask)
                         } else {
-                            -1
+                            value.bitnot()
                         };
-                        Some(Constant::Int(value ^ mask))
+                        Some(Constant::from_wide(res))
                     }
                     _ => None,
                 };
@@ -332,7 +285,7 @@ impl TypeArena<'_> {
         if operand.mode == Mode::Constant && !kind.untyped() {
             representable(operand.value?, kind, int_bits).then_some(())?;
             if kind.numeric_rank() == Some(3) {
-                operand.value = Some(super::conversion::constant_value(operand.value?, kind)?);
+                operand.value = Some(constant_value(operand.value?, kind)?);
             }
         }
         if operand.mode != Mode::Constant {
@@ -400,7 +353,7 @@ impl TypeArena<'_> {
     ) -> Option<Result<Operand, BinaryError>> {
         let left_kind = self.basic_kind(left.ty);
         let left_untyped = left_kind.is_some_and(BasicKind::untyped);
-        let left_value = left.value.and_then(Constant::integer_value);
+        let left_value = left.value.and_then(Constant::as_wide);
         if !(self.integer_type(left.ty)? || left_untyped && left_value.is_some()) {
             // A bounded constant without an exact integer projection can still
             // be valid. Only reject cases where the represented facts prove it.
@@ -448,9 +401,7 @@ impl TypeArena<'_> {
             } else {
                 left.ty
             };
-            let value = left_value
-                .and_then(|value| fold_integer_shift(operator, value, count))
-                .map(Constant::Int);
+            let value = left_value.and_then(|value| fold_integer_shift(operator, value, count));
             let result = Operand {
                 mode: Mode::Constant,
                 ty,
@@ -485,7 +436,7 @@ impl TypeArena<'_> {
             _ => self.basic(BasicKind::Int)?,
         };
         let root = self.underlying(target)?;
-        if let Ty::Parameter(_) = self.nodes[usize::from(root.0)] {
+        if matches!(self.node(root), Some(Ty::TypeParam(_))) {
             let value = operand.value?;
             let terms = self.parameter_set(root)?.terms?;
             if terms.is_empty() {
@@ -506,10 +457,11 @@ impl TypeArena<'_> {
 
     pub(super) fn integer_type(&mut self, input: TypeId) -> Option<bool> {
         let root = self.underlying(input)?;
-        if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
-            return Some(
-                matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if kind.integer()),
-            );
+        if !matches!(self.node(root)?, Ty::TypeParam(_)) {
+            return Some(matches!(
+                self.node(root)?,
+                Ty::Basic(kind) if kind.integer()
+            ));
         }
         let Some(terms) = self.parameter_set(root)?.terms else {
             return Some(false);
@@ -520,7 +472,7 @@ impl TypeArena<'_> {
         for term in terms {
             self.step()?;
             let root = self.underlying(term.ty)?;
-            if !matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if kind.integer()) {
+            if !matches!(self.node(root)?, Ty::Basic(kind) if kind.integer()) {
                 return Some(false);
             }
         }
@@ -539,7 +491,7 @@ impl TypeArena<'_> {
 
         let (param_ty, untyped_const) = if l_untyped.is_none() && r_untyped.is_none() {
             let root = self.underlying(left.ty)?;
-            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+            if !matches!(self.node(root), Some(Ty::TypeParam(_))) {
                 return None;
             }
             if !self.identical(left.ty, right.ty)? {
@@ -548,13 +500,13 @@ impl TypeArena<'_> {
             (left.ty, None)
         } else if r_untyped.is_some() && l_untyped.is_none() {
             let root = self.underlying(left.ty)?;
-            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+            if !matches!(self.node(root), Some(Ty::TypeParam(_))) {
                 return None;
             }
             (left.ty, Some(right))
         } else if l_untyped.is_some() && r_untyped.is_none() {
             let root = self.underlying(right.ty)?;
-            if !matches!(self.nodes.get(usize::from(root.0)), Some(Ty::Parameter(_))) {
+            if !matches!(self.node(root), Some(Ty::TypeParam(_))) {
                 return None;
             }
             (right.ty, Some(left))
@@ -637,14 +589,14 @@ impl TypeArena<'_> {
         } else if kind.untyped() {
             representable(left.value?, other, int_bits).then_some(())?;
             if kind == BasicKind::UntypedComplex || other.numeric_rank() == Some(3) {
-                left.value = Some(super::conversion::constant_value(left.value?, other)?);
+                left.value = Some(constant_value(left.value?, other)?);
             }
             kind = other;
             left.ty = right.ty;
         } else if other.untyped() {
             representable(right.value?, kind, int_bits).then_some(())?;
             if other == BasicKind::UntypedComplex || kind.numeric_rank() == Some(3) {
-                right.value = Some(super::conversion::constant_value(right.value?, kind)?);
+                right.value = Some(constant_value(right.value?, kind)?);
             }
             right.ty = left.ty;
         } else if !self.identical(left.ty, right.ty)? {
@@ -688,20 +640,23 @@ impl TypeArena<'_> {
             left.value
                 .zip(right.value)
                 .and_then(|(left, right)| super::complex::binary(operator, left, right))
-        } else if let (Some(Constant::Int(a)), Some(Constant::Int(b))) = (left.value, right.value) {
+        } else if let (Some(a), Some(b)) = (
+            left.value.and_then(Constant::as_wide),
+            right.value.and_then(Constant::as_wide),
+        ) {
             match operator {
                 "+" => a.checked_add(b),
                 "-" => a.checked_sub(b),
                 "*" => a.checked_mul(b),
-                "/" if kind.integer() => a.checked_div(b),
-                "%" => a.checked_rem(b),
-                "&" => Some(a & b),
-                "|" => Some(a | b),
-                "^" => Some(a ^ b),
-                "&^" => Some(a & !b),
+                "/" if kind.integer() => a.checked_div_rem(b).map(|(q, _)| q),
+                "%" => a.checked_div_rem(b).map(|(_, r)| r),
+                "&" => Some(a.bitand(b)),
+                "|" => Some(a.bitor(b)),
+                "^" => Some(a.bitxor(b)),
+                "&^" => Some(a.bitand(b.bitnot())),
                 _ => None,
             }
-            .map(Constant::Int)
+            .map(Constant::from_wide)
         } else {
             None
         };
@@ -719,7 +674,7 @@ impl TypeArena<'_> {
                 })));
             }
             if kind.numeric_rank() == Some(3) {
-                value = Some(super::conversion::constant_value(value?, kind)?);
+                value = Some(constant_value(value?, kind)?);
             }
         }
         Some(Ok(Operand {
@@ -732,190 +687,4 @@ impl TypeArena<'_> {
             value: constant.then_some(value).flatten(),
         }))
     }
-}
-
-fn fold_integer_shift(operator: &str, value: i128, count: u32) -> Option<i128> {
-    if operator == ">>" {
-        return Some(
-            value
-                .checked_shr(count)
-                .unwrap_or(if value < 0 { -1 } else { 0 }),
-        );
-    }
-    if value == 0 {
-        return Some(0);
-    }
-    let shifted = value.checked_shl(count)?;
-    (shifted >> count == value).then_some(shifted)
-}
-
-pub(super) fn representable(value: Constant, target: BasicKind, int_bits: u32) -> bool {
-    if matches!(value, Constant::Complex { .. }) {
-        return super::complex::representable(value, target, int_bits);
-    }
-    if let Some((signed, bits)) = target.integer_width(int_bits) {
-        let Some(value) = value.integer_value() else {
-            return false;
-        };
-        return if signed {
-            -(1i128 << (bits - 1)) <= value && value < (1i128 << (bits - 1))
-        } else {
-            0 <= value && value < (1i128 << bits)
-        };
-    }
-    match value {
-        Constant::Complex { .. } => unreachable!("complex constants handled above"),
-        Constant::Boolean => target.boolean(),
-        Constant::String { .. } => target.string(),
-        Constant::Int(value) => {
-            matches!(
-                target,
-                BasicKind::Float32
-                    | BasicKind::Float64
-                    | BasicKind::Complex64
-                    | BasicKind::Complex128
-            ) && ((value as f64).is_finite())
-        }
-        Constant::Float { approximate, .. } => match target {
-            // Avoid double-rounding overflow boundaries until exact rational
-            // float representability is available.
-            BasicKind::Float32 | BasicKind::Complex64 => {
-                approximate.abs() < f64::from(f32::MAX) / 2.0
-            }
-            BasicKind::Float64 | BasicKind::Complex128 => approximate.is_finite(),
-            _ => false,
-        },
-    }
-}
-
-fn integer(text: &str) -> Option<i128> {
-    let (text, radix) = if text.starts_with("0x") || text.starts_with("0X") {
-        (&text[2..], 16)
-    } else if text.starts_with("0b") || text.starts_with("0B") {
-        (&text[2..], 2)
-    } else if text.starts_with("0o") || text.starts_with("0O") {
-        (&text[2..], 8)
-    } else if text.starts_with('0') && text.len() > 1 {
-        (text, 8)
-    } else {
-        (text, 10)
-    };
-    text.chars()
-        .filter(|character| *character != '_')
-        .try_fold(0i128, |value, digit| {
-            value
-                .checked_mul(radix)?
-                .checked_add(i128::from(digit.to_digit(radix as u32)?))
-        })
-}
-
-fn float(text: &str) -> Option<Constant> {
-    let text = text.replace('_', "");
-    if text.starts_with("0x") || text.starts_with("0X") {
-        return hex_float(&text);
-    }
-    let approximate = text.parse::<f64>().ok().filter(|value| value.is_finite())?;
-    Some(Constant::Float {
-        approximate,
-        integral: decimal_integer(&text),
-        rounded32: text.parse::<f32>().ok().filter(|value| value.is_finite()),
-        fractional: approximate.fract() != 0.0,
-    })
-}
-
-/// Hexadecimal float literal (`0x1.8p1`): Go requires the binary `p` exponent.
-/// The mantissa is scaled exactly by a power of two, so an integral result is a
-/// proved fact; overflow/underflow stays unknown instead of an approximate value.
-fn hex_float(text: &str) -> Option<Constant> {
-    let rest = text
-        .strip_prefix("0x")
-        .or_else(|| text.strip_prefix("0X"))?;
-    let (mantissa_text, exponent) = rest.split_once(['p', 'P'])?;
-    let exponent = exponent.parse::<i32>().ok()?;
-    let (integer_digits, fraction_digits) = mantissa_text
-        .split_once('.')
-        .map_or((mantissa_text, ""), |(integer, fraction)| {
-            (integer, fraction)
-        });
-    if integer_digits.is_empty() && fraction_digits.is_empty() {
-        return None;
-    }
-    if !integer_digits
-        .bytes()
-        .chain(fraction_digits.bytes())
-        .all(|byte| byte.is_ascii_hexdigit())
-    {
-        return None;
-    }
-    let mut mantissa = 0u128;
-    for digit in integer_digits.bytes().chain(fraction_digits.bytes()) {
-        mantissa = mantissa
-            .checked_mul(16)?
-            .checked_add(u128::from((digit as char).to_digit(16)? as u8))?;
-    }
-    if mantissa > u128::MAX / 2 {
-        return None;
-    }
-    let scale = exponent.checked_sub(i32::try_from(fraction_digits.len()).ok()?.checked_mul(4)?)?;
-    let approximate = (mantissa as f64) * 2f64.powi(scale);
-    if !approximate.is_finite() {
-        return None;
-    }
-    let narrow = (mantissa as f32) * 2f32.powi(scale);
-    Some(Constant::Float {
-        approximate,
-        integral: hexadecimal_integer(mantissa, scale),
-        rounded32: narrow.is_finite().then_some(narrow),
-        fractional: approximate.fract() != 0.0,
-    })
-}
-
-/// Prove the exact integer value of `mantissa * 2^scale` inside the bounded
-/// integer precision; fractional or oversized values carry no integral fact.
-fn hexadecimal_integer(mantissa: u128, scale: i32) -> Option<i128> {
-    if mantissa == 0 {
-        return Some(0);
-    }
-    let magnitude = if scale >= 0 {
-        mantissa.checked_shl(u32::try_from(scale).ok()?)?
-    } else {
-        let shift = u32::try_from(-scale).ok()?;
-        if shift >= 128 || mantissa & ((1u128 << shift) - 1) != 0 {
-            return None;
-        }
-        mantissa >> shift
-    };
-    i128::try_from(magnitude).ok()
-}
-
-// Prove integrality from decimal digits, never from rounded binary float bits.
-fn decimal_integer(text: &str) -> Option<i128> {
-    let (mantissa, exponent) = text
-        .split_once(['e', 'E'])
-        .map_or(Some((text, 0i32)), |(mantissa, exponent)| {
-            Some((mantissa, exponent.parse::<i32>().ok()?))
-        })?;
-    let fractional = mantissa
-        .split_once('.')
-        .map_or(0, |(_, fraction)| fraction.len());
-    let digits: String = mantissa
-        .chars()
-        .filter(|character| *character != '.')
-        .collect();
-    let trimmed = digits.trim_start_matches('0');
-    if trimmed.is_empty() {
-        return Some(0);
-    }
-    let significant = trimmed.trim_end_matches('0');
-    let trailing = trimmed.len() - significant.len();
-    let scale = exponent
-        .checked_sub(i32::try_from(fractional).ok()?)?
-        .checked_add(i32::try_from(trailing).ok()?)?;
-    if scale < 0 || significant.len() > 39 {
-        return None;
-    }
-    significant
-        .parse::<i128>()
-        .ok()?
-        .checked_mul(10i128.checked_pow(u32::try_from(scale).ok()?)?)
 }

@@ -1,8 +1,8 @@
 //! Completion compatibility uses checked expectations and native assignments.
 use super::completion::{CompletionSite, completion_receiver};
 use super::{MemberRequest, Semantics};
-use crate::analysis::obj::{DeclId, ObjectRef, SymbolOrigin};
-use crate::analysis::types::{Mode, Operand};
+use crate::analysis::engine::obj::{DeclId, ObjectRef};
+use crate::analysis::engine::types::{Mode, Operand};
 use std::path::Path;
 
 #[derive(Clone, Copy)]
@@ -36,7 +36,7 @@ impl<'a> Semantics<'a> {
             return None;
         }
         self.region_and_arena_at(file, source, offset, Some(offset as usize))?;
-        let selections =
+        let cached_selections =
             member.and_then(|request| self.completion_selections(file, source, request));
         let region = &self.cached.as_ref()?.region;
         let target = region.expected_type_at(offset)?;
@@ -60,36 +60,13 @@ impl<'a> Semantics<'a> {
                         selection,
                         scope_start,
                     } => {
-                        let object = region.def_by_span(*selection).or_else(|| {
-                            region.implicits.iter().find_map(|(span, object)| {
-                                if span[0] <= *scope_start
-                                    && *scope_start < span[1]
-                                    && let ObjectRef::Var {
-                                        origin: SymbolOrigin::Local { span, .. },
-                                        ..
-                                    } = object
-                                    && span == selection
-                                {
-                                    Some(*object)
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-                        match object {
-                            Some(
-                                ObjectRef::Var {
-                                    origin: SymbolOrigin::Local { id, .. },
-                                    ..
-                                }
-                                | ObjectRef::Const(SymbolOrigin::Local { id, .. }),
-                            ) => region.local_type(id),
-                            _ => None,
-                        }
+                        let (id, _) = region.local_binding_at(*selection, *scope_start)?;
+                        region.local_type(id)
                     }
                     CompletionProbe::Member(object) => {
-                        let (name, selection) = selections
+                        let (name, selection) = cached_selections
                             .as_ref()?
+                            .members
                             .iter()
                             .find(|(_, selection)| selection.obj == *object)?;
                         let ty = if receiver?.mode == Mode::TypeExpr
@@ -130,8 +107,10 @@ impl<'a> Semantics<'a> {
                 }
                 arena.assignable(operand, target, int_bits)
             });
-            self.decls.rewind_above(self.arena.node_count());
             compatible.push(fit);
+        }
+        if let Some(cached) = cached_selections {
+            self.cached_completion = Some(cached);
         }
         Some(CompletionRanking {
             function_value,

@@ -1,7 +1,7 @@
 //! Layout and constant queries share the request's checker and type arena.
 use super::Semantics;
-use crate::analysis::obj::DeclId;
-pub(crate) use crate::analysis::types::{FieldLayout, Layout, StructLayout};
+use crate::analysis::engine::obj::DeclId;
+pub(crate) use crate::analysis::engine::types::{FieldLayout, Layout, StructLayout, align_to};
 use std::path::Path;
 
 impl<'a> Semantics<'a> {

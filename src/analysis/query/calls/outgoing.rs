@@ -1,14 +1,14 @@
 //! Expand nested bodies on demand, attributing their calls to the named function.
 use super::{CallGroup, Groups, finish, record_call};
-use crate::analysis::obj::{MethodOrigin, ObjectRef};
 use crate::analysis::query::{Context, SourceRange};
+use crate::analysis::sema::{MethodOrigin, ObjectRef};
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
 use std::path::Path;
 
 impl<'a, View> Context<'a, View> {
     pub(crate) fn outgoing_calls(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
     ) -> Result<Vec<CallGroup<'a>>, (i32, String)> {
@@ -32,24 +32,25 @@ impl<'a, View> Context<'a, View> {
             let Some(interned_file) = sema.intern_file(file) else {
                 return Ok(finish(groups));
             };
-            let region = if target.is_value() {
-                let Some((region, _)) =
-                    sema.region_and_arena_at(interned_file, &source, start as u32, None)
-                else {
+            let view = if target.is_value() {
+                let Some(view) = sema.region_at(
+                    interned_file,
+                    &source,
+                    start as u32,
+                    crate::analysis::sema::RegionMode::Full,
+                ) else {
                     return Ok(finish(groups));
                 };
-                region
+                view
             } else {
-                let Some((region, _)) =
-                    sema.check_function_full(interned_file, &source, target, None)
-                else {
+                let Some(view) = sema.check_function_view(interned_file, &source, target) else {
                     return Ok(finish(groups));
                 };
-                region
+                view
             };
 
             let mut count = 0;
-            for call in &region.calls {
+            for call in view.calls() {
                 if call.is_conversion {
                     continue;
                 }

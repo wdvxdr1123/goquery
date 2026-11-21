@@ -21,4 +21,4 @@ pub use signature::{
     parse_literal_signature, parse_method_signature, parse_signature, parse_type_parameters,
 };
 pub use statement::{DeclSpecKind, parse_block, parse_decl_spec, parse_declaration};
-pub use types::{parse_type, parse_type_prefix};
+pub use types::{parse_constraint, parse_type, parse_type_prefix};

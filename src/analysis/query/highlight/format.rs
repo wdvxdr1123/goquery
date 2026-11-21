@@ -1,11 +1,6 @@
 //! Signature-based format calls, shared by tokens and document highlights.
 use super::{MAX_FORMAT_BYTES, MAX_PRINTF_CALLS, PrintfCall};
-use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::check::region::RegionInfo;
-use crate::analysis::obj::{MethodOrigin, ObjectRef};
-use crate::analysis::query::Context;
-use crate::analysis::sema::Semantics;
-use crate::analysis::types::TypeArena;
+use crate::analysis::sema::{RegionMode, RegionView, Semantics};
 use crate::syntax::{self, Lexer, Token, TokenKind};
 use crate::workspace::Workspace;
 use std::collections::HashMap;
@@ -16,15 +11,15 @@ const MAX_SCOPES: usize = 512;
 const MAX_ARGUMENT_TOKEN_VISITS: usize = super::MAX_STATEMENTS * super::MAX_NESTED_SCOPES;
 
 pub(super) fn calls_at(
-    context: &Context<'_>,
+    workspace: &Workspace,
+    sema: &mut Semantics<'_>,
     file: &Path,
     source: &str,
     offset: usize,
 ) -> Vec<PrintfCall> {
-    let workspace = context.workspace();
     let scan = super::super::cursor_function(workspace, file, source, offset)
         .map_or(0..source.len(), |(start, body)| start..body.end);
-    context.with_sema(|sema| calls(workspace, sema, file, source, offset, scan))
+    calls(workspace, sema, file, source, offset, scan)
 }
 
 fn calls(
@@ -99,55 +94,35 @@ fn calls(
         };
 
         let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let Some((region, arena)) = sema.region_and_arena_at(file, source, open_byte, None) else {
+        let Some(mut view) = sema.region_at(file, source, open_byte, RegionMode::Full) else {
             if let Some(phase) = phase {
                 region_time += phase.elapsed();
             }
             continue;
         };
-        if last_region != Some(region.span) {
-            last_region = Some(region.span);
+        if last_region != Some(view.span()) {
+            last_region = Some(view.span());
             scopes += 1;
         }
         if let Some(phase) = phase {
             region_time += phase.elapsed();
         }
 
-        let Some(call) = region.calls.iter().find(|c| {
-            !c.is_conversion
-                && c.span[1] == close_end
-                && (c.open_paren == open_byte
-                    || (c.callee_span[1] <= open_byte
-                        && source
-                            .get(c.callee_span[1] as usize..open_byte as usize)
-                            .is_some_and(|gap| Lexer::new(gap).next().is_none())))
-        }) else {
-            continue;
-        };
-
         let sig_phase = workspace.trace.queries.then(std::time::Instant::now);
-        let format_index = match call.callee_obj {
-            Some(ObjectRef::Func(decl)) => decl_format_parameter(workspace, file, source, decl)
-                .or_else(|| call.signature.and_then(|ty| arena.format_parameter(ty))),
-            Some(ObjectRef::Method(MethodOrigin::Concrete(decl))) => call
-                .signature
-                .and_then(|ty| arena.format_parameter(ty))
-                .or_else(|| decl_format_parameter(workspace, file, source, decl)),
-            _ => call.signature.and_then(|ty| arena.format_parameter(ty)),
-        };
+        let call = view.format_call_at(open_byte, close_end);
         if let Some(phase) = sig_phase {
             signature_time += phase.elapsed();
         }
-        let Some(format_index) = format_index else {
+        let Some(call) = call else {
             continue;
         };
         if !arguments
-            .get(format_index)
+            .get(call.format_index)
             .is_some_and(|&(ts, te)| te == ts + 1 && tokens[ts].kind == TokenKind::String)
         {
             continue;
         }
-        let Some(&fmt_span) = call.arg_spans.get(format_index) else {
+        let Some(&fmt_span) = call.arg_spans.get(call.format_index) else {
             continue;
         };
         let format_span = fmt_span[0] as usize..fmt_span[1] as usize;
@@ -162,7 +137,7 @@ fn calls(
                 .map(|s| s[0] as usize..s[1] as usize)
                 .collect(),
             format_span,
-            format_index,
+            format_index: call.format_index,
         });
     }
     if let Some(trace) = trace {
@@ -173,31 +148,6 @@ fn calls(
         );
     }
     out
-}
-
-fn decl_format_parameter(
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    decl: crate::analysis::obj::DeclId<'_>,
-) -> Option<usize> {
-    if !decl.symbol.is_callable() {
-        return None;
-    }
-    let range = decl.symbol.declaration()?;
-    let end = decl.symbol.body().map_or(range.end, |body| body.start);
-    if end.checked_sub(range.start)? > MAX_BYTES {
-        return None;
-    }
-    let header = if decl.file == file {
-        std::borrow::Cow::Borrowed(source.get(range.start..end)?)
-    } else {
-        std::borrow::Cow::Owned(workspace.source_slice(decl.file, range.start..end)?)
-    };
-    let signature = syntax::parse_signature(&header);
-    (signature.diagnostics.is_empty() && signature.parameters.last().is_some_and(|p| p.variadic))
-        .then(|| signature.parameters.len().checked_sub(2))
-        .flatten()
 }
 
 fn is_single_string_literal(text: &str) -> bool {
@@ -211,50 +161,18 @@ fn is_single_string_literal(text: &str) -> bool {
 }
 
 pub(crate) fn collect_region_format_directives<'a>(
-    file: &'a Path,
     source: &str,
-    region: &RegionInfo<'a>,
-    arena: &mut TypeArena<'a>,
+    view: &mut RegionView<'_, 'a>,
     window: Option<(usize, usize)>,
     candidates: &mut usize,
     out: &mut HashMap<Range<usize>, Vec<Range<usize>>>,
 ) {
-    let workspace = arena.workspace();
-    for call in &region.calls {
-        if *candidates >= MAX_PRINTF_CALLS {
-            break;
-        }
-        if call.is_conversion || call.arg_spans.is_empty() {
-            continue;
-        }
-        if !call.arg_spans.iter().any(|&[start, end]| {
-            source
-                .get(start as usize..end as usize)
-                .is_some_and(|text| {
-                    (text.contains('%') || text.contains('\\'))
-                        && is_single_string_literal(text)
-                        && syntax::decode_string_literal(text.trim())
-                            .is_some_and(|bytes| bytes.contains(&b'%'))
-                })
-        }) {
-            continue;
-        }
-        *candidates += 1;
-        let format_index = match call.callee_obj {
-            Some(ObjectRef::Func(decl)) => decl_format_parameter(workspace, file, source, decl)
-                .or_else(|| call.signature.and_then(|ty| arena.format_parameter(ty))),
-            Some(ObjectRef::Method(MethodOrigin::Concrete(decl))) => call
-                .signature
-                .and_then(|ty| arena.format_parameter(ty))
-                .or_else(|| decl_format_parameter(workspace, file, source, decl)),
-            _ => call.signature.and_then(|ty| arena.format_parameter(ty)),
-        };
-        let Some(format_index) = format_index else {
-            continue;
-        };
-        let Some(&[s, e]) = call.arg_spans.get(format_index) else {
-            continue;
-        };
+    let spans = view.collect_format_spans(MAX_PRINTF_CALLS, candidates, |text| {
+        (text.contains('%') || text.contains('\\'))
+            && is_single_string_literal(text)
+            && syntax::decode_string_literal(text.trim()).is_some_and(|bytes| bytes.contains(&b'%'))
+    });
+    for [s, e] in spans {
         let format_span = s as usize..e as usize;
         if window.is_some_and(|(w_start, w_end)| {
             format_span.start >= w_end || format_span.end <= w_start

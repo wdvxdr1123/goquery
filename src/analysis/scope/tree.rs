@@ -1,7 +1,7 @@
 //! Compact parent-indexed lexical scope tree storing zero heap strings.
 
-use crate::analysis::budget::{MAX_BYTES, MAX_DEPTH};
-use crate::analysis::obj::{LocalId, ScopeId};
+use crate::analysis::engine::budget::{MAX_BYTES, MAX_DEPTH};
+use crate::analysis::engine::obj::{LocalId, ScopeId};
 use crate::syntax::{BlockTree, Expr, ExprId, ExprKind, Signature, StmtId, StmtKind};
 use std::ops::Range;
 
@@ -86,6 +86,7 @@ pub(crate) struct ScopeTree {
     pub(crate) nodes: Vec<ScopeNode>,
     pub(crate) bindings: Vec<LocalBinding>,
     pub(crate) labels: Vec<[u32; 2]>,
+    pub(crate) range_blanks: Vec<[u32; 2]>,
     /// False when lexical scope construction was truncated by a budget.
     pub(crate) complete: bool,
 }
@@ -101,6 +102,7 @@ impl ScopeTree {
             }],
             bindings: Vec::new(),
             labels: Vec::new(),
+            range_blanks: Vec::new(),
             complete: true,
         }
     }
@@ -223,6 +225,91 @@ impl ScopeTree {
         false
     }
 
+    pub(crate) fn binding_case_scope(&self, target: LocalId) -> Option<[u32; 2]> {
+        for node in &self.nodes {
+            if node.kind != ScopeKind::CaseClause {
+                continue;
+            }
+            let mut cursor = node.last_binding;
+            while let Some(id) = cursor {
+                if id == target {
+                    return Some(node.extent);
+                }
+                cursor = self.bindings.get(id.0 as usize)?.prev_in_scope;
+            }
+        }
+        None
+    }
+
+    pub(crate) fn binding_scope(&self, target: LocalId) -> Option<ScopeId> {
+        for (index, node) in self.nodes.iter().enumerate() {
+            let mut cursor = node.last_binding;
+            while let Some(id) = cursor {
+                if id == target {
+                    return Some(ScopeId(index as u32));
+                }
+                cursor = self.bindings.get(id.0 as usize)?.prev_in_scope;
+            }
+        }
+        None
+    }
+
+    pub(crate) fn has_outer_binding(&self, source: &str, target: LocalId, name: &str) -> bool {
+        let Some(target_binding) = self.bindings.get(target.0 as usize) else {
+            return false;
+        };
+        let Some(scope_id) = self.binding_scope(target) else {
+            return false;
+        };
+        let mut current = self.nodes.get(scope_id.0 as usize).and_then(|n| n.parent);
+        while let Some(outer_scope_id) = current {
+            let Some(node) = self.nodes.get(outer_scope_id.0 as usize) else {
+                break;
+            };
+            let mut cursor = node.last_binding;
+            while let Some(id) = cursor {
+                let outer = &self.bindings[id.0 as usize];
+                if outer.visible_from <= target_binding.name_span[0]
+                    && outer.name_span != target_binding.name_span
+                    && span_text(source, outer.name_span) == Some(name)
+                {
+                    return true;
+                }
+                cursor = outer.prev_in_scope;
+            }
+            current = node.parent;
+        }
+        false
+    }
+
+    pub(crate) fn has_outer_binding_at_span(
+        &self,
+        source: &str,
+        def_span: [u32; 2],
+        name: &str,
+    ) -> bool {
+        self.bindings
+            .iter()
+            .enumerate()
+            .filter(|(_, binding)| binding.name_span == def_span)
+            .any(|(index, _)| self.has_outer_binding(source, LocalId(index as u32), name))
+    }
+
+    pub(crate) fn binding_at_exact_span(
+        &self,
+        span: [u32; 2],
+    ) -> Option<(LocalId, LocalBindingKind, [u32; 2])> {
+        self.bindings
+            .iter()
+            .enumerate()
+            .find(|(_, binding)| binding.name_span == span)
+            .map(|(index, binding)| (LocalId(index as u32), binding.kind, binding.name_span))
+    }
+
+    pub(crate) fn is_range_blank(&self, span: [u32; 2]) -> bool {
+        self.range_blanks.contains(&span)
+    }
+
     fn populate_signature(
         &mut self,
         source: &str,
@@ -252,9 +339,10 @@ impl ScopeTree {
         }
         if let Some(receiver) = signature.receiver.first() {
             if let Some(sig_slice) = source.get(sig_base..) {
-                for span in
-                    crate::analysis::scope::receiver_parameters(sig_slice, &receiver.annotation)
-                {
+                for span in crate::analysis::engine::scope::receiver_parameters(
+                    sig_slice,
+                    &receiver.annotation,
+                ) {
                     let abs = to_abs_span(sig_base, &span);
                     if span_text(source, abs) == Some("_")
                         || self.has_in_scope(source, scope, span_text(source, abs).unwrap_or(""))
@@ -438,6 +526,62 @@ impl ScopeTree {
                     && !visible.iter().any(|&(seen, _)| seen == name)
                 {
                     visible.push((name, id));
+                }
+                binding_id = binding.prev_in_scope;
+            }
+            current = node.parent;
+        }
+        visible
+    }
+
+    /// Completion-oriented visible bindings: skips closed inner blocks at EOF
+    /// and includes declaration metadata (`name_span`, `scope_start`, `is_type`).
+    pub(crate) fn visible_bindings_for_completion<'t>(
+        &'t self,
+        source: &'t str,
+        offset: u32,
+    ) -> Vec<(LocalId, &'t str, [u32; 2], u32, bool)> {
+        let mut best_id = ScopeId(0);
+        let mut best_len = u32::MAX;
+        for (index, node) in self.nodes.iter().enumerate() {
+            let contains = if node.kind != ScopeKind::FuncSignature
+                && offset == node.extent[1]
+                && node.extent[1] > node.extent[0]
+                && source
+                    .as_bytes()
+                    .get(node.extent[1] as usize - 1)
+                    .is_some_and(|b| *b == b'}')
+            {
+                false
+            } else {
+                node.extent[0] <= offset && offset <= node.extent[1]
+            };
+            if contains {
+                let len = node.extent[1].saturating_sub(node.extent[0]);
+                if len <= best_len {
+                    best_len = len;
+                    best_id = ScopeId(index as u32);
+                }
+            }
+        }
+        let mut visible: Vec<(LocalId, &'t str, [u32; 2], u32, bool)> = Vec::new();
+        let mut current = Some(best_id);
+        while let Some(scope_id) = current {
+            let Some(node) = self.nodes.get(scope_id.0 as usize) else {
+                break;
+            };
+            let mut binding_id = node.last_binding;
+            while let Some(id) = binding_id {
+                let binding = &self.bindings[id.0 as usize];
+                if binding.visible_from <= offset
+                    && let Some(name) = span_text(source, binding.name_span)
+                    && !visible.iter().any(|&(_, seen, ..)| seen == name)
+                {
+                    let is_type = matches!(
+                        binding.kind,
+                        LocalBindingKind::TypeDecl { .. } | LocalBindingKind::TypeParam
+                    );
+                    visible.push((id, name, binding.name_span, node.extent[0], is_type));
                 }
                 binding_id = binding.prev_in_scope;
             }
@@ -724,7 +868,11 @@ impl TreeBuilder<'_> {
                         let Some(name) = span_text(self.source, abs) else {
                             continue;
                         };
-                        if name == "_" || self.tree.has_in_scope(self.source, scope, name) {
+                        if name == "_" {
+                            self.tree.range_blanks.push(abs);
+                            continue;
+                        }
+                        if self.tree.has_in_scope(self.source, scope, name) {
                             continue;
                         }
                         self.tree.push_binding(
@@ -1008,7 +1156,7 @@ impl TreeBuilder<'_> {
                 if body_end <= self.source.len()
                     && sig_end.saturating_sub(sig_start) <= MAX_BYTES
                     && body_end.saturating_sub(body_start)
-                        <= crate::analysis::budget::MAX_BODY_BYTES
+                        <= crate::analysis::engine::budget::MAX_BODY_BYTES
                     && self
                         .cursor_offset
                         .is_none_or(|cursor| sig_start <= cursor && cursor <= body_end)

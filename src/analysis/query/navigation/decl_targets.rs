@@ -32,7 +32,7 @@ pub(in crate::analysis::query) fn member_declaration_target<'a>(
         let embedded = (!info.is_interface())
             .then(|| {
                 info.embedded.iter().find_map(|annotation| {
-                    let name = crate::analysis::scope::named_root(annotation)
+                    let name = crate::analysis::sema::named_root(annotation)
                         .rsplit('.')
                         .next()?;
                     (name == &source[selection.clone()]).then_some((name, true))

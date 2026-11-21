@@ -1,9 +1,8 @@
 //! Ad-hoc expression queries use the same checker state as enclosing regions.
-use super::Semantics;
-use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::check::{RegionChecker, region::RegionInfo};
-use crate::analysis::scope::tree::ScopeTree;
-use crate::analysis::types::TypeArena;
+use super::{RegionView, Semantics};
+use crate::analysis::engine::budget::MAX_BYTES;
+use crate::analysis::engine::check::{RegionChecker, region::RegionInfo};
+use crate::analysis::engine::scope::tree::ScopeTree;
 use crate::syntax::{self, BlockTree};
 use std::path::Path;
 
@@ -12,7 +11,7 @@ impl<'a> Semantics<'a> {
         &mut self,
         file: &Path,
         text: &str,
-        visit: impl FnOnce(&RegionInfo<'a>, &mut TypeArena<'a>, [u32; 2]) -> Option<R>,
+        visit: impl FnOnce(&mut RegionView<'_, 'a>, [u32; 2]) -> Option<R>,
     ) -> Option<R> {
         if text.len() > MAX_BYTES {
             return None;
@@ -42,10 +41,16 @@ impl<'a> Semantics<'a> {
         )
         .check_expr_outcome(root, None);
         region.finalize();
-        visit(
-            &region,
-            &mut self.arena,
-            [root_span.start as u32, root_span.end as u32],
-        )
+        let mut view = RegionView {
+            workspace: self.workspace,
+            file,
+            source: text,
+            region: &region,
+            arena: &mut self.arena,
+            decls: &mut self.decls,
+            syntax_body: None,
+            syntax_sig: None,
+        };
+        visit(&mut view, [root_span.start as u32, root_span.end as u32])
     }
 }

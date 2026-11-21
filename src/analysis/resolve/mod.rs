@@ -1,9 +1,11 @@
 //! Package identity and import-qualified lookup over declaration metadata.
 mod candidates;
+mod env_cache;
 mod members;
 mod names;
 mod unqualified;
 pub(crate) use candidates::trace_candidates;
+pub(crate) use env_cache::{FileEnvCache, TypeNameLookup};
 pub(crate) use members::{MemberDescription, MemberId, MemberIds, member_id};
 pub(crate) use names::NameProbe;
 pub(crate) use unqualified::{UnqualifiedLookup, file_symbol_iter, unqualified_symbol};
@@ -294,7 +296,7 @@ fn resolve_type_declaration_in_view<'a>(
     file: &Path,
     name: &str,
 ) -> Option<(&'a PathBuf, &'a Symbol)> {
-    let name = crate::analysis::scope::named_root(name);
+    let name = crate::analysis::engine::scope::named_root(name);
     if let Some((alias, member)) = name.split_once('.') {
         let mut matches = view
             .imported_symbol_candidates(
@@ -321,7 +323,7 @@ pub(crate) fn requalified_type(
     origin: &Path,
     annotation: &str,
 ) -> Option<String> {
-    if annotation.len() > crate::analysis::budget::MAX_BYTES {
+    if annotation.len() > crate::analysis::engine::budget::MAX_BYTES {
         return None;
     }
     let origin = workspace.files.get_key_value(origin)?.0;
@@ -345,7 +347,7 @@ pub(crate) fn requalified_type(
             // Uninstantiated single reference only (`reference.name` + optional qualifier).
             result_type(workspace, file, origin, &spelling)?
         } else if origin == file
-            || (crate::analysis::scope::universe::builtin_type(name)
+            || (crate::analysis::engine::scope::universe::builtin_type(name)
                 && reference.qualifier.is_none())
         {
             spelling
@@ -353,7 +355,7 @@ pub(crate) fn requalified_type(
             return None;
         };
         substitution_bytes = substitution_bytes.checked_add(replacement.len())?;
-        if substitution_bytes > crate::analysis::budget::MAX_BYTES {
+        if substitution_bytes > crate::analysis::engine::budget::MAX_BYTES {
             return None;
         }
         substitutions.push((start..reference.name.end, replacement));
@@ -369,7 +371,7 @@ pub(crate) fn requalified_type(
             .len()
             .saturating_add(span.start - end)
             .saturating_add(replacement.len())
-            > crate::analysis::budget::MAX_BYTES
+            > crate::analysis::engine::budget::MAX_BYTES
         {
             return None;
         }
@@ -377,7 +379,9 @@ pub(crate) fn requalified_type(
         output.push_str(&replacement);
         end = span.end;
     }
-    if output.len().saturating_add(annotation.len() - end) > crate::analysis::budget::MAX_BYTES {
+    if output.len().saturating_add(annotation.len() - end)
+        > crate::analysis::engine::budget::MAX_BYTES
+    {
         return None;
     }
     output.push_str(&annotation[end..]);
@@ -390,7 +394,7 @@ pub(crate) fn result_type(
     origin: &Path,
     name: &str,
 ) -> Option<String> {
-    if name != crate::analysis::scope::named_root(name) {
+    if name != crate::analysis::engine::scope::named_root(name) {
         return requalified_type(workspace, file, origin, name);
     }
     let (path, symbol) = resolve_type_declaration(workspace, origin, name)?;

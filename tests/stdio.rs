@@ -7968,6 +7968,96 @@ func f[T ~[2]int | ~[]int](a T, m map[string]int, s []byte, in chan<- int, n flo
 
         server.shutdown();
     }
+
+    #[test]
+    fn sema_composite_key_hover_prefers_field_over_shadowing_local() {
+        let src = concat!(
+            "package main\n\n",
+            "type entry struct {\n",
+            "\tt int\n",
+            "}\n\n",
+            "func build() entry {\n",
+            "\tvar t int\n",
+            "\treturn entry{t: t}\n",
+            "}\n",
+        );
+        let mut server = SemaTestServer::start(
+            "composite-key-hover-shadow",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.27.3\n"),
+                ("main.go", src),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, src);
+
+        let key_off = src.find("entry{t: t}").unwrap() + "entry{".len();
+        let val_off = key_off + "t: ".len();
+
+        let key_hover = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri}, "position": pos(src, key_off)}),
+        );
+        assert!(
+            key_hover["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("field t int")),
+            "expected field hover on composite key, got: {key_hover}"
+        );
+
+        let val_hover = server.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri}, "position": pos(src, val_off)}),
+        );
+        assert!(
+            val_hover["result"]["contents"]["value"]
+                .as_str()
+                .is_some_and(|v| v.contains("var t int")),
+            "expected var hover on composite value, got: {val_hover}"
+        );
+
+        server.shutdown();
+    }
+
+    #[test]
+    fn sema_document_highlight_large_composite_table_preserves_all_writes() {
+        let mut src = String::from(
+            "package main\n\ntype Item struct {\n\tFirst []int\n\tValues []int\n}\n\nfunc testTable() {\n\tcases := []struct {\n\t\tname string\n\t\ta *Item\n\t\tb *Item\n\t}{\n",
+        );
+        for i in 0..50 {
+            src.push_str(&format!(
+                "\t\t{{\"case-{i}\", &Item{{First: []int{{1, 2}}, Values: []int{{3, 4}}}}, &Item{{First: []int{{5, 6}}, Values: []int{{7, 8}}}}}},\n"
+            ));
+        }
+        src.push_str("\t}\n\t_ = cases\n}\n");
+
+        let mut server = SemaTestServer::start(
+            "highlight-large-composite-table",
+            &[
+                ("go.mod", "module example.com/m\n\ngo 1.27.3\n"),
+                ("main.go", &src),
+            ],
+        );
+        let uri = server.uri("main.go");
+        server.did_open(&uri, &src);
+
+        let last_values = src.rfind("Values:").unwrap();
+        let reply = server.request(
+            "textDocument/documentHighlight",
+            json!({"textDocument": {"uri": uri}, "position": pos(&src, last_values)}),
+        );
+        let items = reply["result"]
+            .as_array()
+            .expect("documentHighlight result array");
+        assert_eq!(items.len(), 101, "expected decl + 100 writes: {reply}");
+        assert_eq!(items[0]["kind"], 1, "decl should be Text: {}", items[0]);
+        assert!(
+            items[1..].iter().all(|row| row["kind"] == 3),
+            "every composite key should be Write: {reply}"
+        );
+
+        server.shutdown();
+    }
 }
 
 // ---------------------------------------------------------------------------

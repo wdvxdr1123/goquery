@@ -5,45 +5,49 @@ use serde_json::{Value, json};
 const MAX_RANGE_BYTES: usize = 100_000;
 
 pub(super) fn execute(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     config: &SemanticConfig,
 ) -> Result<Value, (i32, String)> {
+    let tokens = context.semantic_tokens(None, config.type_shapes())?;
     let mut encoder = Encoder::new(context.source(), config);
-    encode_tokens(context, &mut encoder, None, config.type_shapes())?;
+    for token in tokens {
+        encoder.push(token.span, token.kind, token.modifiers);
+    }
     Ok(json!({"data": encoder.data}))
 }
 
 /// Range requests reuse the full tokenizer and keep the tokens intersecting the
 /// requested range, exactly as gopls' `tokenVisitor.token` does.
 pub(super) fn execute_range(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     params: &Value,
     config: &SemanticConfig,
 ) -> Result<Value, (i32, String)> {
-    let source = context.source();
-    let lines = line_starts(source);
-    let start = position_offset(source, &params["range"]["start"], &lines)?;
-    let end = position_offset(source, &params["range"]["end"], &lines)?;
-    if start > end {
-        return Err((0, format!("start (offset {start}) > end (offset {end})")));
+    let (start, end) = {
+        let source = context.source();
+        let lines = line_starts(source);
+        let start = position_offset(source, &params["range"]["start"], &lines)?;
+        let end = position_offset(source, &params["range"]["end"], &lines)?;
+        if start > end {
+            return Err((0, format!("start (offset {start}) > end (offset {end})")));
+        }
+        if end - start > MAX_RANGE_BYTES {
+            return Err((
+                0,
+                format!(
+                    "semantic tokens: range {} too large ({} > {MAX_RANGE_BYTES})",
+                    context.file().display(),
+                    end - start
+                ),
+            ));
+        }
+        (start, end)
+    };
+    let tokens = context.semantic_tokens(Some(start..end), config.type_shapes())?;
+    let mut encoder = Encoder::with_window(context.source(), config, start..end);
+    for token in tokens {
+        encoder.push(token.span, token.kind, token.modifiers);
     }
-    if end - start > MAX_RANGE_BYTES {
-        return Err((
-            0,
-            format!(
-                "semantic tokens: range {} too large ({} > {MAX_RANGE_BYTES})",
-                context.file().display(),
-                end - start
-            ),
-        ));
-    }
-    let mut encoder = Encoder::with_window(source, config, start..end);
-    encode_tokens(
-        context,
-        &mut encoder,
-        Some(start..end),
-        config.type_shapes(),
-    )?;
     Ok(json!({"data": encoder.data}))
 }
 
@@ -106,18 +110,6 @@ fn position_offset(
     Ok(offset)
 }
 
-fn encode_tokens(
-    context: &Context<'_>,
-    encoder: &mut Encoder<'_>,
-    window: Option<std::ops::Range<usize>>,
-    include_shapes: bool,
-) -> Result<(), (i32, String)> {
-    let tokens = context.semantic_tokens(window, include_shapes)?;
-    for token in tokens {
-        encoder.push(token.span, token.kind, token.modifiers);
-    }
-    Ok(())
-}
 // Maps supported semantic categories to the client's negotiated legend.
 use crate::analysis::query::semantic_tokens::{SemanticTokenKind, modifiers::DEFINITION};
 use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};

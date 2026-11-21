@@ -1,8 +1,8 @@
 //! Complete bounded struct fields, shared by identity, substitution and relations.
 use super::{MAX_BYTES, MAX_DEPTH, Tags, Ty, TypeArena, TypeId};
 use super::{PromotionIndices, Selection, SelectionKind};
-use crate::analysis::obj::{MemberDeclId, ObjectRef};
-use crate::analysis::types::declaration_body;
+use crate::analysis::engine::obj::{MemberDeclId, ObjectRef};
+use crate::analysis::engine::types::declaration_body;
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
 use std::path::Path;
@@ -23,7 +23,7 @@ impl<'a> TypeArena<'a> {
         source: &str,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
-        depth: usize,
+        _depth: usize,
     ) -> Option<TypeId> {
         let parsed = crate::syntax::parse_type(source);
         if !parsed.diagnostics.is_empty() {
@@ -38,7 +38,7 @@ impl<'a> TypeArena<'a> {
             .iter()
             .filter(|field| field.container == brace)
         {
-            if self.fields.len() + fields.len() >= self.node_limit {
+            if fields.len() >= self.active_node_limit() {
                 return None;
             }
             let annotation = &source[field.annotation.clone()];
@@ -56,26 +56,22 @@ impl<'a> TypeArena<'a> {
                     return None;
                 }
             }
-            let mut tokens = Lexer::new(annotation).peekable();
-            let ty = self.read_at(
-                origin,
-                annotation,
-                file_offset.map(|base| base + field.annotation.start),
-                &mut tokens,
-                environment,
-                depth + 1,
-            )?;
-            if !tokens.all(|token| token.kind == TokenKind::Semicolon) {
-                return None;
-            }
+            let ty = self
+                .parse_in_checked(
+                    origin,
+                    annotation,
+                    file_offset.map(|base| base + field.annotation.start),
+                    environment,
+                )
+                .ok()?;
             let name = &source[field.name.clone()];
             if name != "_" && fields.iter().any(|field: &Field| field.name == name) {
                 return None;
             }
             if field.embedded {
                 let ty = self.unalias(ty)?;
-                let (base, pointer) = match self.nodes[usize::from(ty.0)] {
-                    Ty::Pointer(element) => (self.unalias(element)?, true),
+                let (base, pointer) = match self.node(ty)? {
+                    Ty::Pointer(element) => (self.unalias(*element)?, true),
                     _ => (ty, false),
                 };
                 self.embedded_base(base, pointer, 0)?;
@@ -83,7 +79,7 @@ impl<'a> TypeArena<'a> {
             let raw_tag = field.tag.as_ref().map(|span| &source[span.clone()]);
             let next_bytes = bytes + name.len() + raw_tag.map_or(0, str::len);
             // Preflight before decoding/duplicating a shared grouped-field tag.
-            if next_bytes > MAX_BYTES || self.field_bytes + next_bytes > self.byte_limit {
+            if next_bytes > MAX_BYTES {
                 return None;
             }
             let tag = match raw_tag {
@@ -118,87 +114,69 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         let ty = self.unalias(ty)?;
-        match &self.nodes[usize::from(ty.0)] {
-            Ty::Parameter(_) | Ty::Pointer(_) => None,
-            Ty::Named { declaration, .. } => {
-                let (file, symbol) = (declaration.file, declaration.symbol);
-                if let Some(info) = &symbol.type_info {
-                    if info.is_interface() {
-                        return (!pointer).then_some(());
-                    }
-                    if info.target.is_none() {
-                        return Some(());
-                    }
+        if let Some((declaration, _, _)) = self.named_info(ty) {
+            let (file, symbol) = (declaration.file, declaration.symbol);
+            if let Some(info) = &symbol.type_info {
+                if info.is_interface() {
+                    return (!pointer).then_some(());
                 }
-                let source = self
-                    .workspace
-                    .source_slice(file, symbol.end..symbol.declaration()?.end)?;
-                let body = declaration_body(&source)?;
-                let head = Lexer::new(body)
-                    .find(|token| token.kind != TokenKind::LParen)?
-                    .kind;
-                match head {
-                    TokenKind::Mul => None,
-                    TokenKind::Interface => (!pointer).then_some(()),
-                    TokenKind::Ident => {
-                        let target = self.expand(ty)?;
-                        self.embedded_base(target, pointer, depth + 1)
-                    }
-                    TokenKind::Struct
-                    | TokenKind::Func
-                    | TokenKind::Map
-                    | TokenKind::Chan
-                    | TokenKind::Arrow
-                    | TokenKind::LBrack => Some(()),
-                    _ => None,
+                if info.target.is_none() {
+                    return Some(());
                 }
             }
+            let source = self
+                .workspace
+                .source_slice(file, symbol.end..symbol.declaration()?.end)?;
+            let body = declaration_body(&source)?;
+            let head = Lexer::new(body)
+                .find(|token| token.kind != TokenKind::LParen)?
+                .kind;
+            return match head {
+                TokenKind::Mul => None,
+                TokenKind::Interface => (!pointer).then_some(()),
+                TokenKind::Ident => {
+                    let target = self.expand(ty)?;
+                    self.embedded_base(target, pointer, depth + 1)
+                }
+                TokenKind::Struct
+                | TokenKind::Func
+                | TokenKind::Map
+                | TokenKind::Chan
+                | TokenKind::Arrow
+                | TokenKind::LBrack => Some(()),
+                _ => None,
+            };
+        }
+        match *self.node(ty)? {
+            Ty::TypeParam(_) | Ty::Pointer(_) => None,
             _ => Some(()),
         }
     }
 
     pub(super) fn store_struct(&mut self, origin: &'a Path, fields: Vec<Field>) -> Option<TypeId> {
-        let bytes: usize = fields
-            .iter()
-            .map(|field| field.name.len() + field.tag.len())
-            .sum();
-        if self.fields.len() + fields.len() > self.node_limit
-            || bytes > MAX_BYTES
-            || self.field_bytes + bytes > self.byte_limit
-        {
-            return None;
-        }
-        self.field_bytes += bytes;
-        let start = self.fields.len();
-        self.fields.extend(fields);
-        self.push(Ty::Struct {
-            origin,
-            fields: start..self.fields.len(),
-        })
+        self.store_struct_nodes(origin, fields)
     }
 
     pub(super) fn same_struct_fields(
         &self,
-        a: &Path,
-        aa: Range<usize>,
-        b: &Path,
-        ba: Range<usize>,
+        a: (&Path, TypeId, Range<usize>),
+        b: (&Path, TypeId, Range<usize>),
     ) -> Option<bool> {
-        self.struct_fields_with_tags(a, aa, b, ba, Tags::Include)
+        self.struct_fields_with_tags(a, b, Tags::Include)
     }
 
     pub(super) fn struct_fields_with_tags(
         &self,
-        a: &Path,
-        aa: Range<usize>,
-        b: &Path,
-        ba: Range<usize>,
+        (a, left, aa): (&Path, TypeId, Range<usize>),
+        (b, right, ba): (&Path, TypeId, Range<usize>),
         tags: Tags,
     ) -> Option<bool> {
         if aa.len() != ba.len() {
             return Some(false);
         }
-        for (a_field, b_field) in self.fields[aa].iter().zip(&self.fields[ba]) {
+        let a_fields = self.fields_slice(left, aa)?;
+        let b_fields = self.fields_slice(right, ba)?;
+        for (a_field, b_field) in a_fields.iter().zip(b_fields) {
             if a_field.name != b_field.name
                 || a_field.embedded != b_field.embedded
                 || tags == Tags::Include && a_field.tag != b_field.tag
@@ -221,7 +199,7 @@ impl<'a> TypeArena<'a> {
         }
         match (self.workspace.import_path(a), self.workspace.import_path(b)) {
             (Some(pa), Some(pb)) => Some(pa == pb),
-            _ if self.symbolic => Some(false),
+            _ if self.mode.is_symbolic() => Some(false),
             _ => None,
         }
     }
@@ -236,13 +214,11 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         let unaliased = self.unalias(target)?;
-        let owner = match self.nodes.get(usize::from(unaliased.0))? {
-            Ty::Named { declaration, .. } => Some(declaration.symbol),
-            _ => None,
-        };
+        let owner = self.named_info(unaliased).map(|(decl, _, _)| decl.symbol);
         let root = self.underlying(unaliased)?;
-        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
-            return None;
+        let (origin, fields) = {
+            let data = self.struct_data(root)?;
+            (data.origin, data.fields.clone())
         };
         if self
             .workspace
@@ -261,7 +237,7 @@ impl<'a> TypeArena<'a> {
         if !same_pkg {
             return None;
         }
-        for (ordinal, field) in self.fields[fields].iter().enumerate() {
+        for (ordinal, field) in self.fields_slice(root, fields)?.iter().enumerate() {
             if field.name == name {
                 return Some(Selection {
                     kind: SelectionKind::FieldVal,
@@ -294,8 +270,9 @@ impl<'a> TypeArena<'a> {
             .named_declaration(unaliased)
             .map(|(decl, _, _)| decl.symbol);
         let root = self.underlying(unaliased)?;
-        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
-            return None;
+        let (origin, fields) = {
+            let data = self.struct_data(root)?;
+            (data.origin, data.fields.clone())
         };
         if self
             .workspace
@@ -320,9 +297,10 @@ impl<'a> TypeArena<'a> {
         }
         let mut names = 0usize;
         let mut result = Vec::new();
-        for (ordinal, index) in fields.enumerate() {
+        let field_count = fields.len();
+        for ordinal in 0..field_count {
             self.step()?;
-            let field = &self.fields[index];
+            let field = &self.fields_slice(root, fields.clone())?[ordinal];
             if field.name == "_"
                 || !crate::syntax::is_exported_name(&field.name)
                     && !self.same_field_package(origin, consumer)?
@@ -360,12 +338,13 @@ impl<'a> TypeArena<'a> {
         consumer: &Path,
     ) -> Option<Vec<TypeId>> {
         let root = self.underlying(target)?;
-        let Ty::Struct { origin, fields } = self.nodes.get(usize::from(root.0))?.clone() else {
-            return None;
+        let (origin, fields) = {
+            let data = self.struct_data(root)?;
+            (data.origin, data.fields.clone())
         };
         let mut out = Vec::with_capacity(fields.len());
         let mut same_pkg = None;
-        for field in &self.fields[fields] {
+        for field in self.fields_slice(root, fields)? {
             if !crate::syntax::is_exported_name(&field.name) {
                 let allowed = match same_pkg {
                     Some(v) => v,
@@ -386,10 +365,7 @@ impl<'a> TypeArena<'a> {
 
     pub(crate) fn is_struct(&mut self, target: TypeId) -> Option<bool> {
         let root = self.underlying(target)?;
-        Some(matches!(
-            self.nodes.get(usize::from(root.0))?,
-            Ty::Struct { .. }
-        ))
+        Some(matches!(self.node(root)?, Ty::Struct { .. }))
     }
 
     pub(crate) fn composite_container_types(
@@ -397,7 +373,7 @@ impl<'a> TypeArena<'a> {
         target: TypeId,
     ) -> Option<(Option<TypeId>, TypeId)> {
         let root = self.underlying(target)?;
-        match self.nodes.get(usize::from(root.0))? {
+        match self.node(root)? {
             Ty::Slice(element) | Ty::Array { element, .. } => Some((None, *element)),
             Ty::Map { key, value } => Some((Some(*key), *value)),
             _ => None,
@@ -406,10 +382,10 @@ impl<'a> TypeArena<'a> {
 
     pub(crate) fn elided_composite_element_type(&mut self, ty: TypeId) -> Option<TypeId> {
         let under = self.underlying(ty)?;
-        if let Ty::Pointer(inner) = self.nodes.get(usize::from(under.0))?.clone() {
+        if let Ty::Pointer(inner) = *self.node(under)? {
             let inner_under = self.underlying(inner)?;
             if matches!(
-                self.nodes.get(usize::from(inner_under.0))?,
+                self.node(inner_under)?,
                 Ty::Struct { .. } | Ty::Array { .. } | Ty::Slice(_) | Ty::Map { .. }
             ) {
                 return Some(inner);
@@ -417,7 +393,7 @@ impl<'a> TypeArena<'a> {
             return None;
         }
         if matches!(
-            self.nodes.get(usize::from(under.0))?,
+            self.node(under)?,
             Ty::Struct { .. } | Ty::Array { .. } | Ty::Slice(_) | Ty::Map { .. }
         ) {
             Some(ty)

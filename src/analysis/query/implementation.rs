@@ -7,11 +7,11 @@
 //! corresponding member of its method set.
 use super::hierarchy::SymbolTarget;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
 use crate::analysis::resolve::MemberDescription;
-use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
-use crate::analysis::scope::{self, DeclarationKind};
-use crate::analysis::sema::{Identity, IdentityResolver};
+use crate::analysis::sema::{
+    DeclId, MethodOrigin, SemanticObject, SymbolOrigin, identifier_at, is_builtin_function,
+    is_builtin_type, named_root, named_type,
+};
 use crate::index::{IndexedSymbol as Symbol, SymbolKind};
 use crate::syntax::MemberKind;
 use crate::text::SourceMap;
@@ -47,13 +47,14 @@ pub(crate) enum ImplementationRow<'a> {
 impl<'a> Context<'a> {
     /// Implementation targets in gopls order, or `None` for a null result.
     pub(crate) fn implementation_locations(
-        &self,
+        &mut self,
         offset: usize,
     ) -> Result<Option<Vec<ImplementationRow<'a>>>, (i32, String)> {
+        let file = self.file();
         let source = self.source();
         if let Some((callee, selector)) = call_position(source, offset) {
             let static_call = selector
-                || self.workspace.files.get(self.file()).is_some_and(|stub| {
+                || self.workspace.files.get(file).is_some_and(|stub| {
                     stub.symbols.iter().any(|symbol| {
                         symbol.name == callee && (symbol.is_type() || symbol.is_function())
                     })
@@ -62,11 +63,9 @@ impl<'a> Context<'a> {
                 return Err((0, "not a dynamic function call".to_owned()));
             }
         }
-        let Some(selection) = crate::analysis::scope::occurrences::identifier_at(source, offset)
-        else {
+        let Some(selection) = identifier_at(source, offset) else {
             return Err((0, "no identifier found".to_owned()));
         };
-        let file = self.file();
         let stub = self
             .workspace
             .files
@@ -91,17 +90,15 @@ impl<'a> Context<'a> {
         {
             classify_member(member)?
         } else {
-            let analysis = Occurrences::for_name(source, stub, &source[selection.clone()])?;
-            let Some(name) = analysis.names.iter().find(|name| name.span == selection) else {
-                return Err((0, "no identifier found".to_owned()));
-            };
-            let identity = self.resolve_identity(
-                &mut IdentityResolver::new(self.workspace, file),
-                &analysis,
-                source,
-                name,
-            );
-            classify_identity(self.workspace, file, source, &analysis, name, identity)?
+            let key = [
+                u32::try_from(selection.start).unwrap_or(u32::MAX),
+                u32::try_from(selection.end).unwrap_or(u32::MAX),
+            ];
+            let (doc, sema) = self.split();
+            let obj = sema.resolve_offset(doc.file(), doc.source(), key);
+            let spelling = &doc.source()[selection];
+            let imported = obj.is_none() && sema.imported_name(doc.file(), spelling);
+            classify_object(doc.workspace(), spelling, obj, imported)?
         };
         let mut builtin = None;
         let mut locations = match target {
@@ -110,10 +107,9 @@ impl<'a> Context<'a> {
                 let supers = !self.type_is_interface(file, symbol);
                 if supers
                     && self.with_sema(|sema| {
-                        sema.implements_universe_error(crate::analysis::obj::DeclId {
-                            file,
-                            symbol,
-                        }) == Some(true)
+                        sema.relations()
+                            .implements_universe_error(DeclId { file, symbol })
+                            == Some(true)
                     })
                 {
                     builtin = Some("error");
@@ -127,7 +123,7 @@ impl<'a> Context<'a> {
                 let supers = !self.type_is_interface(file, owner);
                 if supers
                     && self.with_sema(|sema| {
-                        sema.implements_universe_error(crate::analysis::obj::DeclId {
+                        sema.relations().implements_universe_error(DeclId {
                             file,
                             symbol: owner,
                         }) == Some(true)
@@ -157,7 +153,7 @@ impl<'a> Context<'a> {
     }
 
     fn method_relation_locations(
-        &self,
+        &mut self,
         file: &'a Path,
         owner: &'a Symbol,
         name: &'a str,
@@ -166,7 +162,7 @@ impl<'a> Context<'a> {
         let mut locations: Vec<SourceLocation<'a>> = Vec::new();
         for target in self.method_relations(file, owner, supers, name)? {
             let Some(member) = self.with_sema(|sema| {
-                sema.implementation_method_object(
+                sema.relations().implementation_method_object(
                     DeclId {
                         file: target.file,
                         symbol: target.symbol,
@@ -186,13 +182,16 @@ impl<'a> Context<'a> {
         Ok(locations)
     }
 
-    fn implementation_method_location(&self, object: ObjectRef<'a>) -> Option<SourceLocation<'a>> {
+    fn implementation_method_location(
+        &self,
+        object: SemanticObject<'a>,
+    ) -> Option<SourceLocation<'a>> {
         match object {
-            ObjectRef::Method(MethodOrigin::Concrete(decl)) => Some(SourceLocation {
+            SemanticObject::Method(MethodOrigin::Concrete(decl)) => Some(SourceLocation {
                 file: decl.file,
                 range: SourceRange::indexed_selection(&decl.symbol.selection),
             }),
-            ObjectRef::Method(MethodOrigin::Interface(member)) => Some(SourceLocation {
+            SemanticObject::Method(MethodOrigin::Interface(member)) => Some(SourceLocation {
                 file: member.file,
                 range: self.member_selection(member, &mut None)?,
             }),
@@ -269,13 +268,13 @@ fn classify_symbol<'a>(
             let Some(receiver) = symbol.receiver.as_deref() else {
                 return Ok(Target::Empty);
             };
-            let Some(name) = scope::named_type(receiver) else {
+            let Some(name) = named_type(receiver) else {
                 return Ok(Target::Empty);
             };
             let Some((owner_file, owner)) = crate::analysis::resolve::resolve_type_declaration(
                 workspace,
                 file,
-                scope::named_root(&name),
+                named_root(&name),
             ) else {
                 return Ok(Target::Empty);
             };
@@ -309,72 +308,76 @@ fn classify_member(member: MemberDescription<'_>) -> Result<Target<'_>, (i32, St
     }
 }
 
-fn classify_identity<'a>(
+fn classify_object<'a>(
     workspace: &'a Workspace,
-    file: &'a Path,
-    source: &str,
-    analysis: &Occurrences,
-    name: &Name,
-    identity: Option<Identity<'a>>,
+    spelling: &str,
+    object: Option<SemanticObject<'a>>,
+    imported: bool,
 ) -> Result<Target<'a>, (i32, String)> {
-    let spelling = &source[name.span.clone()];
-    match identity {
-        Some(Identity::Global(path, symbol)) => classify_symbol(workspace, path, symbol),
-        Some(Identity::Member(member)) => member
-            .describe(workspace)
-            .map_or(Ok(Target::Empty), classify_member),
-        Some(Identity::Local(selection)) => {
-            if let Some(binding) = analysis
-                .locals
-                .definition_at(&selection, spelling)
-                .filter(|binding| binding.selection == selection)
-            {
-                return match binding.declaration {
-                    DeclarationKind::Constant => {
-                        Err((0, format!("{spelling} is a const, not a type")))
-                    }
-                    DeclarationKind::Value | DeclarationKind::Variadic => {
-                        Err((0, format!("{spelling} is a var, not a type")))
-                    }
-                    DeclarationKind::Type | DeclarationKind::TypeParameter => Ok(Target::Empty),
-                };
+    match object {
+        Some(
+            SemanticObject::Const(SymbolOrigin::Package(decl))
+            | SemanticObject::TypeName {
+                origin: SymbolOrigin::Package(decl),
+                ..
             }
-            if matches!(name.role, Role::Parameter | Role::Result) {
-                Err((0, format!("{spelling} is a var, not a type")))
+            | SemanticObject::Var {
+                origin: SymbolOrigin::Package(decl),
+                ..
+            }
+            | SemanticObject::Func(decl)
+            | SemanticObject::Method(MethodOrigin::Concrete(decl)),
+        ) => classify_symbol(workspace, decl.file, decl.symbol),
+        Some(SemanticObject::Field(_)) => Err((0, format!("{spelling} is a var, not a type"))),
+        Some(SemanticObject::Method(MethodOrigin::Interface(member))) => {
+            if let Some(indexed) = member.indexed(workspace) {
+                indexed
+                    .describe(workspace)
+                    .map_or(Ok(Target::Empty), classify_member)
             } else {
-                Ok(Target::Empty)
+                classify_unresolved(spelling, imported)
             }
         }
-        None => classify_unresolved(workspace, file, name, spelling),
+        Some(SemanticObject::Const(SymbolOrigin::Local { .. }))
+        | Some(SemanticObject::BuiltinConst(_)) => {
+            Err((0, format!("{spelling} is a const, not a type")))
+        }
+        Some(SemanticObject::Var { .. }) => Err((0, format!("{spelling} is a var, not a type"))),
+        Some(
+            SemanticObject::TypeName {
+                origin: SymbolOrigin::Local { .. },
+                ..
+            }
+            | SemanticObject::TypeParam { .. }
+            | SemanticObject::BuiltinType(_)
+            | SemanticObject::Label { .. },
+        ) => Ok(Target::Empty),
+        Some(SemanticObject::PkgName { .. }) => {
+            Err((0, format!("{spelling} is a pkgname, not a type")))
+        }
+        Some(SemanticObject::BuiltinFunction(_)) => {
+            Err((0, format!("{spelling} is a builtin, not a type")))
+        }
+        Some(SemanticObject::Nil) => Err((0, "nil is a nil, not a type".to_owned())),
+        None => classify_unresolved(spelling, imported),
     }
 }
 
 /// Unresolved spellings still have gopls object categories: builtins, package
 /// names and the nil-object group. Error text is part of the observed protocol.
-fn classify_unresolved<'a>(
-    workspace: &'a Workspace,
-    file: &Path,
-    name: &Name,
-    spelling: &str,
-) -> Result<Target<'a>, (i32, String)> {
-    if scope::universe::imported_name(workspace, file, spelling) {
+fn classify_unresolved<'a>(spelling: &str, imported: bool) -> Result<Target<'a>, (i32, String)> {
+    if imported {
         return Err((0, format!("{spelling} is a pkgname, not a type")));
     }
-    if scope::universe::builtin_type(spelling) {
-        // The interface `error` has a non-empty method set in gopls; its
-        // implementations require the universe declaration, which this
-        // metadata query cannot synthesize yet.
+    if is_builtin_type(spelling) {
         return Ok(Target::Empty);
     }
-    if scope::universe::builtin_function(spelling) {
+    if is_builtin_function(spelling) {
         return Err((0, format!("{spelling} is a builtin, not a type")));
     }
     match spelling {
         "nil" => Err((0, "nil is a nil, not a type".to_owned())),
         "true" | "false" | "iota" => Err((0, format!("{spelling} is a const, not a type"))),
-        _ if matches!(name.role, Role::Field | Role::FieldDeclaration(_)) => {
-            Err((0, format!("{spelling} is a var, not a type")))
-        }
         _ => Err((0, format!("{spelling} denotes unknown object"))),
     }
 }

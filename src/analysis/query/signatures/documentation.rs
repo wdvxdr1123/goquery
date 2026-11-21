@@ -1,14 +1,13 @@
 //! Documentation belongs to the selected callable object, not its initializer.
 use super::super::documentation::{self as doc, Target};
-use crate::analysis::obj::{MethodOrigin, ObjectRef, SymbolOrigin};
 use crate::analysis::query::Context;
-use crate::analysis::scope::tree::LocalBindingKind;
+use crate::analysis::sema::{MemberDeclId, MethodOrigin, SemanticObject, SymbolOrigin, VarKind};
 use crate::syntax::{Expr, ExprId, ExprKind};
 use crate::text::SourceMap;
 use std::borrow::Cow;
 
 pub(super) fn for_function(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     body: (&[Expr], usize),
     function: ExprId,
     cursor_offset: Option<usize>,
@@ -25,34 +24,36 @@ pub(super) fn for_function(
         u32::try_from(base + ident_range.start).ok()?,
         u32::try_from(base + ident_range.end).ok()?,
     ];
-    let workspace = context.workspace();
-    let file = context.file();
-    let source = context.source();
+    let (doc, sema) = context.split();
+    let workspace = doc.workspace();
+    let file = doc.file();
+    let source = doc.source();
 
     enum DocTarget<'a> {
         UniverseError,
         Local([u32; 2]),
         Global(&'a std::path::Path, &'a crate::index::IndexedSymbol),
-        Member(crate::analysis::obj::MemberDeclId<'a>),
+        Member(MemberDeclId<'a>),
     }
 
-    let doc_target = context.with_sema(|sema| {
-        let (region, _) = sema.region_and_arena_at(file, source, ident_span[0], cursor_offset)?;
-        let obj = region
-            .use_by_span(ident_span)
-            .or_else(|| region.selection_by_span(ident_span).map(|sel| sel.obj))?;
+    let doc_target = {
+        let view = sema.region_at(
+            file,
+            source,
+            ident_span[0],
+            crate::analysis::sema::RegionMode::from_cursor(cursor_offset),
+        )?;
+        let obj = view.use_or_selection(ident_span)?;
         match obj {
-            ObjectRef::Var {
-                origin: SymbolOrigin::Local { id, span, .. },
+            SemanticObject::Var {
+                origin: SymbolOrigin::Local { span, .. },
+                kind,
                 ..
             } if matches!(expression.kind, ExprKind::Name) => {
-                let binding = region.scopes.bindings.get(id.0 as usize)?;
                 if matches!(
-                    binding.kind,
-                    LocalBindingKind::Param
-                        | LocalBindingKind::NamedResult
-                        | LocalBindingKind::Receiver
-                ) || doc::in_function_header(context, span[0] as usize)
+                    kind,
+                    VarKind::Param | VarKind::ResultVar | VarKind::Receiver
+                ) || doc::in_function_header(workspace, file, span[0] as usize)
                     || doc::multi_name_short_declaration(source, span[0] as usize)
                     || doc::control_header_statement(source, span[0] as usize)
                 {
@@ -60,26 +61,27 @@ pub(super) fn for_function(
                 }
                 Some(DocTarget::Local(span))
             }
-            ObjectRef::Func(decl)
-            | ObjectRef::Method(MethodOrigin::Concrete(decl))
-            | ObjectRef::Var {
+            SemanticObject::Func(decl)
+            | SemanticObject::Method(MethodOrigin::Concrete(decl))
+            | SemanticObject::Var {
                 origin: SymbolOrigin::Package(decl),
                 ..
             }
-            | ObjectRef::Const(SymbolOrigin::Package(decl)) => {
+            | SemanticObject::Const(SymbolOrigin::Package(decl)) => {
                 Some(DocTarget::Global(decl.file, decl.symbol))
             }
-            ObjectRef::Method(MethodOrigin::Interface(member)) if member.builtin => {
+            SemanticObject::Method(MethodOrigin::Interface(member)) if member.builtin => {
                 Some(DocTarget::UniverseError)
             }
-            ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member))
+            SemanticObject::Field(member)
+            | SemanticObject::Method(MethodOrigin::Interface(member))
                 if !member.builtin =>
             {
                 Some(DocTarget::Member(member.indexed(workspace)?))
             }
             _ => None,
         }
-    })?;
+    }?;
 
     match doc_target {
         DocTarget::UniverseError => Some("Error returns the error message.".to_owned()),

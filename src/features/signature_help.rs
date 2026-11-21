@@ -7,7 +7,7 @@ use tower_lsp::lsp_types::{
 };
 
 pub(super) fn execute(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     params: &Value,
     plaintext: bool,

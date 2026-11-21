@@ -12,7 +12,7 @@ const SEVERITY_ERROR: u8 = 1;
 /// `DiagnosticTag.Unnecessary`; both unused-variable and unused-import use it.
 const UNNECESSARY: u8 = 1;
 
-pub(super) fn execute(context: &Context<'_>) -> Result<Value, (i32, String)> {
+pub(super) fn execute(context: &mut Context<'_>) -> Result<Value, (i32, String)> {
     // Orphaned open buffers (outside the build/discovery scope) are not part of
     // any package; gopls reports no compiler diagnostics for them here.
     if context.is_detached() {

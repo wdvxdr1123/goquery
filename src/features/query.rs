@@ -66,14 +66,14 @@ pub(crate) fn execute_cancellable(
         }
         Query::Calls(direction, params) => {
             return super::call_hierarchy::execute(
-                &Context::metadata(workspace),
+                &mut Context::metadata(workspace),
                 params,
                 matches!(direction, CallDirection::Incoming),
             );
         }
         Query::Types(direction, params) => {
             return super::type_hierarchy::execute(
-                &Context::metadata(workspace),
+                &mut Context::metadata(workspace),
                 params,
                 matches!(direction, TypeDirection::Supertypes),
                 super::type_hierarchy::Relation::Structural,
@@ -81,7 +81,7 @@ pub(crate) fn execute_cancellable(
         }
         Query::Embedding(direction, params) => {
             return super::type_hierarchy::execute(
-                &Context::metadata(workspace),
+                &mut Context::metadata(workspace),
                 params,
                 matches!(direction, TypeDirection::Supertypes),
                 super::type_hierarchy::Relation::Embedding,
@@ -147,12 +147,12 @@ pub(crate) fn execute_cancellable(
     };
     match query {
         DocumentQuery::SemanticTokens => {
-            return super::highlighting::execute(&context, &semantic_config);
+            return super::highlighting::execute(&mut context, &semantic_config);
         }
         DocumentQuery::SemanticTokensRange(params) => {
-            return super::highlighting::execute_range(&context, params, &semantic_config);
+            return super::highlighting::execute_range(&mut context, params, &semantic_config);
         }
-        DocumentQuery::Diagnostics => return super::diagnostics::execute(&context),
+        DocumentQuery::Diagnostics => return super::diagnostics::execute(&mut context),
         DocumentQuery::CodeAction(params) => return super::code_actions::execute(&context, params),
         _ => {}
     }
@@ -188,33 +188,33 @@ pub(crate) fn execute_cancellable(
         "invalid UTF-16 position".into(),
     ))?;
     match query {
-        DocumentQuery::TypeDefinition(_) => super::type_definition::execute(&context, offset),
+        DocumentQuery::TypeDefinition(_) => super::type_definition::execute(&mut context, offset),
         DocumentQuery::Completion(_) => {
-            super::completion::execute(&context, offset, &completion_config)
+            super::completion::execute(&mut context, offset, &completion_config)
         }
         DocumentQuery::SignatureHelp(_) => {
-            super::signature_help::execute(&context, offset, params, signature_plaintext)
+            super::signature_help::execute(&mut context, offset, params, signature_plaintext)
         }
         DocumentQuery::Definition(_) => {
-            super::navigation::definition(&context, offset, "textDocument/definition")
+            super::navigation::definition(&mut context, offset, "textDocument/definition")
         }
         DocumentQuery::Declaration(_) => {
-            super::navigation::definition(&context, offset, "textDocument/declaration")
+            super::navigation::definition(&mut context, offset, "textDocument/declaration")
         }
-        DocumentQuery::Hover(_) => super::hover::execute(&context, offset),
-        DocumentQuery::PrepareRename(_) => super::rename::prepare(&context, offset),
+        DocumentQuery::Hover(_) => super::hover::execute(&mut context, offset),
+        DocumentQuery::PrepareRename(_) => super::rename::prepare(&mut context, offset),
         DocumentQuery::Rename(_) => super::rename::execute(&mut context, offset, params),
-        DocumentQuery::Implementation(_) => super::implementation::execute(&context, offset),
+        DocumentQuery::Implementation(_) => super::implementation::execute(&mut context, offset),
         DocumentQuery::DocumentHighlight(_) => {
-            super::document::highlight::execute(&context, offset, cancellation)
+            super::document::highlight::execute(&mut context, offset, cancellation)
         }
         DocumentQuery::PrepareCallHierarchy(_) => super::navigation::prepare_hierarchy(
-            &context,
+            &mut context,
             offset,
             "textDocument/prepareCallHierarchy",
         ),
         DocumentQuery::PrepareTypeHierarchy(_) => super::navigation::prepare_hierarchy(
-            &context,
+            &mut context,
             offset,
             "textDocument/prepareTypeHierarchy",
         ),

@@ -1,27 +1,30 @@
 //! Cross-file reference checking keeps only bounded semantic location rows.
 use super::locations;
-use super::navigation::anonymous;
 use super::{Context, SourceLocation, SourceRange};
-use crate::analysis::obj::MemberDeclId;
 use crate::analysis::resolve::{self, NameProbe};
-use crate::analysis::scope::occurrences::{Occurrences, Role};
-use crate::analysis::sema::{Identity, IdentityResolver};
+use crate::analysis::sema::{
+    MemberDeclId, MethodOrigin, SemanticObject, SymbolOrigin, lexical_name_spans,
+    lexical_qualified_name_spans,
+};
 use crate::bloom::Fingerprint;
 use crate::index::IndexedSymbol as Symbol;
 use crate::text::SourceMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-impl<View> Context<'_, View> {
+impl<'a, View> Context<'a, View> {
     /// Anonymous fields keep declaration-site identity across copies and files.
-    pub(crate) fn inline_field_references<'query>(
-        &'query self,
+    pub(crate) fn inline_field_references(
+        &mut self,
         target_file: &Path,
         selection: &std::ops::Range<usize>,
         name: &str,
         origin: &Path,
         include_declaration: bool,
-    ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
+    ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
+        if name == "_" {
+            return Ok(Vec::new());
+        }
         let workspace = self.workspace();
         let Some(target_stub) = workspace.files.get(target_file) else {
             return Ok(Vec::new());
@@ -39,6 +42,10 @@ impl<View> Context<'_, View> {
         };
         let scope = workspace.reference_scope(origin);
         candidates.retain(|(file, _)| scope.contains(file, target_file));
+        let target_sel = [
+            u32::try_from(selection.start).unwrap_or(u32::MAX),
+            u32::try_from(selection.end).unwrap_or(u32::MAX),
+        ];
         let fingerprint = Fingerprint::new(name.as_bytes());
         let mut locations = Vec::new();
         for (file, stub) in candidates {
@@ -51,38 +58,47 @@ impl<View> Context<'_, View> {
                     "unable to read anonymous-field reference candidate".to_owned(),
                 )
             })?;
-            let analysis = Occurrences::for_name(&source, stub, name)?;
+            if !source.contains(name) {
+                continue;
+            }
+            let spans = lexical_name_spans(&source, stub, name);
+            if spans.is_empty() {
+                continue;
+            }
             let map = SourceMap::new(&source);
-            for occurrence in &analysis.names {
-                if source[occurrence.span.clone()] != *name {
+            for span in spans {
+                if !include_declaration && file == target_file && span == *selection {
                     continue;
                 }
-                if !include_declaration && file == target_file && occurrence.span == *selection {
+                let key = [span.start as u32, span.end as u32];
+                let Some(SemanticObject::Field(member)) =
+                    self.with_sema(|sema| sema.resolve_offset(file, &source, key))
+                else {
                     continue;
-                }
-                let field = anonymous::occurrence_field(self, file, &source, &analysis, occurrence);
-                if field
-                    .is_some_and(|field| field.file == target_file && field.selection == *selection)
-                {
-                    locations::push(&mut locations, file, &map, occurrence.span.clone())?;
+                };
+                if !member.builtin && member.file == target_file && member.selection == target_sel {
+                    locations::push(&mut locations, file, &map, span)?;
                 }
             }
         }
         Ok(locations)
     }
 
-    pub(crate) fn global_references<'query>(
-        &'query self,
+    pub(crate) fn global_references(
+        &mut self,
         file: &Path,
         index: &NameProbe,
         target_file: &Path,
         target: &Symbol,
         include_declaration: bool,
         query_started: Instant,
-    ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
+    ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
+        if target.name == "_" {
+            return Ok(Vec::new());
+        }
         let mut source_time = Duration::ZERO;
         let mut syntax_time = Duration::ZERO;
-        let mut scope_time = Duration::ZERO;
+        let scope_time = Duration::ZERO;
         let mut resolve_time = Duration::ZERO;
         let initial_time = query_started.elapsed();
         let mut candidates = self.resolver().reference_candidates(target_file, target);
@@ -95,6 +111,7 @@ impl<View> Context<'_, View> {
         let mut lexical_candidates = 0;
         let mut locations = Vec::new();
         let fingerprint = Fingerprint::new(index.name().as_bytes());
+        let package_global_only = target.receiver.is_none();
         for (candidate, stub) in candidates {
             if !stub.identifiers.may_contain_fingerprint(fingerprint) {
                 continue;
@@ -119,29 +136,49 @@ impl<View> Context<'_, View> {
                 .filter(|import| Some(import.path.as_str()) == target_import.as_deref())
                 .filter_map(|import| self.resolver().import_name(candidate, import))
                 .collect();
-            let analysis =
-                if target.receiver.is_none() && !same_package && !qualifiers.contains(&".") {
-                    Occurrences::for_qualified_name(&source, stub, &target.name, &qualifiers)?
-                } else {
-                    Occurrences::for_name(&source, stub, &target.name)?
-                };
+            let spans = if package_global_only && !same_package && !qualifiers.contains(&".") {
+                lexical_qualified_name_spans(&source, stub, &target.name, &qualifiers)
+            } else {
+                lexical_name_spans(&source, stub, &target.name)
+            };
             syntax_time += phase.elapsed();
-            if analysis.names.is_empty() {
+            if spans.is_empty() {
                 continue;
             }
             let phase = Instant::now();
-            let mut resolver =
-                IdentityResolver::for_reference(self.workspace, candidate, index, target);
-            scope_time += phase.elapsed();
-            let phase = Instant::now();
-            for name in &analysis.names {
-                if source[name.span.clone()] == target.name
-                    && (include_declaration
-                        || candidate != target_file
-                        || name.span.start != target.start)
-                    && matches!(self.resolve_identity(&mut resolver, &analysis,&source,name), Some(Identity::Global(path,symbol)) if path == target_file && symbol.start == target.start)
+            for span in spans {
+                if !(include_declaration || candidate != target_file || span.start != target.start)
                 {
-                    locations::push(&mut locations, candidate, &map, name.span.clone())?;
+                    continue;
+                }
+                let key = [span.start as u32, span.end as u32];
+                let Some(obj) = self.with_sema(|sema| sema.resolve_offset(candidate, &source, key))
+                else {
+                    continue;
+                };
+                let decl = match obj {
+                    SemanticObject::Const(SymbolOrigin::Package(decl))
+                    | SemanticObject::TypeName {
+                        origin: SymbolOrigin::Package(decl),
+                        ..
+                    }
+                    | SemanticObject::Var {
+                        origin: SymbolOrigin::Package(decl),
+                        ..
+                    }
+                    | SemanticObject::Func(decl) => Some(decl),
+                    SemanticObject::Method(MethodOrigin::Concrete(decl))
+                        if !package_global_only =>
+                    {
+                        Some(decl)
+                    }
+                    _ => None,
+                };
+                if let Some(decl) = decl
+                    && decl.file == target_file
+                    && decl.symbol.start == target.start
+                {
+                    locations::push(&mut locations, candidate, &map, span)?;
                 }
             }
             resolve_time += phase.elapsed();
@@ -155,15 +192,22 @@ impl<View> Context<'_, View> {
         }
         Ok(locations)
     }
-    pub(crate) fn member_references<'query>(
-        &'query self,
-        target: MemberDeclId<'query>,
-        index: &NameProbe,
+
+    pub(crate) fn member_references(
+        &mut self,
+        target: MemberDeclId<'_>,
+        _index: &NameProbe,
         include_declaration: bool,
         origin: &Path,
-    ) -> Result<Vec<SourceLocation<'query>>, (i32, String)> {
+    ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
         let identity = target;
         let Some(target) = target.describe(self.workspace) else {
+            return Ok(Vec::new());
+        };
+        if target.name == "_" {
+            return Ok(Vec::new());
+        }
+        let Some((decl_file, _)) = self.workspace.files.get_key_value(target.file) else {
             return Ok(Vec::new());
         };
         let mut candidates = if resolve::exported(target.name) {
@@ -188,7 +232,7 @@ impl<View> Context<'_, View> {
         {
             let range = data.selection;
             locations.push(SourceLocation {
-                file: target.file,
+                file: decl_file.as_path(),
                 range: SourceRange {
                     start: super::locations::SourcePosition {
                         line: range.start.line,
@@ -202,6 +246,10 @@ impl<View> Context<'_, View> {
             });
         }
         let fingerprint = Fingerprint::new(target.name.as_bytes());
+        let decl_sel = [
+            identity.selection[0] as usize,
+            identity.selection[1] as usize,
+        ];
         for (file, stub) in candidates {
             if !stub.identifiers.may_contain_fingerprint(fingerprint) {
                 continue;
@@ -212,18 +260,30 @@ impl<View> Context<'_, View> {
             if !source.contains(target.name) {
                 continue;
             }
-            let analysis = Occurrences::for_name(&source, stub, target.name)?;
+            let spans = lexical_name_spans(&source, stub, target.name);
+            if spans.is_empty() {
+                continue;
+            }
             let map = SourceMap::new(&source);
-            let mut resolver = IdentityResolver::for_name(self.workspace, file, index);
-            for name in &analysis.names {
-                if (!include_declaration && matches!(name.role, Role::FieldDeclaration(_)))
-                    || &source[name.span.clone()] != target.name
+            for span in spans {
+                if !include_declaration
+                    && file == decl_file.as_path()
+                    && span.start == decl_sel[0]
+                    && span.end == decl_sel[1]
                 {
                     continue;
                 }
-                if matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Member(member)) if member == identity)
-                {
-                    locations::push(&mut locations, file, &map, name.span.clone())?;
+                let key = [span.start as u32, span.end as u32];
+                let Some(obj) = self.with_sema(|sema| sema.resolve_offset(file, &source, key))
+                else {
+                    continue;
+                };
+                if matches!(
+                    obj,
+                    SemanticObject::Field(member) | SemanticObject::Method(MethodOrigin::Interface(member))
+                        if member.indexed(self.workspace) == Some(identity)
+                ) {
+                    locations::push(&mut locations, file, &map, span)?;
                 }
             }
         }

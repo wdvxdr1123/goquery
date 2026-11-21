@@ -1,10 +1,9 @@
 //! Request-local implementation search. Closed source/type trees are not cached.
 use super::candidates::Candidates;
 use super::{Context, SymbolTarget};
-use crate::analysis::obj::{DeclId, MethodOrigin, NamedObject, ObjectRef};
 use crate::analysis::resolve::MemberDescription;
 use crate::analysis::resolve::{MemberId, MemberIds};
-use crate::analysis::sema::Semantics;
+use crate::analysis::sema::{DeclId, MethodOrigin, NamedObject, ObjectRef, Semantics};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::TypeConstructor;
 use crate::syntax::{Lexer, MemberKind, TokenKind};
@@ -42,6 +41,7 @@ impl<'a> MethodSet<'a> {
         required: Option<&[&str]>,
     ) -> Self {
         let (abstract_, members) = sema
+            .relations()
             .implementation_members_matching(
                 DeclId {
                     file,
@@ -95,7 +95,12 @@ impl<'a> Search<'a> {
         if let Some(result) = self.matches.get(&key) {
             return *result;
         }
-        let result = sema.implementation_signatures_match(left, left_member, right, right_member);
+        let result = sema.relations().implementation_signatures_match(
+            left,
+            left_member,
+            right,
+            right_member,
+        );
         if self.matches.len() < 512 {
             self.matches.insert(key, result);
         }
@@ -266,7 +271,7 @@ fn plain_interface_implements<'a>(
 
 impl<'a, View> Context<'a, View> {
     pub(crate) fn type_relations(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
         supers: bool,
@@ -275,7 +280,7 @@ impl<'a, View> Context<'a, View> {
     }
 
     pub(in crate::analysis::query) fn method_relations(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
         supers: bool,
@@ -285,7 +290,7 @@ impl<'a, View> Context<'a, View> {
     }
 
     fn relations(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
         supers: bool,
@@ -955,7 +960,7 @@ impl<'a, View> Context<'a, View> {
                         } else {
                             (candidate, target)
                         };
-                        sema.implementation_matches(concrete, interface) == Some(true)
+                        sema.relations().implementation_matches(concrete, interface) == Some(true)
                     });
                 if let Some(phase) = phase {
                     match_time += phase.elapsed();

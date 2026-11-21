@@ -1,11 +1,11 @@
 //! Count diagnostics from checked operand lists.
 use super::{Code, RegionChecker};
-use crate::analysis::types::{BasicKind, Operand, TypeId};
+use crate::analysis::engine::types::{BasicKind, Operand, TypeId};
 use crate::syntax::{ExprId, ExprKind};
 use std::ops::Range;
 
 impl RegionChecker<'_, '_> {
-    pub(in crate::analysis::check) fn assignment_count(
+    pub(in crate::analysis::engine::check) fn assignment_count(
         &mut self,
         rhs: &[ExprId],
         variables: usize,
@@ -36,7 +36,7 @@ impl RegionChecker<'_, '_> {
         );
     }
 
-    pub(in crate::analysis::check) fn declaration_count(
+    pub(in crate::analysis::engine::check) fn declaration_count(
         &mut self,
         names: &[Range<usize>],
         values: &[ExprId],
@@ -65,13 +65,13 @@ impl RegionChecker<'_, '_> {
         }
     }
 
-    pub(in crate::analysis::check) fn return_count(
+    pub(in crate::analysis::engine::check) fn return_count(
         &mut self,
         statement: &Range<usize>,
         expressions: &[ExprId],
         actual: &[Operand],
     ) {
-        let expected = self.result_types.len();
+        let expected = self.env.result_types.len();
         let too_many = actual.len() > expected;
         let site = if expressions.len() == 1 {
             expressions.first()
@@ -88,7 +88,8 @@ impl RegionChecker<'_, '_> {
         else {
             return;
         };
-        let Some(want) = self.type_summary(self.result_types.clone().into_iter(), Ellipsis::None)
+        let Some(want) =
+            self.type_summary(self.env.result_types.clone().into_iter(), Ellipsis::None)
         else {
             return;
         };
@@ -100,7 +101,7 @@ impl RegionChecker<'_, '_> {
         );
     }
 
-    pub(in crate::analysis::check) fn no_call_value(
+    pub(in crate::analysis::engine::check) fn no_call_value(
         &mut self,
         function: ExprId,
         arguments: &[ExprId],
@@ -117,7 +118,7 @@ impl RegionChecker<'_, '_> {
         );
     }
 
-    pub(in crate::analysis::check) fn call_description(
+    pub(in crate::analysis::engine::check) fn call_description(
         &self,
         function: ExprId,
         arguments: &[ExprId],
@@ -145,7 +146,7 @@ impl RegionChecker<'_, '_> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::analysis::check) fn check_argument_count(
+    pub(in crate::analysis::engine::check) fn check_argument_count(
         &mut self,
         function: ExprId,
         arguments: &[ExprId],

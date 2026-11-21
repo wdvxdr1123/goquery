@@ -1,5 +1,5 @@
 //! Conservative metadata reachability, independent of promotion and visibility.
-use crate::analysis::scope as locals;
+use crate::analysis::sema as locals;
 use crate::index::IndexedSymbol as Symbol;
 use crate::workspace::Workspace;
 use std::collections::{HashMap, HashSet};

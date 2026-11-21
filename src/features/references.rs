@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::time::Instant;
 
 pub(super) fn execute(
-    context: Context<'_>,
+    mut context: Context<'_>,
     offset: usize,
     params: &Value,
 ) -> Result<Value, (i32, String)> {
@@ -17,7 +17,7 @@ pub(super) fn execute(
         return Ok(Value::Null);
     };
     let target = context.reference_target(&index, offset, include_declaration)?;
-    let (source, query) = context.into_source_and_metadata();
+    let (source, mut query) = context.into_source_and_metadata();
     let (locations, dedup) = match target {
         ReferenceTarget::Unresolved => return Ok(Value::Null),
         ReferenceTarget::Local(spans) => {

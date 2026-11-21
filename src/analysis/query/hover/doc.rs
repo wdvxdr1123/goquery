@@ -1,8 +1,8 @@
 //! Bounded Go documentation extraction: comment attachment, `CommentGroup.Text`
 //! semantics and resolution of Go doc links to editor locations.
 use super::Context;
-use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
-use crate::analysis::query::documentation;
+use crate::analysis::query::{DocumentView, documentation};
+use crate::analysis::sema::{DeclId, MethodOrigin, ObjectRef, SemanticSession};
 use crate::syntax::{Lexer, TokenKind};
 use crate::workspace::{self, Workspace};
 pub(super) use documentation::Target;
@@ -18,21 +18,33 @@ pub(super) struct Documents {
 
 /// Extract the attached documentation group and resolve doc-link targets.
 pub(super) fn attached(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
+    file: &Path,
+    source: &str,
+    target: Target,
+) -> Option<Documents> {
+    let (doc, sema) = context.split();
+    attached_with(doc, sema, file, source, target)
+}
+
+pub(super) fn attached_with(
+    doc: DocumentView<'_, '_>,
+    sema: &mut SemanticSession<'_>,
     file: &Path,
     source: &str,
     target: Target,
 ) -> Option<Documents> {
     let spans = documentation::spans(source, target)?;
     let text = documentation::text(source, &spans)?;
-    let links = doc_links(context, file, source, &spans);
+    let links = doc_links(doc, sema, file, source, &spans);
     Some(Documents { text, links })
 }
 
 /// Resolve the document links of gopls' `formatDocComment`: every symbol path
 /// segment maps the whole bracketed text to the file location of the target.
 fn doc_links(
-    context: &Context<'_>,
+    doc: DocumentView<'_, '_>,
+    sema: &mut SemanticSession<'_>,
     file: &Path,
     source: &str,
     spans: &[Range<usize>],
@@ -55,7 +67,7 @@ fn doc_links(
                     progressive.push('.');
                 }
                 progressive.push_str(part);
-                if let Some((path, position)) = doc_link_symbol(context, file, &progressive) {
+                if let Some((path, position)) = doc_link_symbol(doc, sema, file, &progressive) {
                     resolved = Some((path, position));
                 }
             }
@@ -122,14 +134,15 @@ fn url_definition(rest: &str) -> bool {
 /// Resolve a doc-link symbol path in the declaring file the way gopls does:
 /// imported package prefix, then package-level symbol, then a member.
 fn doc_link_symbol(
-    context: &Context<'_>,
+    doc: DocumentView<'_, '_>,
+    sema: &mut SemanticSession<'_>,
     file: &Path,
     name: &str,
 ) -> Option<(PathBuf, (u32, u32))> {
-    let workspace = context.workspace();
-    let resolver = context.resolver();
+    let workspace = doc.workspace();
+    let resolver = doc.resolver();
     if let Some((prefix, rest)) = name.split_once('.') {
-        if let Some(import) = import_named(context, file, prefix) {
+        if let Some(import) = import_named_in(workspace, resolver, file, prefix) {
             let (receiver, member) = rest
                 .split_once('.')
                 .map_or((rest, None), |(receiver, member)| (receiver, Some(member)));
@@ -148,7 +161,8 @@ fn doc_link_symbol(
                     .is_type()
                     .then(|| {
                         member_location(
-                            context,
+                            workspace,
+                            sema,
                             file,
                             DeclId {
                                 file: origin,
@@ -166,7 +180,8 @@ fn doc_link_symbol(
             .package_symbol(file, prefix)
             .filter(|(_, symbol)| symbol.is_type())?;
         return member_location(
-            context,
+            workspace,
+            sema,
             file,
             DeclId {
                 file: origin,
@@ -183,32 +198,31 @@ fn doc_link_symbol(
         })
         .or_else(|| {
             (workspace.builtin_file().as_deref() != Some(file))
-                .then(|| super::builtin::location(context, name))
+                .then(|| super::builtin::location_in(workspace, name))
                 .flatten()
         })
 }
 
 fn member_location(
-    context: &Context<'_>,
+    workspace: &Workspace,
+    sema: &mut SemanticSession<'_>,
     file: &Path,
     receiver: DeclId<'_>,
     name: &str,
 ) -> Option<(PathBuf, (u32, u32))> {
-    let (origin, stub) = context.workspace().files.get_key_value(receiver.file)?;
+    let (origin, stub) = workspace.files.get_key_value(receiver.file)?;
     let symbol = stub
         .symbols
         .iter()
         .find(|symbol| symbol.start == receiver.symbol.start)?;
-    let member = context.with_sema(|sema| {
-        sema.arena_mut().declaration_member(
-            DeclId {
-                file: origin,
-                symbol,
-            },
-            file,
-            name,
-        )
-    })?;
+    let member = sema.declaration_member(
+        DeclId {
+            file: origin,
+            symbol,
+        },
+        file,
+        name,
+    )?;
     match member {
         ObjectRef::Method(MethodOrigin::Concrete(declaration)) => {
             let start = declaration.symbol.selection.start;
@@ -220,10 +234,9 @@ fn member_location(
         ObjectRef::Field(identity) | ObjectRef::Method(MethodOrigin::Interface(identity))
             if !identity.builtin =>
         {
-            let owner = identity.indexed(context.workspace())?.owner?;
-            let source = context
-                .workspace()
-                .source_slice(identity.file, owner.end..owner.declaration()?.end)?;
+            let owner = identity.indexed(workspace)?.owner?;
+            let source =
+                workspace.source_slice(identity.file, owner.end..owner.declaration()?.end)?;
             let start = (identity.selection[0] as usize).checked_sub(owner.end)?;
             let end = (identity.selection[1] as usize).checked_sub(owner.end)?;
             source.get(start..end)?;
@@ -244,9 +257,13 @@ fn member_location(
     }
 }
 
-fn import_named<'a>(context: &Context<'a>, file: &Path, name: &str) -> Option<&'a str> {
-    let resolver = context.resolver();
-    let stub = context.workspace().files.get(file)?;
+fn import_named_in<'a>(
+    workspace: &'a Workspace,
+    resolver: crate::analysis::resolve::View<'a>,
+    file: &Path,
+    name: &str,
+) -> Option<&'a str> {
+    let stub = workspace.files.get(file)?;
     stub.imports
         .iter()
         .find(|import| {

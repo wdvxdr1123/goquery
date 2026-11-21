@@ -4,12 +4,11 @@ mod decl_targets;
 use super::hierarchy::SymbolTarget;
 use super::locations::NavigationLocation;
 use super::{Context, Location, SourceRange};
-use crate::analysis::obj::MemberDeclId;
-use crate::analysis::obj::{MethodOrigin, ObjectRef, SymbolOrigin};
 use crate::analysis::resolve::NameProbe;
-use crate::analysis::scope::Locals;
-use crate::analysis::scope::occurrences::{Occurrences, Role};
-use crate::analysis::sema::{Identity, IdentityResolver};
+use crate::analysis::sema::{
+    MemberDeclId, MethodOrigin, RegionMode, SemanticObject, SemanticObject as ObjectRef,
+    SymbolOrigin, identifier_at, lexical_name_spans,
+};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{Lexer, TokenKind};
 use crate::text::SourceMap;
@@ -155,7 +154,7 @@ fn package_definition<'a>(
     if workspace.is_detached(file) && !crate::workspace::production_file(file) {
         return None;
     }
-    let view = context.build_view.get()?;
+    let view = context.build_view?;
     let mut read_bytes = 0usize;
     for (candidate, _) in workspace.package_files_in_view(file, view).take(256) {
         let remaining = (1024 * 1024usize).checked_sub(read_bytes)?;
@@ -187,7 +186,7 @@ fn package_definition<'a>(
 
 impl<'a> Context<'a> {
     pub(crate) fn definition_location(
-        &self,
+        &mut self,
         offset: usize,
         method: &str,
     ) -> Result<Option<NavigationLocation<'a>>, (i32, String)> {
@@ -240,7 +239,7 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn hierarchy_symbol(
-        &self,
+        &mut self,
         offset: usize,
         method: &str,
     ) -> Result<Option<SymbolTarget<'a>>, (i32, String)> {
@@ -252,12 +251,12 @@ impl<'a> Context<'a> {
         })
     }
 
-    pub(super) fn navigation_target(&self, offset: usize) -> Result<Target<'a>, (i32, String)> {
+    pub(super) fn navigation_target(&mut self, offset: usize) -> Result<Target<'a>, (i32, String)> {
         self.navigation_target_at(offset, false)
     }
 
     pub(super) fn navigation_target_for_identifier(
-        &self,
+        &mut self,
         offset: usize,
         selection: &Range<usize>,
     ) -> Result<Target<'a>, (i32, String)> {
@@ -265,7 +264,7 @@ impl<'a> Context<'a> {
     }
 
     fn navigation_target_at(
-        &self,
+        &mut self,
         offset: usize,
         at_cursor: bool,
     ) -> Result<Target<'a>, (i32, String)> {
@@ -282,38 +281,47 @@ impl<'a> Context<'a> {
     }
 
     fn navigation_target_from_selection(
-        &self,
+        &mut self,
         offset: usize,
         at_cursor: bool,
         selection: Option<Range<usize>>,
     ) -> Result<Target<'a>, (i32, String)> {
-        let workspace = self.workspace;
-        let file = self.view.file;
-        let source = self.source();
-        // `package name`: the package clause name links to itself in gopls.
-        if let Some(name) = package_clause_name(source)
-            && selection.as_ref() == Some(&name)
-        {
-            return Ok(match package_definition(self, file, source) {
-                Some((path, span)) => Target::CrossFile(path, span),
-                None => Target::Local(name),
-            });
-        }
-        let sites = import_sites(self, source);
-        // Cursor inside an import path literal: gopls links the literal itself.
-        if let Some(site) = sites
-            .iter()
-            .find(|site| site.path.start <= offset && offset <= site.path.end)
-        {
-            return Ok(Target::Local(site.path.clone()));
-        }
-        // Cursor on an import alias declaration: links the alias name itself.
-        if let Some(selection) = &selection
-            && sites
+        let (early_target, sites, is_blank) = {
+            let file = self.view.file;
+            let source = self.source();
+            // `package name`: the package clause name links to itself in gopls.
+            if let Some(name) = package_clause_name(source)
+                && selection.as_ref() == Some(&name)
+            {
+                let target = match package_definition(self, file, source) {
+                    Some((path, span)) => Target::CrossFile(path, span),
+                    None => Target::Local(name),
+                };
+                return Ok(target);
+            }
+            let sites = import_sites(self, source);
+            // Cursor inside an import path literal: gopls links the literal itself.
+            if let Some(site) = sites
                 .iter()
-                .any(|site| site.alias.as_ref() == Some(selection))
-        {
-            return Ok(Target::Local(selection.clone()));
+                .find(|site| site.path.start <= offset && offset <= site.path.end)
+            {
+                (Some(Target::Local(site.path.clone())), Vec::new(), false)
+            } else if let Some(selection) = &selection
+                && sites
+                    .iter()
+                    .any(|site| site.alias.as_ref() == Some(selection))
+            {
+                // Cursor on an import alias declaration: links the alias name itself.
+                (Some(Target::Local(selection.clone())), Vec::new(), false)
+            } else {
+                let is_blank = selection
+                    .as_ref()
+                    .is_some_and(|selection| &source[selection.clone()] == "_");
+                (None, sites, is_blank)
+            }
+        };
+        if let Some(target) = early_target {
+            return Ok(target);
         }
         if let Some(selection) = &selection
             && let Some(target) = self.sema_navigation_target(selection, at_cursor, &sites)
@@ -323,13 +331,23 @@ impl<'a> Context<'a> {
         // Blank range declarations are protocol self-anchors, like import
         // literals; the Go universe does not give the blank identifier an object.
         let target = if let Some(selection) = &selection
-            && &source[selection.clone()] == "_"
-            && let Some(function) = super::cursor_function(workspace, file, source, offset)
-            && let Some(binding) = Locals::scope_at_cursor(source, offset, Some(function))?
-                .locals
-                .range_blank_at(selection)
+            && is_blank
+            && let (Ok(s), Ok(e)) = (u32::try_from(selection.start), u32::try_from(selection.end))
         {
-            Target::Local(binding.selection.clone())
+            let (doc, sema) = self.split();
+            if sema
+                .region_at(
+                    doc.file(),
+                    doc.source(),
+                    offset as u32,
+                    RegionMode::Prefix(offset),
+                )
+                .is_some_and(|view| view.is_range_blank([s, e]))
+            {
+                Target::Local(selection.clone())
+            } else {
+                Target::Unresolved
+            }
         } else {
             Target::Unresolved
         };
@@ -337,7 +355,7 @@ impl<'a> Context<'a> {
     }
 
     fn sema_navigation_target(
-        &self,
+        &mut self,
         selection: &Range<usize>,
         at_cursor: bool,
         sites: &[ImportSite<'_>],
@@ -346,15 +364,16 @@ impl<'a> Context<'a> {
             u32::try_from(selection.start).ok()?,
             u32::try_from(selection.end).ok()?,
         ];
+        let obj = {
+            let (doc, sema) = self.split();
+            if at_cursor {
+                sema.resolve_navigation_offset(doc.file(), doc.source(), sel)
+            } else {
+                sema.resolve_offset(doc.file(), doc.source(), sel)
+            }
+        }?;
         let file = self.view.file;
         let source = self.source();
-        let obj = self.with_sema(|sema| {
-            if at_cursor {
-                sema.resolve_navigation_offset(file, source, sel)
-            } else {
-                sema.resolve_offset(file, source, sel)
-            }
-        })?;
         match obj {
             ObjectRef::PkgName { .. } => {
                 let name = source.get(selection.clone())?;
@@ -444,7 +463,7 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn reference_target<'index>(
-        &self,
+        &mut self,
         index: &'index NameProbe,
         offset: usize,
         include_declaration: bool,
@@ -452,50 +471,138 @@ impl<'a> Context<'a> {
     where
         'a: 'index,
     {
-        let source = self.source();
-        let mut resolver = IdentityResolver::for_name(self.workspace, self.view.file, index);
-        let analysis =
-            Occurrences::for_name(source, &self.workspace.files[self.view.file], index.name())?;
-        let Some(occurrence) = analysis
-            .names
-            .iter()
-            .find(|name| name.span.start <= offset && offset <= name.span.end)
-        else {
+        let (doc, sema) = self.split();
+        let source = doc.source();
+        let file = doc.file();
+        let workspace = doc.workspace();
+        let Some(stub) = workspace.files.get(file) else {
             return Ok(ReferenceTarget::Unresolved);
         };
-        let target = match self.resolve_identity(&mut resolver, &analysis, source, occurrence) {
-            Some(Identity::Global(file, symbol)) => ReferenceTarget::Global(file, symbol),
-            Some(Identity::Member(member)) => ReferenceTarget::Member(member),
-            Some(Identity::Local(selection)) => {
+        let Some(cursor_span) = identifier_at(source, offset) else {
+            return Ok(ReferenceTarget::Unresolved);
+        };
+        if &source[cursor_span.clone()] != index.name() || index.name() == "_" {
+            return Ok(ReferenceTarget::Unresolved);
+        }
+        let cursor_key = [
+            u32::try_from(cursor_span.start).unwrap_or(u32::MAX),
+            u32::try_from(cursor_span.end).unwrap_or(u32::MAX),
+        ];
+        let Some(cursor_obj) = sema.resolve_offset(file, source, cursor_key) else {
+            if sema.implicit_declaration_at(file, source, cursor_key) {
                 let mut locations = Vec::new();
-                for name in &analysis.names {
-                    if (include_declaration || name.span != selection)
-                        && matches!(self.resolve_identity(&mut resolver, &analysis, source, name), Some(Identity::Local(ref other)) if *other == selection)
-                    {
+                for span in lexical_name_spans(source, stub, index.name()) {
+                    let key = [span.start as u32, span.end as u32];
+                    let matches_guard = (include_declaration && key == cursor_key)
+                        || matches!(
+                            sema.resolve_offset(file, source, key),
+                            Some(SemanticObject::Var {
+                                origin: SymbolOrigin::Local { span: d, .. },
+                                ..
+                            }) if d == cursor_key
+                        );
+                    if matches_guard {
                         if locations.len() == crate::analysis::budget::MAX_REFERENCES {
                             return Err((
                                 crate::error::REQUEST_FAILED,
                                 "reference result exceeds 4096 locations".into(),
                             ));
                         }
-                        locations.push(name.span.clone());
+                        locations.push(span);
+                    }
+                }
+                return Ok(ReferenceTarget::Local(locations));
+            }
+            return Ok(ReferenceTarget::Unresolved);
+        };
+        let target = match cursor_obj {
+            SemanticObject::Const(SymbolOrigin::Package(decl))
+            | SemanticObject::TypeName {
+                origin: SymbolOrigin::Package(decl),
+                ..
+            }
+            | SemanticObject::Var {
+                origin: SymbolOrigin::Package(decl),
+                ..
+            }
+            | SemanticObject::Func(decl)
+            | SemanticObject::Method(MethodOrigin::Concrete(decl)) => {
+                match workspace.files.get_key_value(decl.file) {
+                    Some((path, _)) => ReferenceTarget::Global(path, decl.symbol),
+                    None => ReferenceTarget::Unresolved,
+                }
+            }
+            SemanticObject::Field(member)
+            | SemanticObject::Method(MethodOrigin::Interface(member)) => {
+                if let Some(indexed) = member.indexed(workspace) {
+                    ReferenceTarget::Member(indexed)
+                } else if matches!(cursor_obj, SemanticObject::Field(_))
+                    && !member.builtin
+                    && member.selection[0] < member.selection[1]
+                {
+                    ReferenceTarget::AnonymousField(anonymous::InlineField {
+                        file: member.file.to_path_buf(),
+                        selection: member.selection[0] as usize..member.selection[1] as usize,
+                        name: index.name().to_owned(),
+                    })
+                } else {
+                    ReferenceTarget::Unresolved
+                }
+            }
+            SemanticObject::Const(SymbolOrigin::Local {
+                span: decl_span, ..
+            })
+            | SemanticObject::TypeName {
+                origin:
+                    SymbolOrigin::Local {
+                        span: decl_span, ..
+                    },
+                ..
+            }
+            | SemanticObject::Var {
+                origin:
+                    SymbolOrigin::Local {
+                        span: decl_span, ..
+                    },
+                ..
+            }
+            | SemanticObject::TypeParam {
+                span: decl_span, ..
+            }
+            | SemanticObject::Label {
+                span: decl_span, ..
+            } => {
+                let mut locations = Vec::new();
+                let is_case_var = cursor_obj.case_scope().is_some();
+                for span in lexical_name_spans(source, stub, index.name()) {
+                    let key = [span.start as u32, span.end as u32];
+                    let is_decl = key == decl_span
+                        && (sema.resolve_offset(file, source, key) == Some(cursor_obj)
+                            || (is_case_var && sema.implicit_declaration_at(file, source, key)));
+                    if !include_declaration && is_decl {
+                        continue;
+                    }
+                    let matched = is_decl
+                        || sema
+                            .resolve_offset(file, source, key)
+                            .is_some_and(|other| cursor_obj.same_reference_target(other, false));
+                    if matched {
+                        if locations.len() == crate::analysis::budget::MAX_REFERENCES {
+                            return Err((
+                                crate::error::REQUEST_FAILED,
+                                "reference result exceeds 4096 locations".into(),
+                            ));
+                        }
+                        locations.push(span);
                     }
                 }
                 ReferenceTarget::Local(locations)
             }
-            None if matches!(
-                occurrence.role,
-                Role::Field
-                    | Role::LiteralKey(_)
-                    | Role::LiteralElementKey(_)
-                    | Role::Member(Some(_))
-                    | Role::ExpressionMember(_)
-            ) =>
-            {
-                anonymous::occurrence_field(self, self.view.file, source, &analysis, occurrence)
-                    .map_or(ReferenceTarget::Unresolved, ReferenceTarget::AnonymousField)
-            }
-            None => ReferenceTarget::Unresolved,
+            SemanticObject::PkgName { .. }
+            | SemanticObject::BuiltinFunction(_)
+            | SemanticObject::BuiltinType(_)
+            | SemanticObject::BuiltinConst(_)
+            | SemanticObject::Nil => ReferenceTarget::Unresolved,
         };
         Ok(target)
     }

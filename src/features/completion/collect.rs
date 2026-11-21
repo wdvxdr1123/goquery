@@ -6,11 +6,10 @@ use crate::text::SourceMap;
 use serde_json::{Value, json};
 
 pub(in crate::features) fn execute(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     config: &super::render::CompletionConfig,
 ) -> Result<Value, (i32, String)> {
-    let source = context.source();
     let mut render_documentation = |text: &str| {
         if config.markdown {
             document::markdown(text, &[])
@@ -23,6 +22,7 @@ pub(in crate::features) fn execute(
         config.snippets && config.calls,
         config.documentation.then_some(&mut render_documentation),
     )?;
+    let source = context.source();
     let map = SourceMap::new(source);
     let edit = EditContext {
         config,

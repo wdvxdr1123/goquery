@@ -1,16 +1,13 @@
 //! Exact cursor identities from declaration metadata and checked region facts.
 use super::Semantics;
-use crate::analysis::obj::{DeclId, ObjectRef};
+use crate::analysis::engine::obj::{DeclId, ObjectRef};
 use std::path::Path;
 
 impl<'a> Semantics<'a> {
     pub(crate) fn alias_rhs_declaration(&mut self, declaration: DeclId<'_>) -> Option<DeclId<'a>> {
-        let (file, stub) = self.workspace.files.get_key_value(declaration.file)?;
-        let symbol = stub.symbols.iter().find(|symbol| {
-            symbol.start == declaration.symbol.start && symbol.name == declaration.symbol.name
-        })?;
+        let declaration = self.canonical_decl(declaration)?;
         self.arena
-            .with_projection(true, |arena| arena.alias_named_rhs(DeclId { file, symbol }))
+            .with_projection(true, |arena| arena.alias_named_rhs(declaration))
     }
 
     /// Type-switch cases have distinct objects sharing the guard declaration.
@@ -27,7 +24,7 @@ impl<'a> Semantics<'a> {
         }
         self.region_and_arena_at(file, source, span[0], None).is_some_and(|(region, _)| {
             region.implicits.iter().any(|(_, object)| matches!(object,
-                ObjectRef::Var { origin: crate::analysis::obj::SymbolOrigin::Local { span: declaration, .. }, .. } if *declaration == span))
+                ObjectRef::Var { origin: crate::analysis::engine::obj::SymbolOrigin::Local { span: declaration, .. }, .. } if *declaration == span))
         })
     }
 
@@ -66,7 +63,10 @@ impl<'a> Semantics<'a> {
                 && symbol.end == span[1] as usize
                 && source.get(symbol.start..symbol.end) == Some(symbol.name.as_str())
         }) {
-            return Some(crate::analysis::check::decl_object(DeclId { file, symbol }));
+            return Some(crate::analysis::engine::check::decl_object(DeclId {
+                file,
+                symbol,
+            }));
         }
         let (region, _) = self.region_and_arena_at(file, source, span[0], cursor)?;
         region

@@ -4,7 +4,7 @@ use serde_json::Value;
 
 /// Go declarations and definitions use the same target.
 pub(in crate::features) fn definition(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     method: &str,
 ) -> Result<Value, (i32, String)> {
@@ -14,7 +14,7 @@ pub(in crate::features) fn definition(
 }
 
 pub(in crate::features) fn prepare_hierarchy(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     method: &str,
 ) -> Result<Value, (i32, String)> {

@@ -2,7 +2,7 @@
 use std::{num::NonZeroU32, ops::Range};
 
 use super::{ExprOutcome, RegionChecker, diagnostics::Code};
-use crate::analysis::{
+use crate::analysis::engine::{
     obj::{BuiltinFunction, ObjectRef},
     types::{
         AppendError, BasicKind, CheckError, ComplexError, CopyError, MakeError, MinMaxError, Mode,

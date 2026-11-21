@@ -1,8 +1,8 @@
 //! Local diagnostics consume canonical ScopeTree and RegionInfo facts.
 use super::{Code, Diagnostic, Kind, Related};
-use crate::analysis::check::region::{MAX_REGION_DIAGNOSTICS, RegionInfo};
-use crate::analysis::obj::{ObjectRef, SymbolOrigin};
-use crate::analysis::scope::tree::LocalBindingKind;
+use crate::analysis::engine::check::region::{MAX_REGION_DIAGNOSTICS, RegionInfo};
+use crate::analysis::engine::obj::{ObjectRef, SymbolOrigin};
+use crate::analysis::engine::scope::tree::LocalBindingKind;
 use std::collections::HashMap;
 
 impl RegionInfo<'_> {

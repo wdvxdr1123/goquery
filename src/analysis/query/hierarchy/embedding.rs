@@ -1,13 +1,13 @@
 //! Explicit named-embedding extension, separate from structural implementation.
 use super::{Context, SymbolTarget};
-use crate::analysis::obj::DeclId;
+use crate::analysis::sema::DeclId;
 use crate::index::IndexedSymbol as Symbol;
 use std::collections::BTreeMap;
 use std::path::Path;
 
 impl<'a, View> Context<'a, View> {
     pub(crate) fn embedding_relations(
-        &self,
+        &mut self,
         file: &'a Path,
         target: &'a Symbol,
         supers: bool,
@@ -15,7 +15,7 @@ impl<'a, View> Context<'a, View> {
         let mut results = BTreeMap::new();
         if supers {
             let declarations = self.with_sema(|sema| {
-                sema.direct_embedding_declarations(DeclId {
+                sema.relations().direct_embedding_declarations(DeclId {
                     file,
                     symbol: target,
                 })
@@ -45,7 +45,8 @@ impl<'a, View> Context<'a, View> {
                         continue;
                     }
                     let declarations = self.with_sema(|sema| {
-                        sema.direct_embedding_declarations(DeclId { file: path, symbol })
+                        sema.relations()
+                            .direct_embedding_declarations(DeclId { file: path, symbol })
                     });
                     if declarations.is_some_and(|declarations| {
                         declarations.contains(&DeclId {

@@ -98,12 +98,10 @@ impl TypeArena<'_> {
                 }
                 Some(Constant::String { length })
             } else if kind.integer() {
-                let mut result: Option<i128> = None;
+                let mut result: Option<super::bigint::ConstInt> = None;
                 for argument in &actuals {
-                    let Some(Constant::Int(value)) = argument.value else {
-                        return None;
-                    };
-                    result = Some(result.map_or(value, |previous: i128| {
+                    let value = argument.value.and_then(Constant::as_wide)?;
+                    result = Some(result.map_or(value, |previous| {
                         if maximum {
                             previous.max(value)
                         } else {
@@ -111,7 +109,7 @@ impl TypeArena<'_> {
                         }
                     }));
                 }
-                Some(Constant::Int(result?))
+                Some(Constant::from_wide(result?))
             } else {
                 // Rounding is monotone: min/max of independently rounded values
                 // preserves each rounding projection. Integral facts require all
@@ -166,7 +164,7 @@ impl TypeArena<'_> {
 
     fn ordered_type(&mut self, input: TypeId) -> Option<bool> {
         let root = self.underlying(input)?;
-        if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if matches!(self.node(root)?, Ty::TypeParam(_)) {
             let Some(terms) = self.parameter_set(root)?.terms else {
                 return Some(false);
             };
@@ -176,13 +174,13 @@ impl TypeArena<'_> {
             for term in terms {
                 self.step()?;
                 let root = self.underlying(term.ty)?;
-                if !matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if ordered(kind)) {
+                if !matches!(self.node(root)?, Ty::Basic(kind) if ordered(*kind)) {
                     return Some(false);
                 }
             }
             Some(true)
         } else {
-            Some(matches!(self.nodes[usize::from(root.0)], Ty::Basic(kind) if ordered(kind)))
+            Some(matches!(self.node(root)?, Ty::Basic(kind) if ordered(*kind)))
         }
     }
 }
@@ -198,6 +196,10 @@ fn numeric(value: Constant) -> Option<(f64, Option<f32>, Option<i128>)> {
             Some(value as f32).filter(|value| value.is_finite()),
             Some(value),
         )),
+        Constant::WideInt(limbs) => {
+            let wide = super::bigint::ConstInt(limbs);
+            Some((wide.to_f64(), wide.to_f32(), None))
+        }
         Constant::Float {
             approximate,
             rounded32,

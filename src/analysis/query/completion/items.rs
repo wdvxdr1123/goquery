@@ -1,25 +1,27 @@
 //! Project selected candidates by file/owner; retain no closed source.
 use super::candidates::Candidate;
 use super::comments::{self, Target};
-use super::{Context, Item, Presentation};
+use super::presentation::{
+    aggregate_members, binding_detail, binding_signature, local_completion_type,
+    member_presentation, symbol_completion,
+};
+use super::{Item, Presentation};
+use crate::analysis::query::DocumentView;
 use crate::analysis::query::completion::SignatureSource;
-use crate::analysis::scope::Locals;
+use crate::analysis::sema::SemanticSession;
 use crate::syntax::TokenKind;
 use crate::text::SourceMap;
-use std::path::Path;
 
 pub(super) struct PresentationContext<'a, 'workspace> {
-    pub(super) query: &'a Context<'workspace>,
-    pub(super) file: &'a Path,
-    pub(super) source: &'a str,
-    pub(super) locals: &'a Locals,
+    pub(super) doc: DocumentView<'a, 'workspace>,
     pub(super) map: &'a SourceMap<'a>,
     pub(super) calls: bool,
 }
 
-pub(super) fn project<'a>(
+pub(super) fn project<'a, 'workspace>(
     candidates: impl Iterator<Item = (&'a str, Candidate<'a>)>,
-    context: &PresentationContext<'_, '_>,
+    context: &PresentationContext<'_, 'workspace>,
+    sema: &mut SemanticSession<'workspace>,
     mut render_documentation: Option<&mut dyn FnMut(&str) -> String>,
 ) -> Vec<Item> {
     let mut ranked: Vec<_> = candidates.enumerate().collect();
@@ -31,6 +33,7 @@ pub(super) fn project<'a>(
     });
     let mut results = Vec::with_capacity(ranked.len());
     let mut documentation_bytes = 0;
+    let file = context.doc.file();
     for group in ranked.chunk_by(|(_, (_, a)), (_, (_, b))| a.origin() == b.origin()) {
         let origin = group[0].1.1.origin();
         let has_members = group
@@ -43,19 +46,19 @@ pub(super) fn project<'a>(
         let storage = needs_source
             .then(|| {
                 origin
-                    .filter(|origin| *origin != context.file)
-                    .and_then(|origin| context.query.read_source(origin))
+                    .filter(|origin| *origin != file)
+                    .and_then(|origin| context.doc.workspace().source(origin))
             })
             .flatten();
-        let source = if origin == Some(context.file) {
-            Some(context.source)
+        let source = if origin == Some(file) {
+            Some(context.doc.source())
         } else {
             storage.as_deref()
         };
         let owned_map = source
-            .filter(|_| needs_source && origin != Some(context.file))
+            .filter(|_| needs_source && origin != Some(file))
             .map(SourceMap::new);
-        let map = if origin == Some(context.file) {
+        let map = if origin == Some(file) {
             Some(context.map)
         } else {
             owned_map.as_ref()
@@ -79,33 +82,24 @@ pub(super) fn project<'a>(
                         })
                         .filter(|declaration| declaration.len() <= 16 * 1024)
                         .unwrap_or("");
-                    entries = context.query.aggregate_members(declaration);
+                    entries = aggregate_members(declaration);
                     owner = Some(description.owner.start);
                 }
-                context.query.member_presentation(
-                    member,
-                    view.as_ref(),
-                    source,
-                    map,
-                    declaration,
-                    &entries,
-                )
+                member_presentation(member, view.as_ref(), source, map, declaration, &entries)
             } else if let Candidate::Symbol(origin, symbol) = candidate {
                 let location = source.zip(map).map(|(source, map)| SignatureSource {
-                    file: context.file,
+                    file,
                     origin,
                     source,
                     map,
                 });
-                context
-                    .query
-                    .symbol_completion(origin, symbol, location.as_ref())
-            } else if let Candidate::Local(binding) = candidate {
-                context.query.local_completion_type(context.locals, binding)
+                symbol_completion(context.doc, sema, origin, symbol, location.as_ref())
+            } else if let Candidate::Local(local) = candidate {
+                local_completion_type(context.doc, sema, local.selection)
             } else {
                 None
             };
-            if let Some(item) = candidate_item(label, candidate, context, presentation) {
+            if let Some(item) = candidate_item(label, candidate, context, sema, presentation) {
                 if render_documentation.is_some()
                     && let Some(map) = map
                 {
@@ -199,10 +193,11 @@ fn method_receiver<'a>(candidate: &Candidate<'a>) -> Option<&'a str> {
     }
 }
 
-fn candidate_item(
+fn candidate_item<'workspace>(
     label: &str,
     candidate: &Candidate<'_>,
-    context: &PresentationContext<'_, '_>,
+    context: &PresentationContext<'_, 'workspace>,
+    sema: &mut SemanticSession<'workspace>,
     presentation: Option<Presentation>,
 ) -> Option<Item> {
     let kind = candidate.kind()?;
@@ -217,7 +212,13 @@ fn candidate_item(
         });
     let signature = match candidate {
         Candidate::Symbol(_, symbol) if symbol.is_callable() => signature,
-        Candidate::Local(binding) => context.query.binding_signature(context.locals, binding),
+        Candidate::Local(local) => binding_signature(
+            context.doc,
+            sema,
+            local.selection,
+            local.scope_start,
+            &local.name,
+        ),
         Candidate::Member(..) => signature,
         _ => None,
     }
@@ -232,7 +233,9 @@ fn candidate_item(
         })
         .or(detail)
         .or_else(|| match candidate {
-            Candidate::Local(binding) => context.query.binding_detail(context.locals, binding),
+            Candidate::Local(local) => {
+                binding_detail(context.doc, sema, local.selection, local.scope_start)
+            }
             _ => None,
         });
     Some(Item {

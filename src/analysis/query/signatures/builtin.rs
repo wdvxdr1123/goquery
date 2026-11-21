@@ -1,11 +1,11 @@
 //! Builtin signatures describe SDK type classes.
 use super::HelpInformation;
 use super::label::signature_label;
-use crate::analysis::query::{Context, builtin, documentation};
+use crate::analysis::query::{DocumentView, builtin, documentation};
 use crate::syntax::SymbolKind;
 
-pub(super) fn for_name(context: &Context<'_>, name: &str) -> Option<HelpInformation> {
-    let declaration = builtin::declaration(context, name)?;
+pub(super) fn for_name(doc: DocumentView<'_, '_>, name: &str) -> Option<HelpInformation> {
+    let declaration = builtin::declaration_in(doc.workspace(), name)?;
     if declaration.symbol.kind != SymbolKind::Function {
         return None;
     }

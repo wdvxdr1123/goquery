@@ -6,17 +6,18 @@ use std::path::Path;
 
 /// The `// Embedded fields:` fenced block, rendered like gopls' tabwriter.
 pub(super) fn promoted_fields(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     symbol: &Symbol,
 ) -> Option<String> {
+    let consumer = context.file();
     let rows = context.with_sema(|sema| {
         sema.promoted_fields(
-            crate::analysis::obj::DeclId {
+            crate::analysis::sema::DeclId {
                 file: origin,
                 symbol,
             },
-            context.file(),
+            consumer,
         )
     })?;
     if rows.is_empty() {

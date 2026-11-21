@@ -1,8 +1,4 @@
-//! Lexical occurrences and candidate roles; semantic facts belong to the checker.
-mod build;
-mod classify;
+//! Cross-file lexical prefilter scans; semantic resolution belongs to `Semantics`.
 mod lexical;
-mod literals;
 
-pub(crate) use build::{Name, Occurrences, Role};
-pub(crate) use lexical::identifier_at;
+pub(crate) use lexical::{identifier_at, scan_name, scan_qualified_name};

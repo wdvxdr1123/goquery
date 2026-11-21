@@ -15,7 +15,7 @@ type Groups<'a> = BTreeMap<(&'a Path, usize), CallGroup<'a>>;
 
 impl<'a, View> Context<'a, View> {
     pub(crate) fn call_target(
-        &self,
+        &mut self,
         file: &Path,
         start: usize,
         name: Option<&str>,

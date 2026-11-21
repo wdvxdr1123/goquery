@@ -32,7 +32,13 @@ impl<View> Context<'_, View> {
 }
 
 pub(super) fn declaration(context: &Context<'_>, name: &str) -> Option<Declaration> {
-    let workspace = context.workspace();
+    declaration_in(context.workspace(), name)
+}
+
+pub(super) fn declaration_in(
+    workspace: &crate::workspace::Workspace,
+    name: &str,
+) -> Option<Declaration> {
     let file = workspace.builtin_file()?;
     let source = workspace
         .source(&file)

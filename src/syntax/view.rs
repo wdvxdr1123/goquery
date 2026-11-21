@@ -40,7 +40,7 @@ pub(crate) fn has_cgo_path_literal(source: &str) -> bool {
                 .strip_prefix('`')
                 .and_then(|text| text.strip_suffix('`'))
             {
-                return raw.bytes().filter(|&byte| byte != b'\r').eq([b'C']);
+                return raw.bytes().filter(|&byte| byte != b'\r').eq(*b"C");
             }
             // The longest interpreted spelling is "\U00000043".
             text.len() <= 12 && crate::syntax::decode_import_path(text).as_deref() == Some("C")

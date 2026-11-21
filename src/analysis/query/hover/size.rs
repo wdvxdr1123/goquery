@@ -4,10 +4,9 @@
 //! fields, gc's zero-size final field rule and padded struct sizes. Only
 //! structural type layouts are computed; unresolved or parameterized types stay
 //! unknown instead of guessing.
-use crate::analysis::obj::DeclId;
 use crate::analysis::query::Context;
-use crate::analysis::sema::layout::{FieldLayout, Layout, StructLayout};
-use crate::analysis::types::align_to;
+use crate::analysis::sema::DeclId;
+use crate::analysis::sema::layout::{FieldLayout, Layout, StructLayout, align_to};
 use crate::index::IndexedSymbol as Symbol;
 use std::path::Path;
 
@@ -21,20 +20,24 @@ fn declaration<'a>(context: &Context<'a>, file: &Path, symbol: &Symbol) -> Optio
 }
 
 pub(super) fn struct_text_layout(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     text: &str,
 ) -> Option<StructLayout> {
     context.with_sema(|sema| sema.struct_layout_of_text(origin, text))
 }
 
-pub(super) fn type_layout(context: &Context<'_>, origin: &Path, symbol: &Symbol) -> Option<Layout> {
+pub(super) fn type_layout(
+    context: &mut Context<'_>,
+    origin: &Path,
+    symbol: &Symbol,
+) -> Option<Layout> {
     let decl = declaration(context, origin, symbol)?;
     context.with_sema(|sema| sema.layout_of_decl(decl))
 }
 
 pub(super) fn struct_layout(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     symbol: &Symbol,
 ) -> Option<StructLayout> {
@@ -43,7 +46,7 @@ pub(super) fn struct_layout(
 }
 
 pub(super) fn field_layout(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     owner: &Symbol,
     name: &str,

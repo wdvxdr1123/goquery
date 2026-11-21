@@ -48,7 +48,7 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
 }
 
 pub(super) fn execute(
-    context: &Context<'_, ()>,
+    context: &mut Context<'_, ()>,
     params: &Value,
     incoming: bool,
 ) -> Result<Value, (i32, String)> {

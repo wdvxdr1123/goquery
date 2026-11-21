@@ -2,4 +2,4 @@
 mod members;
 mod syntax;
 
-pub use syntax::{parse_type, parse_type_prefix};
+pub use syntax::{parse_constraint, parse_type, parse_type_prefix};

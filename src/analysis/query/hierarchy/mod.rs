@@ -3,7 +3,7 @@ mod candidates;
 mod embedding;
 pub(crate) mod relations;
 use super::{Context, SourceRange};
-use crate::analysis::types::TypeForm;
+use crate::analysis::sema::TypeForm;
 use crate::index::IndexedSymbol as Symbol;
 use std::path::Path;
 
@@ -13,7 +13,7 @@ pub(crate) struct SymbolTarget<'a> {
 }
 impl<'a, View> Context<'a, View> {
     pub(crate) fn type_target(
-        &self,
+        &mut self,
         file: &Path,
         name: Option<&str>,
         selection: Option<SourceRange>,
@@ -52,11 +52,12 @@ impl<'a, View> Context<'a, View> {
             .ok_or((-32801, "type hierarchy item is stale".into()))?;
         Ok(SymbolTarget { file, symbol })
     }
-    pub(crate) fn type_is_interface(&self, file: &Path, symbol: &Symbol) -> bool {
+    pub(crate) fn type_is_interface(&mut self, file: &Path, symbol: &Symbol) -> bool {
         matches!(
-            self.with_sema(
-                |sema| sema.declaration_form(crate::analysis::obj::DeclId { file, symbol })
-            ),
+            self.with_sema(|sema| {
+                sema.relations()
+                    .declaration_form(crate::analysis::sema::DeclId { file, symbol })
+            }),
             Some(TypeForm::Interface)
         )
     }

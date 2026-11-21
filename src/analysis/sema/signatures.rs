@@ -1,7 +1,7 @@
 //! Callable views come from checked signatures, never initializer spelling.
 use super::{CallableView, MemberTypeView, Semantics};
-use crate::analysis::obj::{BuiltinFunction, ObjectRef, SymbolOrigin};
-use crate::analysis::types::Mode;
+use crate::analysis::engine::obj::{BuiltinFunction, ObjectRef};
+use crate::analysis::engine::types::Mode;
 use std::path::Path;
 
 pub(crate) enum CheckedCallable {
@@ -74,29 +74,7 @@ impl Semantics<'_> {
         scope_start: u32,
     ) -> Option<CallableView> {
         let (region, arena) = self.region_and_arena_at(file, source, selection[0], None)?;
-        let object = region.def_by_span(selection).or_else(|| {
-            region.implicits.iter().find_map(|(span, object)| {
-                if span[0] <= scope_start
-                    && scope_start < span[1]
-                    && let ObjectRef::Var {
-                        origin: SymbolOrigin::Local { span, .. },
-                        ..
-                    } = object
-                    && *span == selection
-                {
-                    Some(*object)
-                } else {
-                    None
-                }
-            })
-        })?;
-        let ObjectRef::Var {
-            origin: SymbolOrigin::Local { id, .. },
-            ..
-        } = object
-        else {
-            return None;
-        };
+        let (id, _) = region.local_binding_at(selection, scope_start)?;
         let operand = region.local_type(id)?;
         if operand.mode != Mode::Variable {
             return None;

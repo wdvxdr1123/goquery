@@ -9,7 +9,7 @@ use std::path::Path;
 const MAX_DECLARATION_BYTES: usize = 256 * 1024;
 
 pub(super) fn declare(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     file: &Path,
     symbol: &Symbol,
     range: super::SourceRange,
@@ -18,7 +18,7 @@ pub(super) fn declare(
 }
 
 pub(super) fn reference(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     symbol: &Symbol,
     range: super::SourceRange,
@@ -27,23 +27,25 @@ pub(super) fn reference(
 }
 
 fn describe(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     symbol: &Symbol,
     range: super::SourceRange,
     declaring: bool,
 ) -> Result<Option<HoverContent>, (i32, String)> {
-    let Some(source_text) = declaration_source(context, origin) else {
-        return Ok(None);
-    };
-    let source = source_text.text();
-    let content = match symbol.kind {
-        SymbolKind::Function | SymbolKind::Method => {
-            function(context, origin, source, symbol, range)
-        }
-        SymbolKind::Type => type_symbol(context, origin, source, symbol, range, declaring),
-        SymbolKind::Variable | SymbolKind::Constant => {
-            value_symbol(context, origin, source, symbol, range)
+    let content = {
+        let Some(source_text) = declaration_source(context, origin) else {
+            return Ok(None);
+        };
+        let source = source_text.text().to_owned();
+        match symbol.kind {
+            SymbolKind::Function | SymbolKind::Method => {
+                function(context, origin, &source, symbol, range)
+            }
+            SymbolKind::Type => type_symbol(context, origin, &source, symbol, range, declaring),
+            SymbolKind::Variable | SymbolKind::Constant => {
+                value_symbol(context, origin, &source, symbol, range)
+            }
         }
     };
     let Some(mut content) = content else {
@@ -67,7 +69,7 @@ fn describe(
 }
 
 fn function(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     source: &str,
     symbol: &Symbol,
@@ -222,7 +224,7 @@ fn method_link(context: &Context<'_>, origin: &Path, symbol: &Symbol) -> Option<
 }
 
 fn type_symbol(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     source: &str,
     symbol: &Symbol,
@@ -294,13 +296,13 @@ fn type_symbol(
 
 /// Declaration text of a type alias' named RHS type.
 fn rhs_type_declaration(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     source: &str,
     alias: &Symbol,
 ) -> Option<String> {
     let rhs = context.with_sema(|sema| {
-        sema.alias_rhs_declaration(crate::analysis::obj::DeclId {
+        sema.alias_rhs_declaration(crate::analysis::sema::DeclId {
             file: origin,
             symbol: alias,
         })
@@ -315,14 +317,15 @@ fn rhs_type_declaration(
 
 /// Native method selection owns visibility, collisions and instantiation.
 /// Source headers attach names only; no source text proves a method or type.
-fn method_lines(context: &Context<'_>, origin: &Path, owner: &Symbol) -> Option<String> {
+fn method_lines(context: &mut Context<'_>, origin: &Path, owner: &Symbol) -> Option<String> {
+    let consumer = context.file();
     let methods = context.with_sema(|sema| {
         sema.declaration_methods(
-            crate::analysis::obj::DeclId {
+            crate::analysis::sema::DeclId {
                 file: origin,
                 symbol: owner,
             },
-            context.file(),
+            consumer,
         )
     })?;
     let mut lines = Vec::new();
@@ -402,7 +405,7 @@ fn method_header(
     method: &crate::analysis::sema::MethodView<'_>,
     read_bytes: &mut usize,
 ) -> Option<Option<(String, crate::syntax::Signature)>> {
-    use crate::analysis::obj::{MethodOrigin, ObjectRef};
+    use crate::analysis::sema::{MethodOrigin, ObjectRef};
     const HEADER_BYTES: usize = crate::analysis::budget::MAX_BYTES;
     let (file, span, interface) = match method.object {
         ObjectRef::Method(MethodOrigin::Concrete(declaration)) => {
@@ -545,28 +548,26 @@ fn evaluate_string_constant(
 
 /// Type display comes only from the checked declaration operand.
 fn declaration_value_type(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     symbol: &Symbol,
-) -> Option<(String, Option<crate::analysis::types::Constant>)> {
+) -> Option<(String, Option<crate::analysis::sema::Constant>)> {
     let (file, stub) = context.workspace().files.get_key_value(origin)?;
     let symbol = stub.symbols.iter().find(|candidate| {
         candidate.start == symbol.start
             && candidate.end == symbol.end
             && candidate.kind == symbol.kind
     })?;
+    let consumer = context.file();
     context.with_sema(|sema| {
-        let operand = sema.operand_of_decl(crate::analysis::obj::DeclId { file, symbol })?;
-        let text = sema.arena_mut().format_type(
-            operand.ty,
-            crate::analysis::types::Qualifier::Presentation(context.file()),
-        )?;
-        Some((render::normalize_type(&text), operand.value))
+        let (text, value) = sema
+            .decl_operand_presentation(crate::analysis::sema::DeclId { file, symbol }, consumer)?;
+        Some((render::normalize_type(&text), value))
     })
 }
 
 fn value_symbol(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     source: &str,
     symbol: &Symbol,
@@ -587,16 +588,16 @@ fn value_symbol(
             let mut evaluated = None;
             if literal.is_none() {
                 let mut budget = super::value::TextBudget::new();
-                if let Some(crate::analysis::types::Constant::Int(value)) = constant {
-                    evaluated = i64::try_from(value).ok();
+                if let Some(text) = constant.and_then(|c| c.format_int()) {
+                    evaluated = text.parse::<i64>().ok();
                     literal = Some(super::value::Literal {
-                        value: value.to_string(),
+                        value: text,
                         declaration: own.then(|| expression.clone()),
                         untyped: Some("int"),
                     });
                 } else if matches!(
                     constant,
-                    Some(crate::analysis::types::Constant::String { .. })
+                    Some(crate::analysis::sema::Constant::String { .. })
                 ) {
                     let bytes =
                         evaluate_string_constant(context, origin, &substituted, 0, &mut budget)?;
@@ -668,7 +669,7 @@ fn value_symbol(
 }
 
 fn attach(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     origin: &Path,
     source: &str,
     start: usize,

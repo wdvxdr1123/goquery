@@ -1,5 +1,5 @@
-//! gcSizes over structural type identities. Unknown facts never acquire a size.
-use super::{BasicKind, MAX_DEPTH, Ty, TypeArena, TypeId};
+//! `gcSizes` over structural type identities. Unknown facts never acquire a size.
+use super::{BasicKind, MAX_DEPTH, Ty, TypeId, TypeStore};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Layout {
@@ -26,26 +26,41 @@ pub(crate) fn align_to(value: i64, align: i64) -> Option<i64> {
         .checked_mul(align)
 }
 
-impl TypeArena<'_> {
-    pub(crate) fn layout(&mut self, input: TypeId) -> Option<Layout> {
-        let (word, max_align) = self.build_view.gc_sizes()?;
-        self.layout_inner(input, word, max_align, 0)
+/// Target-specific layout calculation over `TypeStore`.
+pub(crate) trait Sizes<'a> {
+    fn layout(&mut self, store: &mut TypeStore<'a>, input: TypeId) -> Option<Layout>;
+    fn struct_layout(&mut self, store: &mut TypeStore<'a>, input: TypeId) -> Option<StructLayout>;
+}
+
+/// Standard `gc` compiler sizing (`wordSize`, `maxAlign`).
+pub(crate) struct StdSizes {
+    word: i64,
+    max_align: i64,
+}
+
+impl StdSizes {
+    pub(crate) const fn new(word: i64, max_align: i64) -> Self {
+        Self { word, max_align }
+    }
+
+    pub(crate) fn from_store(store: &TypeStore<'_>) -> Option<Self> {
+        let (word, max_align) = store.build_view.gc_sizes()?;
+        Some(Self::new(word, max_align))
     }
 
     fn layout_inner(
-        &mut self,
+        &self,
+        store: &mut TypeStore<'_>,
         input: TypeId,
-        word: i64,
-        max_align: i64,
         depth: usize,
     ) -> Option<Layout> {
-        self.step()?;
+        store.step()?;
         if depth >= MAX_DEPTH {
             return None;
         }
-        let input = self.unalias(input)?;
-        let root = self.underlying(input)?;
-        let layout = match self.nodes.get(usize::from(root.0))?.clone() {
+        let input = store.unalias(input)?;
+        let root = store.underlying(input)?;
+        let layout = match *store.node(root)? {
             Ty::Basic(kind) => {
                 let size = match kind.canonical() {
                     BasicKind::Bool | BasicKind::Int8 | BasicKind::Uint8 => 1,
@@ -59,11 +74,11 @@ impl TypeArena<'_> {
                     BasicKind::Int
                     | BasicKind::Uint
                     | BasicKind::Uintptr
-                    | BasicKind::UnsafePointer => word,
+                    | BasicKind::UnsafePointer => self.word,
                     BasicKind::String => {
                         return Some(Layout {
-                            size: 2 * word,
-                            align: word,
+                            size: 2 * self.word,
+                            align: self.word,
                         });
                     }
                     _ => return None,
@@ -75,39 +90,40 @@ impl TypeArena<'_> {
                 };
                 Layout {
                     size,
-                    align: align.min(max_align),
+                    align: align.min(self.max_align),
                 }
             }
-            Ty::Pointer(_) | Ty::Map { .. } | Ty::Chan { .. } | Ty::Signature { .. } => Layout {
-                size: word,
-                align: word,
+            Ty::Pointer(_) | Ty::Map { .. } | Ty::Chan { .. } | Ty::Signature(_) => Layout {
+                size: self.word,
+                align: self.word,
             },
             Ty::Slice(_) => Layout {
-                size: 3 * word,
-                align: word,
+                size: 3 * self.word,
+                align: self.word,
             },
-            Ty::Interface { .. } => Layout {
-                size: 2 * word,
-                align: word,
+            Ty::Interface(_) => Layout {
+                size: 2 * self.word,
+                align: self.word,
             },
             Ty::Array { length, element } => {
-                let element = self.layout_inner(element, word, max_align, depth + 1)?;
+                let element = self.layout_inner(store, element, depth + 1)?;
                 Layout {
                     size: element.size.checked_mul(i64::try_from(length).ok()?)?,
                     align: element.align,
                 }
             }
-            Ty::Struct { fields, .. } => {
-                let fields = self.fields.get(fields)?.to_vec();
+            Ty::Struct(_) => {
+                let fields = store.struct_data(root)?.fields.clone();
+                let fields = store.fields_slice(root, fields)?.to_vec();
                 let mut offset = 0;
                 let count = fields.len();
                 let mut align = if count == 0 {
-                    self.atomic_alignment(input).unwrap_or(1)
+                    atomic_alignment(store, input).unwrap_or(1)
                 } else {
                     1
                 };
                 for (index, field) in fields.iter().enumerate() {
-                    let layout = self.layout_inner(field.ty, word, max_align, depth + 1)?;
+                    let layout = self.layout_inner(store, field.ty, depth + 1)?;
                     offset = align_to(offset, layout.align)?;
                     align = align.max(layout.align);
                     let size = if index + 1 == count && offset > 0 && layout.size == 0 {
@@ -126,33 +142,22 @@ impl TypeArena<'_> {
         };
         Some(layout)
     }
+}
 
-    /// Compiler-recognized marker declarations; spelling alone is insufficient.
-    fn atomic_alignment(&self, input: TypeId) -> Option<i64> {
-        let (decl, _, _) = self.named_declaration(input)?;
-        matches!(
-            self.workspace.import_path(decl.file)?.as_str(),
-            "sync/atomic" | "internal/runtime/atomic"
-        )
-        .then_some(())?;
-        match decl.symbol.name.as_str() {
-            "align64" => Some(8),
-            "align128" => Some(16),
-            _ => None,
-        }
+impl<'a> Sizes<'a> for StdSizes {
+    fn layout(&mut self, store: &mut TypeStore<'a>, input: TypeId) -> Option<Layout> {
+        self.layout_inner(store, input, 0)
     }
 
-    pub(crate) fn struct_layout(&mut self, input: TypeId) -> Option<StructLayout> {
-        let layout = self.layout(input)?;
-        let root = self.underlying(input)?;
-        let Ty::Struct { fields, .. } = self.nodes.get(usize::from(root.0))?.clone() else {
-            return None;
-        };
-        let fields = self.fields.get(fields)?.to_vec();
+    fn struct_layout(&mut self, store: &mut TypeStore<'a>, input: TypeId) -> Option<StructLayout> {
+        let layout = self.layout(store, input)?;
+        let root = store.underlying(input)?;
+        let fields = store.struct_data(root)?.fields.clone();
+        let fields = store.fields_slice(root, fields)?.to_vec();
         let mut result = Vec::with_capacity(fields.len());
         let mut offset = 0;
         for field in fields {
-            let layout = self.layout(field.ty)?;
+            let layout = self.layout(store, field.ty)?;
             offset = align_to(offset, layout.align)?;
             result.push(FieldLayout {
                 name: field.name,
@@ -166,5 +171,30 @@ impl TypeArena<'_> {
             layout,
             fields: result,
         })
+    }
+}
+
+/// Compiler-recognized marker declarations; spelling alone is insufficient.
+fn atomic_alignment(store: &TypeStore<'_>, input: TypeId) -> Option<i64> {
+    let (decl, _, _) = store.named_declaration(input)?;
+    matches!(
+        store.workspace.import_path(decl.file)?.as_str(),
+        "sync/atomic" | "internal/runtime/atomic"
+    )
+    .then_some(())?;
+    match decl.symbol.name.as_str() {
+        "align64" => Some(8),
+        "align128" => Some(16),
+        _ => None,
+    }
+}
+
+impl<'a> TypeStore<'a> {
+    pub(crate) fn layout(&mut self, input: TypeId) -> Option<Layout> {
+        StdSizes::from_store(self)?.layout(self, input)
+    }
+
+    pub(crate) fn struct_layout(&mut self, input: TypeId) -> Option<StructLayout> {
+        StdSizes::from_store(self)?.struct_layout(self, input)
     }
 }

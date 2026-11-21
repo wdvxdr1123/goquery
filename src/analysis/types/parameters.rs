@@ -19,16 +19,21 @@ pub(super) struct LocalParameter<'a> {
 impl<'a> TypeArena<'a> {
     pub(crate) fn push_symbolic_parameter(&mut self, origin: &Path, name: &str) -> Option<TypeId> {
         let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
-        let index = self.local_parameters.len();
+        let index = self.local.local_parameters.len();
         if index >= 32 {
             return None;
         }
-        let bytes: usize = self.local_parameters.iter().map(|p| p.name.len()).sum();
+        let bytes: usize = self
+            .local
+            .local_parameters
+            .iter()
+            .map(|p| p.name.len())
+            .sum();
         if bytes.checked_add(name.len())? > super::MAX_BYTES {
             return None;
         }
-        let ty = self.push(Ty::Parameter(index))?;
-        self.local_parameters.push(LocalParameter {
+        let ty = self.push_type_param(index)?;
+        self.local.local_parameters.push(LocalParameter {
             origin,
             selection: index,
             name: name.to_owned(),
@@ -40,6 +45,7 @@ impl<'a> TypeArena<'a> {
 
     pub(super) fn local_parameter(&self, ty: TypeId) -> Option<(&Path, usize, &str)> {
         let parameter = self
+            .local
             .local_parameters
             .iter()
             .find(|p| p.ty == ty && p.ready)?;
@@ -64,23 +70,28 @@ impl<'a> TypeArena<'a> {
             if environment.iter().any(|(name, _)| *name == formal.name) {
                 return None;
             }
-            let previous = self.local_parameters.iter().position(|parameter| {
+            let previous = self.local.local_parameters.iter().position(|parameter| {
                 parameter.origin == origin && parameter.selection == formal.selection
             });
             let index = if let Some(index) = previous {
-                self.local_parameters[index].ready.then_some(())?;
+                self.local.local_parameters[index].ready.then_some(())?;
                 index
             } else {
-                let index = self.local_parameters.len();
+                let index = self.local.local_parameters.len();
                 if index >= 32 {
                     return None;
                 }
-                let bytes: usize = self.local_parameters.iter().map(|p| p.name.len()).sum();
+                let bytes: usize = self
+                    .local
+                    .local_parameters
+                    .iter()
+                    .map(|p| p.name.len())
+                    .sum();
                 if bytes.checked_add(formal.name.len())? > super::MAX_BYTES {
                     return None;
                 }
-                let ty = self.push(Ty::Parameter(index))?;
-                self.local_parameters.push(LocalParameter {
+                let ty = self.push_type_param(index)?;
+                self.local.local_parameters.push(LocalParameter {
                     origin,
                     selection: formal.selection,
                     name: formal.name.to_owned(),
@@ -89,12 +100,12 @@ impl<'a> TypeArena<'a> {
                 });
                 index
             };
-            environment.push((formal.name, self.local_parameters[index].ty));
+            environment.push((formal.name, self.local.local_parameters[index].ty));
             imports.push(index);
         }
         if imports
             .iter()
-            .all(|index| self.local_parameters[*index].ready)
+            .all(|index| self.local.local_parameters[*index].ready)
         {
             return self.parse_in_internal(origin, source, file_offset, &environment);
         }
@@ -110,10 +121,7 @@ impl<'a> TypeArena<'a> {
         if let Some(receiver) = receiver {
             let base = self.import_receiver_parameters(origin, receiver, &environment)?;
             let root = self.underlying(base)?;
-            if matches!(
-                self.nodes[usize::from(root.0)],
-                Ty::Pointer(_) | Ty::Interface { .. }
-            ) {
+            if matches!(self.node(root)?, Ty::Pointer(_) | Ty::Interface(_)) {
                 return None;
             }
         }
@@ -121,7 +129,7 @@ impl<'a> TypeArena<'a> {
         // Failed/recursive imports stay unready: later operands must not reuse
         // facts from a declaration whose checking never completed.
         for index in imports {
-            self.local_parameters[index].ready = true;
+            self.local.local_parameters[index].ready = true;
         }
         Some(ty)
     }
@@ -138,12 +146,7 @@ impl<'a> TypeArena<'a> {
         }
         let mut pending: Vec<_> = bounds
             .iter()
-            .filter(|(ty, _)| {
-                !self
-                    .parameter_constraints
-                    .iter()
-                    .any(|(previous, _)| previous == ty)
-            })
+            .filter(|(ty, _)| !self.pool_for(*ty).parameter_constraints.contains_key(ty))
             .copied()
             .collect();
         while !pending.is_empty() {
@@ -151,16 +154,16 @@ impl<'a> TypeArena<'a> {
             let mut remaining = Vec::new();
             for (ty, text) in pending {
                 self.step()?;
-                if let Some(constraint) = self.constraint(origin, text, environment) {
-                    if self.parameter_constraints.len() >= self.node_limit {
-                        return None;
+                match self.constraint_checked(origin, text, environment) {
+                    super::CheckOutcome::Ok(constraint) => {
+                        let pool = self.pool_for_mut(ty);
+                        if pool.parameter_constraints.len() >= pool.node_limit {
+                            return None;
+                        }
+                        pool.parameter_constraints.insert(ty, constraint);
                     }
-                    self.parameter_constraints.push((ty, constraint));
-                } else {
-                    if self.invalid_type {
-                        return None;
-                    }
-                    remaining.push((ty, text));
+                    super::CheckOutcome::Invalid(()) => return None,
+                    super::CheckOutcome::Unknown(_) => remaining.push((ty, text)),
                 }
             }
             if remaining.len() == before {

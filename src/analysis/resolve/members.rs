@@ -1,7 +1,7 @@
 //! Source-backed member descriptions, separate from canonical object identity.
 use super::exported;
-use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::obj::{DeclId, MemberDeclId, MethodOrigin, NamedObject, ObjectRef};
+use crate::analysis::engine::budget::MAX_BYTES;
+use crate::analysis::engine::obj::{DeclId, MemberDeclId, MethodOrigin, NamedObject, ObjectRef};
 use crate::index::IndexedSymbol;
 use crate::syntax::{AggregateMember, MemberKind, TokenKind};
 use crate::text::SourceMap;
@@ -115,7 +115,7 @@ impl<'a> MemberIds<'a> {
                 return None;
             }
             let span = member.owner.end..member.owner.declaration()?.end;
-            if span.len() > crate::analysis::budget::MAX_BYTES
+            if span.len() > crate::analysis::engine::budget::MAX_BYTES
                 || self.bytes.saturating_add(span.len()) > 64 * 1024
             {
                 return None;

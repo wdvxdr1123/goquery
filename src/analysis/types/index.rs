@@ -106,7 +106,7 @@ impl TypeArena<'_> {
         input: Operand,
     ) -> Result<IndexProjection, CheckError<IndexError>> {
         let root = self.underlying(input.ty).ok_or(Unknown)?;
-        if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if !matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
             return self.index_term(input, root);
         }
         let set = self.parameter_set(root).ok_or(Unknown)?;
@@ -154,13 +154,13 @@ impl TypeArena<'_> {
         input: Operand,
         mut root: TypeId,
     ) -> Result<IndexProjection, CheckError<IndexError>> {
-        let pointer = if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
+        let pointer = if let Ty::Pointer(element) = *self.node(root).ok_or(Unknown)? {
             root = self.underlying(element).ok_or(Unknown)?;
             true
         } else {
             false
         };
-        let (key, element, mode, bound) = match self.nodes[usize::from(root.0)].clone() {
+        let (key, element, mode, bound) = match *self.node(root).ok_or(Unknown)? {
             Ty::Map { key, value } if !pointer => (Some(key), value, Mode::Value, None),
             Ty::Array { length, element } => (
                 None,
@@ -216,7 +216,7 @@ impl TypeArena<'_> {
             return Err(Unknown);
         }
         let root = self.underlying(index.ty).ok_or(Unknown)?;
-        if matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if matches!(self.node(root).ok_or(Unknown)?, Ty::TypeParam(_)) {
             if index.mode == Mode::Constant {
                 return Err(Unknown);
             }
@@ -226,7 +226,7 @@ impl TypeArena<'_> {
                 Err(Invalid(NonInteger))
             };
         }
-        let Ty::Basic(kind) = self.nodes[usize::from(root.0)] else {
+        let Ty::Basic(kind) = *self.node(root).ok_or(Unknown)? else {
             return Err(Invalid(NonInteger));
         };
         if kind.untyped() && kind.numeric_rank().is_none() {
@@ -250,7 +250,7 @@ impl TypeArena<'_> {
                 Unknown
             }
         })?;
-        let fits = super::operand::representable(Constant::Int(value), BasicKind::Int, int_bits);
+        let fits = super::constant::representable(Constant::Int(value), BasicKind::Int, int_bits);
         if kind.untyped() && !fits {
             let reason = if kind.integer() {
                 ConstAssignError::Overflow
@@ -270,12 +270,12 @@ impl TypeArena<'_> {
 
     pub(crate) fn is_array(&mut self, input: super::TypeId) -> Option<bool> {
         let root = self.underlying(input)?;
-        Some(matches!(self.nodes[usize::from(root.0)], Ty::Array { .. }))
+        Some(matches!(self.node(root)?, Ty::Array { .. }))
     }
 
     fn slice_root(&mut self, input: TypeId) -> Option<TypeId> {
         let root = self.underlying(input)?;
-        if !matches!(self.nodes[usize::from(root.0)], Ty::Parameter(_)) {
+        if !matches!(self.node(root)?, Ty::TypeParam(_)) {
             return Some(root);
         }
         let terms = self.parameter_set(root)?.terms?;
@@ -284,7 +284,7 @@ impl TypeArena<'_> {
         for term in terms {
             self.step()?;
             let mut ty = self.underlying(term.ty)?;
-            if matches!(self.nodes[usize::from(ty.0)], Ty::Basic(kind) if kind.string()) {
+            if matches!(self.node(ty)?, Ty::Basic(kind) if kind.string()) {
                 has_string = true;
                 let byte = self.basic(BasicKind::Uint8)?;
                 ty = self.push(Ty::Slice(byte))?;
@@ -315,13 +315,13 @@ impl TypeArena<'_> {
             return Err(Unknown);
         }
         let mut root = self.slice_root(input.ty).ok_or(Unknown)?;
-        let pointer = if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
+        let pointer = if let Ty::Pointer(element) = *self.node(root).ok_or(Unknown)? {
             root = self.underlying(element).ok_or(Unknown)?;
             true
         } else {
             false
         };
-        let (ty, bound) = match self.nodes[usize::from(root.0)].clone() {
+        let (ty, bound) = match *self.node(root).ok_or(Unknown)? {
             Ty::Slice(_) if !pointer => (input.ty, None),
             Ty::Array { length, element } => {
                 if !pointer && input.mode != Mode::Variable {

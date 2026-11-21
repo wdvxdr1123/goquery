@@ -5,7 +5,7 @@ impl TypeArena<'_> {
     pub(crate) fn send_element(&mut self, input: TypeId) -> Option<TypeId> {
         self.step()?;
         let root = self.common_under(input)?;
-        match self.nodes.get(usize::from(root.0))? {
+        match self.node(root)? {
             Ty::Chan {
                 direction: Direction::Both | Direction::Send,
                 element,
@@ -20,7 +20,7 @@ impl TypeArena<'_> {
         let Ty::Chan {
             direction: Direction::Both | Direction::Receive,
             element,
-        } = self.nodes[usize::from(root.0)]
+        } = *self.node(root)?
         else {
             return None;
         };
@@ -43,13 +43,13 @@ impl TypeArena<'_> {
             return None;
         }
         let mut root = self.common_under(input.ty)?;
-        let pointer = if let Ty::Pointer(element) = self.nodes[usize::from(root.0)] {
+        let pointer = if let Ty::Pointer(element) = *self.node(root)? {
             root = self.underlying(element)?;
             true
         } else {
             false
         };
-        match self.nodes[usize::from(root.0)].clone() {
+        match *self.node(root)? {
             Ty::Array { element, .. } => {
                 if result == 0 {
                     self.basic(BasicKind::Int)
@@ -80,28 +80,25 @@ impl TypeArena<'_> {
             Ty::Basic(kind) if !pointer && kind.integer() && count == 1 => {
                 self.default_operand(input, int_bits)
             }
-            Ty::Signature {
-                parameters,
-                results,
-                variadic: false,
-            } if !pointer && parameters.len() == 1 && results.is_empty() => {
-                let callback = self.arguments[parameters.start];
-                let callback = self.common_under(callback)?;
-                let Ty::Signature {
-                    parameters,
-                    results,
-                    variadic: false,
-                } = self.nodes[usize::from(callback.0)].clone()
-                else {
-                    return None;
-                };
-                if parameters.len() > 2 || count > parameters.len() || results.len() != 1 {
+            Ty::Signature(_) if !pointer => {
+                let sig = self.signature_data(root)?.clone();
+                if sig.variadic || sig.parameters.len() != 1 || !sig.results.is_empty() {
                     return None;
                 }
-                let returned = self.arguments[results.start];
+                let callback = self.arg_range(root, sig.parameters)[0];
+                let callback = self.common_under(callback)?;
+                let cb_sig = self.signature_data(callback)?.clone();
+                if cb_sig.variadic
+                    || cb_sig.parameters.len() > 2
+                    || count > cb_sig.parameters.len()
+                    || cb_sig.results.len() != 1
+                {
+                    return None;
+                }
+                let returned = self.arg_range(callback, cb_sig.results)[0];
                 let boolean = self.basic(BasicKind::Bool)?;
                 self.identical(returned, boolean)?.then_some(())?;
-                Some(self.arguments[parameters.start + result])
+                Some(self.arg_range(callback, cb_sig.parameters)[result])
             }
             _ => None,
         }

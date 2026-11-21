@@ -1,37 +1,32 @@
 //! Request-local document highlights resolved by symbol identity.
 //!
 //! Occurrences are matched by resolved identity, never by spelling alone. The
-//! read/write classification follows the shared source occurrence roles plus a
-//! bounded query-local scan of function bodies for declaration and assignment
+//! read/write classification follows checked region facts plus a bounded
+//! query-local walk of checked function bodies for declaration and assignment
 //! write positions. Return/result control-flow highlights mirror the reference
 //! server's identifier behavior. No source, syntax tree or identity survives the
-//! request; bodies are parsed on demand and only spans are retained.
+//! request; bodies are parsed at most once inside region checking and only spans
+//! are retained.
 mod format;
-use super::navigation::anonymous;
+use super::navigation;
 use super::{Context, SourceRange};
-use crate::analysis::obj::{MemberDeclId, MethodOrigin, ObjectRef};
-use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
-use crate::analysis::scope::{self, DeclarationKind, Locals};
-use crate::analysis::sema::{Identity, IdentityResolver};
-use crate::analysis::types::TypeForm;
-use crate::index::{IndexedSymbol as Symbol, SymbolKind};
-use crate::syntax::{BlockTree, Expr, ExprId, ExprKind, Lexer, StmtKind, TokenKind};
+use crate::analysis::sema::{
+    MemberDeclId, MethodOrigin, RegionView, SemanticObject, SemanticSession, SymbolOrigin, VarKind,
+};
+use crate::syntax::{BlockTree, ExprId, ExprKind, Lexer, Parameter, StmtKind, TokenKind};
 use crate::text::SourceMap;
 use crate::workspace::Workspace;
 pub(crate) use format::collect_region_format_directives;
-use std::collections::HashMap;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_HIGHLIGHTS: usize = 4096;
 const MAX_FUNCTIONS: usize = 512;
 const MAX_STATEMENTS: usize = 16_384;
 const MAX_NESTED_SCOPES: usize = 64;
-const MAX_COMPOSITES: usize = 256;
-const MAX_SHAPE_BYTES: usize = 16 * 1024;
-const MAX_PRINTF_CALLS: usize = 1024;
 const MAX_FORMAT_BYTES: usize = 16 * 1024;
+const MAX_PRINTF_CALLS: usize = 1024;
 const MAX_FORMAT_OPS: usize = 256;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,7 +41,6 @@ pub(crate) struct HighlightRow {
     pub(crate) kind: HighlightKind,
 }
 
-/// Coarse object class shared by every occurrence of the matched identity.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Class {
     Variable,
@@ -54,267 +48,452 @@ enum Class {
 }
 
 #[derive(PartialEq, Eq)]
-enum Canonical<'a> {
-    Local(Range<usize>),
-    /// A type-switch case variable: the shared guard declaration cannot
-    /// distinguish clauses, so the clause scope start is part of the identity.
-    Case {
-        selection: usize,
-        scope_start: usize,
-    },
-    Global(&'a Path, usize),
-    Member(MemberDeclId<'a>),
-    /// A field/method whose declaration is only reachable through the native
-    /// selector-chain fallback: identity is the declaration site itself, so two
-    /// structurally identical anonymous literals never merge.
-    Declaration {
-        file: PathBuf,
-        start: usize,
-    },
-    /// A method declared by the universe `error` interface; the pinned SDK
-    /// declaration is the only owner and the method spelling identifies it.
-    BuiltinMethod(&'a str),
+enum Target<'a> {
+    Object(SemanticObject<'a>),
     Package(&'a str),
-    Unresolved(&'a str),
     Singleton,
+    Unresolved(&'a str),
 }
 
-struct Cursor<'a> {
-    selection: Range<usize>,
-    spelling: &'a str,
-    canonical: Canonical<'a>,
-    class: Class,
-    /// Declaration site of a member cursor, used to compare identities that the
-    /// spelling resolver reaches through different paths.
-    declaration: Option<(PathBuf, usize)>,
-    /// True when the cursor identity came from the native fallback, so candidate
-    /// occurrences must be resolved through the same fallback.
-    fallback: bool,
-    /// Symbol kind when the cursor is a package-level object; selector candidates
-    /// can only resolve to methods (kind 6) for this identity.
-    global_kind: Option<SymbolKind>,
+struct Candidate<'a> {
+    span: Range<usize>,
+    after_dot: bool,
+    is_import_alias: bool,
+    is_package_clause: bool,
+    obj: Option<SemanticObject<'a>>,
+    def_site: bool,
+    embedded_struct_field: bool,
+    in_writes: bool,
+    in_declarations: bool,
+    is_type_switch_guard: bool,
+    in_sig_name: bool,
 }
 
 impl<'a> Context<'a> {
     /// Highlight rows in file order, or `None` for the protocol's null result.
     pub(crate) fn document_highlights(
-        &self,
+        &mut self,
         offset: usize,
         cancellation: Option<&AtomicBool>,
     ) -> Result<Option<Vec<HighlightRow>>, (i32, String)> {
-        let source = self.source();
-        let Some(selection) = crate::analysis::scope::occurrences::identifier_at(source, offset)
-        else {
-            return Ok(self.format_highlights(offset));
+        let (doc, sema) = self.split();
+        let workspace = doc.workspace();
+        let file = doc.file();
+        let source = doc.source();
+        let Some(selection) = identifier_at(source, offset) else {
+            return Ok(format_highlights(workspace, sema, file, source, offset));
         };
-        let file = self.file();
-        let workspace = self.workspace;
         let Some(stub) = workspace.files.get(file) else {
             return Ok(None);
         };
+        let Some(interned_file) = sema.intern_file(file) else {
+            return Ok(None);
+        };
         let trace = workspace.trace.queries.then(std::time::Instant::now);
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
         let spelling = &source[selection.clone()];
-        let Ok(analysis) = Occurrences::for_name(source, stub, spelling) else {
-            return Ok(None);
-        };
-        let analysis_time = phase.map(|phase| phase.elapsed());
-        let Some(cursor_name) = analysis.names.iter().find(|name| name.span == selection) else {
-            return Ok(self.format_highlights(offset));
-        };
-        let candidates = analysis.names.len();
-        if candidates > MAX_HIGHLIGHTS {
+        let scan = lexical_scan(source, spelling);
+        if scan.candidates.len() > MAX_HIGHLIGHTS {
             return Ok(None);
         }
-        let lone_selectors = lone_selectors(stub, &analysis);
+        let Some(cursor_idx) = scan
+            .candidates
+            .iter()
+            .position(|(span, _)| *span == selection)
+        else {
+            return Ok(format_highlights(workspace, sema, file, source, offset));
+        };
+        crate::error::check_cancelled(cancellation)?;
+
+        let mut import_aliases = Vec::new();
+        crate::syntax::visit_import_spans(source, |spec| {
+            if let Some(alias) = spec.alias
+                && matches!(&source[alias.clone()], name if name != "." && name != "_")
+            {
+                import_aliases.push(alias);
+            }
+        });
+
+        let mut candidates: Vec<Candidate<'_>> = scan
+            .candidates
+            .into_iter()
+            .map(|(span, after_dot)| Candidate {
+                is_import_alias: import_aliases.contains(&span),
+                is_package_clause: scan.package_name.as_ref() == Some(&span),
+                span,
+                after_dot,
+                obj: None,
+                def_site: false,
+                embedded_struct_field: false,
+                in_writes: false,
+                in_declarations: false,
+                is_type_switch_guard: false,
+                in_sig_name: false,
+            })
+            .collect();
+
+        for symbol in &stub.symbols {
+            if (symbol.is_var() || symbol.is_const())
+                && let Ok(index) = candidates.binary_search_by_key(&symbol.start, |c| c.span.start)
+                && candidates[index].span.end == symbol.end
+            {
+                candidates[index].in_declarations = true;
+                candidates[index].in_writes = true;
+            }
+        }
+
         let map = SourceMap::new(source);
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let mut scanner = Scanner::new(self, source);
-        scanner.collect(stub, cancellation)?;
-        let collect_time = phase.map(|phase| phase.elapsed());
-        if scanner.exhausted {
+        let mut functions = Vec::new();
+        let mut collector = BodyCollector {
+            source,
+            statements: 0,
+            functions: &mut functions,
+            nested: 0,
+            exhausted: false,
+        };
+
+        let mut aborted = false;
+        let region_spans: Vec<[u32; 2]> = candidates
+            .iter()
+            .map(|c| [c.span.start as u32, c.span.end as u32])
+            .collect();
+
+        sema.visit_matching_file_regions(
+            interned_file,
+            source,
+            |[rs, re]| {
+                ((rs as usize) <= offset && offset <= (re as usize))
+                    || has_span_in(&region_spans, rs, re)
+            },
+            |view| {
+                if aborted || collector.exhausted {
+                    return;
+                }
+                if cancellation.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+                    aborted = true;
+                    return;
+                }
+                let r_span = view.span();
+                let lo = candidates.partition_point(|c| c.span.start < r_span[0] as usize);
+                let hi = candidates.partition_point(|c| c.span.end <= r_span[1] as usize);
+                let slice = &mut candidates[lo..hi];
+                collector.visit_region(view, offset, slice);
+                for candidate in slice {
+                    resolve_region_candidate(
+                        workspace,
+                        interned_file,
+                        source,
+                        &map,
+                        view,
+                        candidate,
+                    );
+                }
+            },
+        );
+        crate::error::check_cancelled(cancellation)?;
+        if aborted || collector.exhausted {
             return Ok(None);
         }
-        let phase = workspace.trace.queries.then(std::time::Instant::now);
-        let cursor = cursor(
-            self,
-            workspace,
-            file,
-            source,
-            &map,
-            &analysis,
-            &lone_selectors,
-            cursor_name,
-            &scanner.declarations,
-            scanner.package_name.as_ref(),
-        );
-        let cursor_time = phase.map(|phase| phase.elapsed());
-        let loop_phase = workspace.trace.queries.then(std::time::Instant::now);
+
+        let imported = sema.imported_name(interned_file, spelling);
+        let (target, class) = cursor_target(&candidates[cursor_idx], spelling, imported);
+
         if workspace.trace.queries {
             eprintln!(
-                "highlight cursor {:?} canonical {} declaration {:?}",
-                cursor.spelling,
-                canonical_tag(&cursor.canonical),
-                cursor.declaration
+                "highlight cursor {:?} target {}",
+                spelling,
+                target_tag(&target)
             );
         }
+
         let mut rows: Vec<(Range<usize>, HighlightKind)> = Vec::new();
-        let printf_calls = format::calls_at(self, file, source, offset);
+        let printf_calls = format::calls_at(workspace, sema, file, source, offset);
         printf_rows(&printf_calls, source, offset, &mut rows);
-        control_flow_rows(&scanner.functions, offset, &mut rows);
-        if let Canonical::Package(alias) = &cursor.canonical
+        control_flow_rows(&functions, offset, &mut rows);
+        if let Target::Package(alias) = &target
             && let Some(span) = import_spec_span(workspace, source, file, alias)
         {
             rows.push((span, HighlightKind::Text));
         }
-        let mut resolver = IdentityResolver::new(workspace, file);
-        let mut match_time = std::time::Duration::ZERO;
-        let mut extra_time = std::time::Duration::ZERO;
-        let mut kind_time = std::time::Duration::ZERO;
-        for name in &analysis.names {
+
+        for candidate in &candidates {
             crate::error::check_cancelled(cancellation)?;
-            if !candidate_role_plausible(&cursor, name) {
+            if !candidate_matches(&target, candidate, selection.clone(), spelling, imported) {
                 continue;
             }
-            let phase = workspace.trace.queries.then(std::time::Instant::now);
-            let declaration_decision = cursor.declaration.as_ref().and_then(|target| {
-                if matches!(cursor.canonical, Canonical::Declaration { .. }) {
-                    Some(inline_declaration_matches(self, file, source, name, target))
-                } else if matches!(
-                    cursor.canonical,
-                    Canonical::Member(_) | Canonical::Global(_, _)
-                ) && matches!(name.role, Role::Member(_) | Role::ExpressionMember(_))
-                {
-                    anonymous::field_at(self, file, source, &name.span)
-                        .map(|field| field.file == target.0 && field.selection.start == target.1)
-                } else {
-                    None
-                }
-            });
-            let matched = match declaration_decision {
-                Some(decision) => decision,
-                None => occurrence_matches(
-                    self,
-                    workspace,
-                    file,
-                    source,
-                    &map,
-                    &analysis,
-                    &lone_selectors,
-                    &mut resolver,
-                    name,
-                    &cursor,
-                    scanner.package_name.as_ref(),
-                ),
-            };
-            if let Some(phase) = phase {
-                let elapsed = phase.elapsed();
-                match_time += elapsed;
-                if elapsed > std::time::Duration::from_millis(2) {
-                    eprintln!(
-                        "highlight slow candidate {:?} role {} match {elapsed:?}",
-                        name.span,
-                        role_tag_str(&name.role)
-                    );
-                }
-            }
-            let phase = workspace.trace.queries.then(std::time::Instant::now);
-            if !matched {
-                let matches_builtin = match &cursor.canonical {
-                    Canonical::BuiltinMethod(method) => {
-                        builtin_interface_method(self, workspace, file, source, &analysis, name)
-                            == Some(*method)
-                    }
-                    _ => false,
-                };
-                let matches_declaration = cursor.declaration.as_ref().is_some_and(|target| {
-                    if matches!(cursor.canonical, Canonical::Member(_)) {
-                        // Named member identity already compares the complete
-                        // declaration; only anonymous/interface declarations
-                        // need the fallback declaration walk.
-                        false
-                    } else if matches!(cursor.canonical, Canonical::Declaration { .. }) {
-                        inline_declaration_matches(self, file, source, name, target)
-                    } else {
-                        occurrence_declaration(self, file, source, &analysis, &mut resolver, name)
-                            .as_ref()
-                            == Some(target)
-                    }
-                });
-                let matches_fallback = cursor.fallback
-                    && matches!(
-                        cursor.canonical,
-                        Canonical::Global(_, _)
-                            | Canonical::Declaration { .. }
-                            | Canonical::Member(_)
-                    )
-                    && fallback_member(self, workspace, file, source, &analysis, name)
-                        .is_some_and(|(canonical, _, _)| canonical == cursor.canonical);
-                if !(matches_builtin || matches_declaration || matches_fallback) {
-                    if let Some(phase) = phase {
-                        extra_time += phase.elapsed();
-                    }
-                    continue;
-                }
-            }
-            if let Some(phase) = phase {
-                let elapsed = phase.elapsed();
-                extra_time += elapsed;
-                if elapsed > std::time::Duration::from_millis(2) {
-                    eprintln!(
-                        "highlight slow candidate {:?} role {} extra {elapsed:?}",
-                        name.span,
-                        role_tag_str(&name.role)
-                    );
-                }
-            }
-            let phase = workspace.trace.queries.then(std::time::Instant::now);
-            let kind = occurrence_kind(name, &cursor, &scanner.writes);
-            let kind = if kind != HighlightKind::Write
-                && matches!(name.role, Role::LiteralKey(_) | Role::LiteralElementKey(_))
-                && matches!(
-                    cursor.canonical,
-                    Canonical::Member(_)
-                        | Canonical::Declaration { .. }
-                        | Canonical::BuiltinMethod(_)
-                ) {
-                // A matched keyed element of a member identity writes that
-                // field; the match already proved the concrete member.
-                HighlightKind::Write
-            } else {
-                kind
-            };
-            if let Some(phase) = phase {
-                kind_time += phase.elapsed();
-            }
-            if !rows.iter().any(|(span, _)| *span == name.span) {
-                rows.push((name.span.clone(), kind));
-            }
+            let kind = highlight_kind(candidate, &target, class);
+            push_row(&mut rows, candidate.span.clone(), kind);
         }
+
         if rows.is_empty() {
             return Ok(None);
         }
         if let Some(start) = trace {
             eprintln!(
-                "highlight timing: analysis {analysis_time:?}; collect {collect_time:?}; cursor {cursor_time:?}; loop {:?}; match {match_time:?}; extra {extra_time:?}; kind {kind_time:?}; names {} candidates {candidates}; rows {}; total {:?}",
-                loop_phase.map_or(std::time::Duration::ZERO, |phase| phase.elapsed()),
-                analysis.names.len(),
+                "highlight timing: candidates {}; rows {}; total {:?}",
+                candidates.len(),
                 rows.len(),
                 start.elapsed()
             );
         }
         Ok(finish_rows(&map, rows))
     }
+}
 
-    /// Literal/operator cursors do not have identifier identities. Their
-    /// format associations still come from the same bounded signature scan.
-    fn format_highlights(&self, offset: usize) -> Option<Vec<HighlightRow>> {
-        let source = self.source();
-        let calls = format::calls_at(self, self.file(), source, offset);
-        let mut rows = Vec::new();
-        printf_rows(&calls, source, offset, &mut rows);
-        finish_rows(&SourceMap::new(source), rows)
+struct LexicalScan {
+    package_name: Option<Range<usize>>,
+    candidates: Vec<(Range<usize>, bool)>,
+}
+
+fn lexical_scan(source: &str, spelling: &str) -> LexicalScan {
+    let mut package_name = None;
+    let mut after_package = false;
+    let mut candidates = Vec::new();
+    let mut prev_dot = false;
+    for token in Lexer::new(source) {
+        if token.kind == TokenKind::Package && package_name.is_none() {
+            after_package = true;
+            prev_dot = false;
+            continue;
+        }
+        if after_package {
+            after_package = false;
+            if token.kind == TokenKind::Ident {
+                package_name = Some(token.span.clone());
+            }
+        }
+        if token.kind == TokenKind::Ident && &source[token.span.clone()] == spelling {
+            candidates.push((token.span, prev_dot));
+        }
+        prev_dot = token.kind == TokenKind::Period;
     }
+    LexicalScan {
+        package_name,
+        candidates,
+    }
+}
+
+fn identifier_at(source: &str, offset: usize) -> Option<Range<usize>> {
+    let mut found = None;
+    for token in Lexer::new(source) {
+        if token.span.start > offset {
+            break;
+        }
+        if token.kind == TokenKind::Ident && offset <= token.span.end {
+            found = Some(token.span);
+        }
+    }
+    found
+}
+
+fn has_span_in(spans: &[[u32; 2]], start: u32, end: u32) -> bool {
+    let idx = spans.partition_point(|s| s[0] < start);
+    spans.get(idx).is_some_and(|s| s[1] <= end)
+}
+
+fn resolve_region_candidate<'a>(
+    workspace: &'a Workspace,
+    file: &'a Path,
+    source: &str,
+    map: &SourceMap<'_>,
+    view: &RegionView<'_, 'a>,
+    candidate: &mut Candidate<'a>,
+) {
+    let key = [candidate.span.start as u32, candidate.span.end as u32];
+    if let Some(member) =
+        navigation::member_declaration_target(workspace, file, source, &candidate.span, map)
+        && member.embedded
+    {
+        candidate.obj = Some(SemanticObject::Field(MemberDeclId {
+            file,
+            owner: Some(member.owner),
+            selection: key,
+            embedded: true,
+            builtin: false,
+        }));
+        candidate.def_site = true;
+        candidate.embedded_struct_field = true;
+        return;
+    }
+    if let Some(def) = view.def_by_span(key) {
+        candidate.obj = Some(def);
+        candidate.def_site = true;
+    } else if let Some(use_obj) = view.use_or_selection(key) {
+        candidate.obj = Some(use_obj);
+        candidate.def_site = false;
+    }
+}
+
+fn cursor_target<'a>(
+    cursor: &Candidate<'a>,
+    spelling: &'a str,
+    imported: bool,
+) -> (Target<'a>, Class) {
+    if cursor.is_type_switch_guard {
+        return (Target::Unresolved(spelling), Class::Text);
+    }
+    if let Some(obj) = cursor.obj {
+        if matches!(obj, SemanticObject::PkgName { .. }) {
+            return (Target::Package(spelling), Class::Text);
+        }
+        return (Target::Object(obj), object_class(obj));
+    }
+    if cursor.is_import_alias && !cursor.is_package_clause && imported {
+        return (Target::Package(spelling), Class::Text);
+    }
+    if spelling == "_" && cursor.in_declarations {
+        return (Target::Singleton, Class::Text);
+    }
+    (Target::Unresolved(spelling), Class::Text)
+}
+
+fn object_class(obj: SemanticObject<'_>) -> Class {
+    match obj {
+        SemanticObject::Var { .. } => Class::Variable,
+        SemanticObject::Field(member) => {
+            if member
+                .owner
+                .and_then(|owner| owner.type_info.as_ref())
+                .is_some_and(|info| info.is_interface())
+            {
+                Class::Text
+            } else {
+                Class::Variable
+            }
+        }
+        _ => Class::Text,
+    }
+}
+
+fn target_tag(target: &Target<'_>) -> &'static str {
+    match target {
+        Target::Object(obj) => match obj {
+            SemanticObject::Var {
+                origin: SymbolOrigin::Local { .. },
+                case_scope: Some(_),
+                ..
+            } => "case",
+            SemanticObject::Var {
+                origin: SymbolOrigin::Local { .. },
+                ..
+            }
+            | SemanticObject::Const(SymbolOrigin::Local { .. })
+            | SemanticObject::TypeName {
+                origin: SymbolOrigin::Local { .. },
+                ..
+            }
+            | SemanticObject::TypeParam { .. }
+            | SemanticObject::Label { .. } => "local",
+            SemanticObject::Field(_) => "field",
+            SemanticObject::Method(MethodOrigin::Interface(m)) if m.builtin => "builtin-method",
+            SemanticObject::Method(MethodOrigin::Interface(_)) => "interface-method",
+            SemanticObject::Func(_)
+            | SemanticObject::Method(MethodOrigin::Concrete(_))
+            | SemanticObject::Var { .. }
+            | SemanticObject::Const(_)
+            | SemanticObject::TypeName { .. } => "global",
+            SemanticObject::PkgName { .. } => "package",
+            SemanticObject::BuiltinFunction(_)
+            | SemanticObject::BuiltinType(_)
+            | SemanticObject::BuiltinConst(_)
+            | SemanticObject::Nil => "builtin",
+        },
+        Target::Package(_) => "package",
+        Target::Singleton => "singleton",
+        Target::Unresolved(_) => "unresolved",
+    }
+}
+
+fn candidate_matches<'a>(
+    target: &Target<'a>,
+    candidate: &Candidate<'a>,
+    cursor_span: Range<usize>,
+    spelling: &str,
+    imported: bool,
+) -> bool {
+    match target {
+        Target::Singleton => candidate.span == cursor_span,
+        Target::Package(_) => {
+            !candidate.is_package_clause
+                && imported
+                && (candidate.is_import_alias
+                    || matches!(candidate.obj, Some(SemanticObject::PkgName { .. })))
+        }
+        Target::Object(target_obj) => candidate
+            .obj
+            .is_some_and(|other| target_obj.same_reference_target(other, true)),
+        Target::Unresolved(_) => {
+            if candidate.is_type_switch_guard {
+                return true;
+            }
+            if candidate.obj.is_some()
+                || candidate.is_import_alias
+                || candidate.after_dot
+                || candidate.in_sig_name
+                || (spelling == "_" && candidate.in_declarations)
+            {
+                return false;
+            }
+            if imported && !candidate.is_package_clause {
+                return false;
+            }
+            true
+        }
+    }
+}
+
+fn highlight_kind(candidate: &Candidate<'_>, target: &Target<'_>, class: Class) -> HighlightKind {
+    if candidate.in_writes {
+        return HighlightKind::Write;
+    }
+    if candidate.embedded_struct_field {
+        return match target {
+            Target::Object(SemanticObject::Field(_)) => HighlightKind::Read,
+            _ => HighlightKind::Text,
+        };
+    }
+    if matches!(candidate.obj, Some(SemanticObject::Field(_)))
+        && !candidate.def_site
+        && !candidate.after_dot
+    {
+        return HighlightKind::Write;
+    }
+    if candidate.is_import_alias {
+        return HighlightKind::Text;
+    }
+    if candidate.def_site
+        && matches!(
+            candidate.obj,
+            Some(
+                SemanticObject::Var {
+                    kind: VarKind::Param | VarKind::ResultVar | VarKind::Receiver,
+                    ..
+                } | SemanticObject::Field(_)
+                    | SemanticObject::Method(MethodOrigin::Interface(_))
+                    | SemanticObject::PkgName { .. }
+            )
+        )
+    {
+        return HighlightKind::Text;
+    }
+    match class {
+        Class::Variable => HighlightKind::Read,
+        Class::Text => HighlightKind::Text,
+    }
+}
+
+/// Literal/operator cursors do not have identifier identities. Their
+/// format associations still come from the same bounded signature scan.
+fn format_highlights(
+    workspace: &Workspace,
+    sema: &mut SemanticSession<'_>,
+    file: &Path,
+    source: &str,
+    offset: usize,
+) -> Option<Vec<HighlightRow>> {
+    let calls = format::calls_at(workspace, sema, file, source, offset);
+    let mut rows = Vec::new();
+    printf_rows(&calls, source, offset, &mut rows);
+    finish_rows(&SourceMap::new(source), rows)
 }
 
 fn finish_rows(
@@ -341,376 +520,6 @@ fn finish_rows(
     });
     result.truncate(MAX_HIGHLIGHTS);
     Some(result)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn cursor<'a, 'workspace: 'a>(
-    context: &Context<'workspace>,
-    workspace: &'a Workspace,
-    file: &'a Path,
-    source: &'a str,
-    map: &SourceMap<'_>,
-    analysis: &Occurrences,
-    lone_selectors: &[usize],
-    name: &Name,
-    declarations: &[Range<usize>],
-    package_name: Option<&Range<usize>>,
-) -> Cursor<'a> {
-    let spelling = &source[name.span.clone()];
-    // The guard identifier has no go/types object; each clause declares its
-    // own implicit variable. Keep the declaration in gopls' nil-object group.
-    let identity = if type_switch_guard_declaration(analysis, source, name) {
-        None
-    } else if let Some(ObjectRef::Method(MethodOrigin::Concrete(declaration))) =
-        selector_object(context, file, source, lone_selectors, name)
-        && let Some((path, _)) = workspace.files.get_key_value(declaration.file)
-    {
-        Some(Identity::Global(path, declaration.symbol))
-    } else {
-        context.resolve_identity(
-            &mut IdentityResolver::new(workspace, file),
-            analysis,
-            source,
-            name,
-        )
-    };
-    let member =
-        super::navigation::member_declaration_target(workspace, file, source, &name.span, map)
-            .and_then(|member| member.identity_in_source(source));
-    let imported = scope::universe::imported_name(workspace, file, spelling);
-    // Embedded struct fields resolve to their implicit field variable, while an
-    // embedded interface member is a type reference. The member inventory
-    // distinguishes the two forms before the type resolution is used.
-    let embedded_member = matches!(name.role, Role::Field | Role::EmbeddedType(_));
-    let identity_member = match &identity {
-        Some(Identity::Member(member)) => Some(*member),
-        _ => None,
-    };
-    let (canonical, class) = match (identity, member) {
-        (_, Some(member)) if embedded_member => (Canonical::Member(member), member_class(member)),
-        (Some(Identity::Global(path, symbol)), _) => (
-            Canonical::Global(path, symbol.start),
-            if symbol.is_var() {
-                Class::Variable
-            } else {
-                Class::Text
-            },
-        ),
-        (Some(Identity::Member(member)), _) => (Canonical::Member(member), member_class(member)),
-        (Some(Identity::Local(selection)), _) => {
-            if name.span != selection
-                && let Some(binding) = analysis.locals.resolve_at(name.span.start, spelling)
-                && binding.selection == selection
-                && analysis.locals.switch_case(binding).is_some()
-            {
-                (
-                    Canonical::Case {
-                        selection: selection.start,
-                        scope_start: binding.scope_start(),
-                    },
-                    Class::Variable,
-                )
-            } else {
-                let class = analysis
-                    .locals
-                    .definition_at(&selection, spelling)
-                    .filter(|binding| binding.selection == selection)
-                    .map_or(Class::Variable, |binding| match binding.declaration {
-                        DeclarationKind::Constant
-                        | DeclarationKind::Type
-                        | DeclarationKind::TypeParameter => Class::Text,
-                        DeclarationKind::Value | DeclarationKind::Variadic => Class::Variable,
-                    });
-                (Canonical::Local(selection), class)
-            }
-        }
-        (None, Some(member)) => (Canonical::Member(member), member_class(member)),
-        (None, None) => {
-            let package_clause = package_name == Some(&name.span);
-            if imported && !package_clause {
-                (Canonical::Package(spelling), Class::Text)
-            } else if spelling == "_" && declarations.contains(&name.span) {
-                (Canonical::Singleton, Class::Text)
-            } else {
-                (Canonical::Unresolved(spelling), Class::Text)
-            }
-        }
-    };
-    let mut declaration = identity_member
-        .and_then(|member| member_offset(workspace, member))
-        .or_else(|| member.and_then(|member| member_offset(workspace, member)));
-    let (mut canonical, mut class) = (canonical, class);
-    let mut fallback = false;
-    if matches!(canonical, Canonical::Unresolved(_))
-        && let Some((fallback_canonical, fallback_class, fallback_declaration)) =
-            fallback_member(context, workspace, file, source, analysis, name)
-    {
-        canonical = fallback_canonical;
-        class = fallback_class;
-        fallback = true;
-        if fallback_declaration.is_some() {
-            declaration = fallback_declaration;
-        }
-        if let Canonical::Declaration { file, start } = &canonical {
-            declaration = Some((file.clone(), *start));
-        }
-    }
-    let mut global_kind = None;
-    if let Canonical::Global(path, start) = &canonical
-        && let Some(stub) = workspace.files.get(*path)
-        && let Some(symbol) = stub.symbols.iter().find(|symbol| symbol.start == *start)
-    {
-        global_kind = Some(symbol.kind);
-    }
-    if fallback && matches!(canonical, Canonical::Global(_, _)) {
-        // The native fallback only produces Global identities for method
-        // declarations (receiver_member Method), never for other globals.
-        global_kind = Some(SymbolKind::Method);
-    }
-    Cursor {
-        selection: name.span.clone(),
-        spelling,
-        canonical,
-        class,
-        declaration,
-        fallback,
-        global_kind,
-    }
-}
-
-/// A full check is shared by candidates in the same declaration. Checking
-/// a new prefix at each such offset would repeat earlier statements.
-fn lone_selectors(stub: &crate::index::IndexedFile, analysis: &Occurrences) -> Vec<usize> {
-    let mut positions = Vec::new();
-    for symbol in stub.symbols.iter().filter(|symbol| symbol.is_callable()) {
-        let Some(declaration) = symbol.declaration() else {
-            continue;
-        };
-        let first = analysis
-            .names
-            .partition_point(|candidate| candidate.span.start < declaration.start);
-        if let Some(name) = analysis.names.get(first)
-            && declaration.contains(&name.span.start)
-            && matches!(name.role, Role::Member(_) | Role::ExpressionMember(_))
-            && analysis
-                .names
-                .get(first + 1)
-                .is_none_or(|candidate| !declaration.contains(&candidate.span.start))
-        {
-            positions.push(name.span.start);
-            if positions.len() == MAX_HIGHLIGHTS {
-                break;
-            }
-        }
-    }
-    positions.sort_unstable();
-    positions.dedup();
-    positions
-}
-
-fn selector_object<'a>(
-    context: &Context<'a>,
-    file: &Path,
-    source: &str,
-    lone_selectors: &[usize],
-    name: &Name,
-) -> Option<ObjectRef<'a>> {
-    lone_selectors.binary_search(&name.span.start).ok()?;
-    // Reuse the prefix check from go-to-definition. Later statements cannot
-    // change a selector's identity once the checker has proved it here.
-    let span = [name.span.start as u32, name.span.end as u32];
-    context.with_sema(|sema| sema.resolve_navigation_offset(file, source, span))
-}
-
-fn canonical_tag(canonical: &Canonical<'_>) -> &'static str {
-    match canonical {
-        Canonical::Local(_) => "local",
-        Canonical::Case { .. } => "case",
-        Canonical::Global(_, _) => "global",
-        Canonical::Member(_) => "member",
-        Canonical::Declaration { .. } => "declaration",
-        Canonical::BuiltinMethod(_) => "builtin-method",
-        Canonical::Package(_) => "package",
-        Canonical::Unresolved(_) => "unresolved",
-        Canonical::Singleton => "singleton",
-    }
-}
-
-fn role_tag_str(role: &Role) -> &'static str {
-    match role {
-        Role::Name => "name",
-        Role::Type(_) => "type",
-        Role::EmbeddedType(_) => "embedded",
-        Role::Member(Some(_)) => "member-qualified",
-        Role::Member(None) => "member",
-        Role::ExpressionMember(_) => "expression-member",
-        Role::LiteralKey(_) => "literal-key",
-        Role::LiteralElementKey(_) => "literal-element-key",
-        Role::BlankDeclaration { .. } => "blank",
-        Role::Parameter => "parameter",
-        Role::Result => "result",
-        Role::Field => "field",
-        Role::FieldDeclaration(_) => "field-declaration",
-        Role::Namespace => "namespace",
-        Role::Ignored => "ignored",
-    }
-}
-
-/// Cheap role prefilter: the spelling filter already bounds candidates, and a
-/// selector role can never resolve to a local or a non-method global identity,
-/// so those candidate sets never need a full resolution. Literal keys may be
-/// map/array expressions and must reach the type-directed resolver.
-fn candidate_role_plausible(cursor: &Cursor<'_>, name: &Name) -> bool {
-    let selector = matches!(name.role, Role::Member(_) | Role::ExpressionMember(_));
-    match &cursor.canonical {
-        Canonical::Local(_) | Canonical::Case { .. } => !selector,
-        Canonical::Global(_, _) => {
-            // Package-qualified uses are member-shaped but can denote any
-            // imported global; a bare selector chain resolves to a method only.
-            !selector
-                || cursor.global_kind == Some(SymbolKind::Method)
-                || matches!(name.role, Role::Member(Some(_)))
-        }
-        Canonical::Member(_) | Canonical::Declaration { .. } | Canonical::BuiltinMethod(_) => {
-            matches!(
-                name.role,
-                Role::Member(_)
-                    | Role::ExpressionMember(_)
-                    | Role::LiteralKey(_)
-                    | Role::LiteralElementKey(_)
-                    | Role::Field
-                    | Role::EmbeddedType(_)
-                    | Role::FieldDeclaration(_)
-            )
-        }
-        Canonical::Package(_) | Canonical::Unresolved(_) | Canonical::Singleton => true,
-    }
-}
-
-/// Compare only declaration identities established by the native checker.
-fn inline_declaration_matches(
-    context: &Context<'_>,
-    file: &Path,
-    source: &str,
-    name: &Name,
-    target: &(PathBuf, usize),
-) -> bool {
-    anonymous::field_at(context, file, source, &name.span)
-        .is_some_and(|field| field.file == target.0 && field.selection.start == target.1)
-}
-
-/// Declaration site (file and byte offset of the name) of a resolved member.
-fn member_offset(_workspace: &Workspace, member: MemberDeclId<'_>) -> Option<(PathBuf, usize)> {
-    (member.selection[0] < member.selection[1])
-        .then(|| (member.file.to_path_buf(), member.selection[0] as usize))
-}
-
-/// Anonymous fields and universe methods retain their checked declaration identity.
-#[allow(clippy::type_complexity)]
-fn fallback_member<'a, 'workspace: 'a>(
-    context: &Context<'workspace>,
-    workspace: &'a Workspace,
-    file: &'a Path,
-    source: &'a str,
-    analysis: &Occurrences,
-    name: &Name,
-) -> Option<(Canonical<'a>, Class, Option<(PathBuf, usize)>)> {
-    if let Some(builtin) =
-        builtin_interface_method(context, workspace, file, source, analysis, name)
-    {
-        return Some((Canonical::BuiltinMethod(builtin), Class::Text, None));
-    }
-    let field = anonymous::occurrence_field(context, file, source, analysis, name)?;
-    Some((
-        Canonical::Declaration {
-            file: field.file,
-            start: field.selection.start,
-        },
-        Class::Variable,
-        None,
-    ))
-}
-
-/// The universe `error` interface method behind an interface-valued selector.
-fn builtin_interface_method<'a>(
-    context: &Context<'_>,
-    _workspace: &Workspace,
-    file: &Path,
-    source: &'a str,
-    _analysis: &Occurrences,
-    name: &Name,
-) -> Option<&'a str> {
-    let spelling = source.get(name.span.clone())?;
-    if spelling != "Error" {
-        return None;
-    }
-    if !matches!(
-        &name.role,
-        Role::Member(Some(_)) | Role::ExpressionMember(_)
-    ) {
-        return None;
-    }
-    let s = u32::try_from(name.span.start).ok()?;
-    let e = u32::try_from(name.span.end).ok()?;
-    context.with_sema(|sema| {
-        let (region, _) = sema.region_and_arena_at(file, source, s, None)?;
-        let sel = region.selection_by_span([s, e])?;
-        let crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(
-            m,
-        )) = sel.obj
-        else {
-            return None;
-        };
-        m.builtin.then_some(spelling)
-    })
-}
-
-/// Declaration site of any occurrence, including the native fallbacks.
-fn occurrence_declaration<'identity, 'workspace: 'identity>(
-    context: &Context<'workspace>,
-    file: &Path,
-    source: &str,
-    analysis: &Occurrences,
-    resolver: &mut IdentityResolver<'identity>,
-    name: &Name,
-) -> Option<(PathBuf, usize)> {
-    let workspace = context.workspace();
-    match context.resolve_identity(resolver, analysis, source, name) {
-        Some(Identity::Member(member)) => return member_offset(workspace, member),
-        // Non-member identities can never equal a field/method declaration
-        // identity, so the expensive declaration lookup is unnecessary.
-        Some(_) => return None,
-        None => {}
-    }
-    if matches!(
-        name.role,
-        Role::Field | Role::EmbeddedType(_) | Role::FieldDeclaration(_)
-    ) {
-        let map = SourceMap::new(source);
-        if let Some(member) =
-            super::navigation::member_declaration_target(workspace, file, source, &name.span, &map)
-                .and_then(|member| member.identity_in_source(source))
-        {
-            return member_offset(workspace, member);
-        }
-    }
-    match fallback_member(context, workspace, file, source, analysis, name) {
-        Some((_, _, Some(declaration))) => Some(declaration),
-        Some((Canonical::Declaration { file, start }, _, _)) => Some((file, start)),
-        _ => None,
-    }
-}
-
-fn member_class(member: MemberDeclId<'_>) -> Class {
-    if member
-        .owner
-        .and_then(|owner| owner.type_info.as_ref())
-        .is_some_and(|info| info.is_interface())
-    {
-        Class::Text
-    } else {
-        Class::Variable
-    }
 }
 
 /// The import spec span matched by a package-name cursor: the alias identifier
@@ -763,194 +572,365 @@ fn import_spec_span(
     None
 }
 
-/// A candidate occurrence matches when its resolved identity is the cursor's.
-#[allow(clippy::too_many_arguments)]
-fn occurrence_matches<'identity, 'workspace: 'identity>(
-    context: &Context<'workspace>,
-    workspace: &Workspace,
-    file: &Path,
-    source: &str,
-    map: &SourceMap<'_>,
-    analysis: &Occurrences,
-    lone_selectors: &[usize],
-    resolver: &mut IdentityResolver<'identity>,
-    name: &Name,
-    cursor: &Cursor<'_>,
-    package_name: Option<&Range<usize>>,
-) -> bool {
-    match &cursor.canonical {
-        Canonical::Singleton => name.span == cursor.selection,
-        Canonical::Package(alias) => {
-            if &source[name.span.clone()] != *alias
-                || !scope::universe::imported_name(workspace, file, alias)
-            {
-                return false;
-            }
-            match name.role {
-                Role::Namespace => package_name != Some(&name.span),
-                Role::Name => context
-                    .resolve_identity(resolver, analysis, source, name)
-                    .is_none(),
-                _ => false,
-            }
-        }
-        Canonical::Unresolved(spelling) => {
-            if &source[name.span.clone()] != *spelling {
-                return false;
-            }
-            if matches!(name.role, Role::Namespace) {
-                // Import aliases and qualifier uses are package identities; the
-                // package clause and blank imports stay in the nil-object group.
-                if scope::universe::imported_name(workspace, file, spelling)
-                    && package_name != Some(&name.span)
-                {
-                    return false;
-                }
-            } else if scope::universe::imported_name(workspace, file, spelling) {
-                // A qualifier use belongs to the package-name identity.
-                return false;
-            }
-            if !matches!(
-                name.role,
-                Role::Name | Role::Type(None) | Role::Namespace | Role::Member(None)
-            ) {
-                return false;
-            }
-            context
-                .resolve_identity(resolver, analysis, source, name)
-                .is_none()
-                || type_switch_guard_declaration(analysis, source, name)
-        }
-        Canonical::Global(path, start) => {
-            // A struct-embedded type identifier defines the implicit field
-            // variable, so it is not an occurrence of the type name.
-            if matches!(name.role, Role::EmbeddedType(_))
-                && super::navigation::member_declaration_target(
-                    workspace, file, source, &name.span, map,
-                )
-                .is_some()
-            {
-                return false;
-            }
-            if cursor.global_kind == Some(SymbolKind::Method)
-                && let Some(object) = selector_object(context, file, source, lone_selectors, name)
-            {
-                return matches!(object, ObjectRef::Method(MethodOrigin::Concrete(declaration))
-                    if declaration.file == *path && declaration.symbol.start == *start);
-            }
-            matches!(
-                context.resolve_identity(resolver, analysis, source, name),
-                Some(Identity::Global(other, symbol)) if other == *path && symbol.start == *start
-            )
-        }
-        Canonical::Member(target) => {
-            if let Some(Identity::Member(member)) =
-                context.resolve_identity(resolver, analysis, source, name)
-            {
-                return member == *target;
-            }
-            if matches!(name.role, Role::Field | Role::EmbeddedType(_))
-                && let Some(member) = super::navigation::member_declaration_target(
-                    workspace, file, source, &name.span, map,
-                )
-            {
-                return member
-                    .identity_in_source(source)
-                    .is_some_and(|member| member == *target);
-            }
-            false
-        }
-        Canonical::Local(selection) => matches!(
-            context.resolve_identity(resolver, analysis, source, name),
-            Some(Identity::Local(other)) if other == *selection
-        ),
-        Canonical::Declaration { .. } | Canonical::BuiltinMethod(_) => {
-            // Compared through the cursor's declaration/builtin-method identity.
-            false
-        }
-        Canonical::Case {
-            selection,
-            scope_start,
-        } => {
-            // The guard name is redeclared once per clause with the same
-            // selection span; the containing clause scope separates them. Only
-            // clause-body uses resolve, so the shared declaration itself stays
-            // out of the highlighted set, matching the reference server.
-            matches!(context.resolve_identity(resolver, analysis, source, name),
-                Some(Identity::Local(other)) if other.start == *selection)
-                && analysis
-                    .locals
-                    .resolve_at(name.span.start, &source[name.span.clone()])
-                    .is_some_and(|binding| {
-                        binding.selection.start == *selection
-                            && binding.scope_start() == *scope_start
-                    })
-        }
-    }
-}
-
-fn type_switch_guard_declaration(analysis: &Occurrences, source: &str, name: &Name) -> bool {
-    analysis
-        .locals
-        .definition_at(&name.span, &source[name.span.clone()])
-        .is_some_and(|binding| {
-            binding.selection == name.span && analysis.locals.switch_case(binding).is_some()
-        })
-}
-
-fn occurrence_kind(name: &Name, cursor: &Cursor<'_>, writes: &[Range<usize>]) -> HighlightKind {
-    if contains(writes, &name.span) {
-        return HighlightKind::Write;
-    }
-    if matches!(cursor.canonical, Canonical::Declaration { .. })
-        && matches!(name.role, Role::LiteralKey(_) | Role::LiteralElementKey(_))
-    {
-        // A keyed element of an anonymous struct literal writes that exact
-        // field declaration identified by the fallback.
-        return HighlightKind::Write;
-    }
-    match name.role {
-        Role::Parameter
-        | Role::Result
-        | Role::Field
-        | Role::FieldDeclaration(_)
-        | Role::Namespace => HighlightKind::Text,
-        Role::EmbeddedType(_) => match cursor.canonical {
-            Canonical::Member(_) => HighlightKind::Read,
-            _ => HighlightKind::Text,
-        },
-        _ => match cursor.class {
-            Class::Variable => HighlightKind::Read,
-            Class::Text => HighlightKind::Text,
-        },
-    }
-}
-
-fn contains(spans: &[Range<usize>], span: &Range<usize>) -> bool {
-    spans
-        .binary_search_by(|candidate| candidate.start.cmp(&span.start))
-        .ok()
-        .is_some_and(|index| spans[index] == *span)
-}
-
-/// Bounded query-local scan: declaration/assignment write positions and the
-/// return/result metadata needed for control-flow highlights.
-struct Scanner<'a, 'q> {
-    context: &'q Context<'a>,
-    workspace: &'a Workspace,
-    file: &'a Path,
-    source: &'q str,
-    writes: Vec<Range<usize>>,
-    declarations: Vec<Range<usize>>,
-    /// The package clause name; it is a nil-object identity even when it
-    /// spells an imported package's name.
-    package_name: Option<Range<usize>>,
-    functions: Vec<FunctionFacts>,
+struct BodyCollector<'s, 'f> {
+    source: &'s str,
     statements: usize,
-    composites: usize,
+    functions: &'f mut Vec<FunctionFacts>,
     nested: usize,
     exhausted: bool,
-    shapes: HashMap<String, Shape>,
+}
+
+impl<'s, 'f> BodyCollector<'s, 'f> {
+    fn visit_region(
+        &mut self,
+        view: &RegionView<'_, '_>,
+        offset: usize,
+        slice: &mut [Candidate<'_>],
+    ) {
+        let Some((sig_base, sig)) = view.syntax_signature() else {
+            return;
+        };
+        if !slice.is_empty() {
+            for param in sig
+                .receiver
+                .iter()
+                .chain(&sig.parameters)
+                .chain(&sig.results)
+            {
+                if let Some(name) = &param.name {
+                    let span = sig_base + name.start..sig_base + name.end;
+                    if let Ok(idx) = slice.binary_search_by_key(&span.start, |c| c.span.start)
+                        && slice[idx].span == span
+                    {
+                        slice[idx].in_sig_name = true;
+                    }
+                }
+            }
+        }
+        let Some((body_base, tree)) = view.syntax_body() else {
+            return;
+        };
+        let header = sig_base..body_base;
+        let body_end = view.span()[1] as usize;
+        let body_range = body_base..body_end;
+        if body_range.len() > crate::analysis::budget::MAX_BODY_BYTES {
+            self.exhausted = true;
+            return;
+        }
+        let collect_returns = header.contains(&offset) || body_range.contains(&offset);
+        if self.functions.len() >= MAX_FUNCTIONS {
+            if collect_returns {
+                self.exhausted = true;
+            }
+            return;
+        }
+        let mut facts = FunctionFacts {
+            body: body_range,
+            header,
+            results: if collect_returns && sig.diagnostics.is_empty() {
+                result_fields(&sig.results, sig_base)
+            } else {
+                Vec::new()
+            },
+            returns: Vec::new(),
+        };
+        self.walk_block(tree, body_base, collect_returns, &mut facts, slice);
+        self.collect_literals_in(tree, body_base, offset, slice);
+        if collect_returns {
+            self.functions.push(facts);
+        }
+    }
+
+    fn visit_literal(
+        &mut self,
+        sig_range: Range<usize>,
+        body_range: Range<usize>,
+        offset: usize,
+        slice: &mut [Candidate<'_>],
+    ) {
+        if self.exhausted {
+            return;
+        }
+        if body_range.len() > crate::analysis::budget::MAX_BODY_BYTES {
+            self.exhausted = true;
+            return;
+        }
+        if self.functions.len() >= MAX_FUNCTIONS {
+            self.exhausted = true;
+            return;
+        }
+        self.nested += 1;
+        if self.nested > MAX_NESTED_SCOPES {
+            self.exhausted = true;
+            return;
+        }
+        let Some(text) = self.source.get(body_range.clone()) else {
+            self.nested -= 1;
+            return;
+        };
+        let tree = crate::syntax::parse_block(text);
+        if !tree.diagnostics.is_empty() {
+            self.nested -= 1;
+            return;
+        }
+        let collect_returns = sig_range.contains(&offset) || body_range.contains(&offset);
+        let mut results = Vec::new();
+        if let Some(header_text) = self.source.get(sig_range.clone()) {
+            let parsed = crate::syntax::parse_literal_signature(header_text);
+            if parsed.diagnostics.is_empty() {
+                if !slice.is_empty() {
+                    for param in parsed.parameters.iter().chain(&parsed.results) {
+                        if let Some(name) = &param.name {
+                            let span = sig_range.start + name.start..sig_range.start + name.end;
+                            if let Ok(idx) =
+                                slice.binary_search_by_key(&span.start, |c| c.span.start)
+                                && slice[idx].span == span
+                            {
+                                slice[idx].in_sig_name = true;
+                            }
+                        }
+                    }
+                }
+                if collect_returns {
+                    results = result_fields(&parsed.results, sig_range.start);
+                }
+            }
+        }
+        let mut facts = FunctionFacts {
+            body: body_range.clone(),
+            header: sig_range,
+            results,
+            returns: Vec::new(),
+        };
+        self.walk_block(&tree, body_range.start, collect_returns, &mut facts, slice);
+        self.collect_literals_in(&tree, body_range.start, offset, slice);
+        if collect_returns {
+            self.functions.push(facts);
+        }
+        self.nested -= 1;
+    }
+
+    fn collect_literals_in(
+        &mut self,
+        tree: &BlockTree,
+        base: usize,
+        offset: usize,
+        slice: &mut [Candidate<'_>],
+    ) {
+        for expr in &tree.expressions {
+            if let ExprKind::FunctionLiteral { signature, body } = &expr.kind {
+                let sig_r = base + signature.start..base + signature.end;
+                let body_r = base + body.start..base + body.end;
+                let lo = slice.partition_point(|c| c.span.start < sig_r.start);
+                let hi = slice.partition_point(|c| c.span.end <= body_r.end);
+                if lo < hi || sig_r.contains(&offset) || body_r.contains(&offset) {
+                    self.visit_literal(sig_r, body_r, offset, &mut slice[lo..hi]);
+                }
+            }
+        }
+    }
+
+    fn walk_block(
+        &mut self,
+        tree: &BlockTree,
+        base: usize,
+        collect_returns: bool,
+        facts: &mut FunctionFacts,
+        slice: &mut [Candidate<'_>],
+    ) {
+        let mut pending = vec![tree.root];
+        while let Some(id) = pending.pop() {
+            if self.exhausted {
+                return;
+            }
+            self.statements += 1;
+            if self.statements > MAX_STATEMENTS {
+                self.exhausted = true;
+                return;
+            }
+            let Some(statement) = tree.statements.get(id.0) else {
+                continue;
+            };
+            match &statement.kind {
+                StmtKind::Block { statements } => pending.extend(statements.iter().copied()),
+                StmtKind::Assignment { left, operator, .. } => {
+                    for expression in left {
+                        self.mark_write(tree, base, *expression, slice);
+                    }
+                    if self.source.get(base + operator.start..base + operator.end) == Some(":=") {
+                        for expression in left {
+                            self.mark_declaration(tree, base, *expression, slice);
+                        }
+                    }
+                }
+                StmtKind::Increment { expression, .. } => {
+                    self.mark_write(tree, base, *expression, slice);
+                }
+                StmtKind::Send { channel, .. } => {
+                    self.mark_write(tree, base, *channel, slice);
+                }
+                StmtKind::Declaration { keyword, names, .. } => {
+                    if matches!(
+                        self.source.get(base + keyword.start..base + keyword.end),
+                        Some("var" | "const")
+                    ) {
+                        for name in names {
+                            let span = base + name.start..base + name.end;
+                            if let Ok(idx) =
+                                slice.binary_search_by_key(&span.start, |c| c.span.start)
+                                && slice[idx].span == span
+                            {
+                                slice[idx].in_writes = true;
+                                slice[idx].in_declarations = true;
+                            }
+                        }
+                    }
+                }
+                StmtKind::DeclarationGroup { declarations } => {
+                    pending.extend(declarations.iter().copied());
+                }
+                StmtKind::Return { values } if collect_returns => {
+                    let mut results = Vec::with_capacity(values.len());
+                    for value in values {
+                        let Some(span) = tree
+                            .expressions
+                            .get(value.0)
+                            .map(|expression| expression.span.clone())
+                        else {
+                            continue;
+                        };
+                        let mut eligible = Vec::new();
+                        eligible_spans(tree, *value, &mut eligible);
+                        results.push(ReturnExpr {
+                            span: base + span.start..base + span.end,
+                            eligible: eligible
+                                .into_iter()
+                                .map(|span| base + span.start..base + span.end)
+                                .collect(),
+                        });
+                    }
+                    facts.returns.push(ReturnFacts { results });
+                }
+                StmtKind::RangeClause { left, .. } => {
+                    for expression in left {
+                        self.mark_write(tree, base, *expression, slice);
+                        self.mark_declaration(tree, base, *expression, slice);
+                    }
+                }
+                StmtKind::RangeFor { clause, body } => pending.extend([*clause, *body]),
+                StmtKind::If {
+                    init,
+                    then_block,
+                    otherwise,
+                    ..
+                } => {
+                    pending.extend(init.iter().copied());
+                    pending.push(*then_block);
+                    pending.extend(otherwise.iter().copied());
+                }
+                StmtKind::For {
+                    init, post, body, ..
+                } => {
+                    pending.extend(init.iter().copied());
+                    pending.extend(post.iter().copied());
+                    pending.push(*body);
+                }
+                StmtKind::Switch { init, cases, .. } => {
+                    pending.extend(init.iter().copied());
+                    pending.extend(cases.iter().copied());
+                }
+                StmtKind::TypeSwitch {
+                    init, guard, cases, ..
+                } => {
+                    if let Some(guard_stmt) = tree.statements.get(guard.0)
+                        && let StmtKind::Assignment { left, operator, .. } = &guard_stmt.kind
+                        && self.source.get(base + operator.start..base + operator.end) == Some(":=")
+                    {
+                        for expr_id in left {
+                            if let Some(expr) = tree.expressions.get(expr_id.0)
+                                && matches!(expr.kind, ExprKind::Name)
+                            {
+                                let span = base + expr.span.start..base + expr.span.end;
+                                if let Ok(idx) =
+                                    slice.binary_search_by_key(&span.start, |c| c.span.start)
+                                    && slice[idx].span == span
+                                {
+                                    slice[idx].is_type_switch_guard = true;
+                                }
+                            }
+                        }
+                    }
+                    pending.extend(init.iter().copied());
+                    pending.push(*guard);
+                    pending.extend(cases.iter().copied());
+                }
+                StmtKind::Select { cases } => pending.extend(cases.iter().copied()),
+                StmtKind::CommunicationCase {
+                    communication,
+                    statements,
+                } => {
+                    pending.extend(communication.iter().copied());
+                    pending.extend(statements.iter().copied());
+                }
+                StmtKind::Case { statements, .. } => pending.extend(statements.iter().copied()),
+                StmtKind::Label { statement, .. } => pending.extend(statement.iter().copied()),
+                _ => {}
+            }
+        }
+    }
+
+    fn mark_write(&self, tree: &BlockTree, base: usize, id: ExprId, slice: &mut [Candidate<'_>]) {
+        let Some(expression) = tree.expressions.get(id.0) else {
+            return;
+        };
+        match &expression.kind {
+            ExprKind::Name => {
+                let span = base + expression.span.start..base + expression.span.end;
+                if let Ok(idx) = slice.binary_search_by_key(&span.start, |c| c.span.start)
+                    && slice[idx].span == span
+                {
+                    slice[idx].in_writes = true;
+                }
+            }
+            ExprKind::Selector { field, .. } => {
+                let span = base + field.start..base + field.end;
+                if let Ok(idx) = slice.binary_search_by_key(&span.start, |c| c.span.start)
+                    && slice[idx].span == span
+                {
+                    slice[idx].in_writes = true;
+                }
+            }
+            ExprKind::Unary { operator, operand } => {
+                if self.source.get(operator.start..operator.end) == Some("*") {
+                    self.mark_write(tree, base, *operand, slice);
+                }
+            }
+            ExprKind::Parenthesized { expression } => {
+                self.mark_write(tree, base, *expression, slice);
+            }
+            _ => {}
+        }
+    }
+
+    fn mark_declaration(
+        &self,
+        tree: &BlockTree,
+        base: usize,
+        id: ExprId,
+        slice: &mut [Candidate<'_>],
+    ) {
+        let Some(expression) = tree.expressions.get(id.0) else {
+            return;
+        };
+        if matches!(expression.kind, ExprKind::Name) {
+            let span = base + expression.span.start..base + expression.span.end;
+            if let Ok(idx) = slice.binary_search_by_key(&span.start, |c| c.span.start)
+                && slice[idx].span == span
+            {
+                slice[idx].in_declarations = true;
+            }
+        }
+    }
 }
 
 /// A printf-like call whose format literal and argument spans are query facts.
@@ -993,657 +973,7 @@ struct ReturnExpr {
     eligible: Vec<Range<usize>>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-enum Shape {
-    Struct,
-    Sequence(String),
-    Map(String, String),
-    Other,
-}
-
-impl<'a, 'q> Scanner<'a, 'q> {
-    fn new(context: &'q Context<'a>, source: &'q str) -> Self {
-        Self {
-            context,
-            workspace: context.workspace,
-            file: context.file(),
-            source,
-            writes: Vec::new(),
-            declarations: Vec::new(),
-            package_name: None,
-            functions: Vec::new(),
-            statements: 0,
-            composites: 0,
-            nested: 0,
-            exhausted: false,
-            shapes: HashMap::new(),
-        }
-    }
-
-    fn collect(
-        &mut self,
-        stub: &crate::index::IndexedFile,
-        cancellation: Option<&AtomicBool>,
-    ) -> Result<(), (i32, String)> {
-        self.collect_package_name();
-        for symbol in &stub.symbols {
-            crate::error::check_cancelled(cancellation)?;
-            if self.exhausted {
-                break;
-            }
-            match symbol.kind {
-                SymbolKind::Variable | SymbolKind::Constant => {
-                    self.declarations.push(symbol.start..symbol.end);
-                    self.writes.push(symbol.start..symbol.end);
-                    self.initializer_keys(symbol);
-                }
-                SymbolKind::Function | SymbolKind::Method => {
-                    if let (Some(declaration), Some(body)) = (symbol.declaration(), symbol.body()) {
-                        self.function(declaration.start..body.start, body);
-                    }
-                }
-                _ => {}
-            }
-        }
-        self.writes.sort_by_key(|span| span.start);
-        self.writes.dedup();
-        self.declarations.sort_by_key(|span| span.start);
-        self.declarations.dedup();
-        Ok(())
-    }
-
-    /// Records the package clause name: it stays a nil-object identity even
-    /// when it spells an imported package's name.
-    fn collect_package_name(&mut self) {
-        for token in Lexer::new(self.source) {
-            if token.kind == TokenKind::Package {
-                self.package_name = Lexer::new(&self.source[token.span.end..])
-                    .find(|token| token.kind == TokenKind::Ident)
-                    .map(|next| token.span.end + next.span.start..token.span.end + next.span.end);
-                return;
-            }
-        }
-    }
-
-    /// Package-level variable/constant initializers may contain struct literals.
-    fn initializer_keys(&mut self, symbol: &Symbol) {
-        let Some(declaration) = symbol.declaration() else {
-            return;
-        };
-        let Some(text) = self.source.get(declaration.clone()) else {
-            return;
-        };
-        let Some(offset) = top_level_assign(text) else {
-            return;
-        };
-        let start = declaration.start + offset + 1;
-        let Some(initializer) = self.source.get(start..declaration.end) else {
-            return;
-        };
-        let parsed = crate::syntax::parse_expression(initializer);
-        if parsed.diagnostics.is_empty() {
-            let mut visited = vec![false; parsed.nodes.len()];
-            // Parents are stored after their children; process them first so
-            // elided literal elements inherit the expected element type.
-            for id in (0..parsed.nodes.len()).rev() {
-                self.collect_expression(&parsed.nodes, start, ExprId(id), None, 0, &mut visited);
-            }
-        }
-    }
-
-    fn function(&mut self, header: Range<usize>, body: Range<usize>) {
-        if body.len() > crate::analysis::budget::MAX_BODY_BYTES {
-            self.exhausted = true;
-            return;
-        }
-        if !self.enter_function() {
-            return;
-        }
-        let Some(text) = self.source.get(body.clone()) else {
-            return;
-        };
-        let tree = crate::syntax::parse_block(text);
-        if !tree.diagnostics.is_empty() {
-            return;
-        }
-        let mut facts = FunctionFacts {
-            body: body.clone(),
-            header: header.clone(),
-            results: Vec::new(),
-            returns: Vec::new(),
-        };
-        if let Some(header) = self.source.get(header) {
-            let signature = crate::syntax::parse_signature(header);
-            if signature.diagnostics.is_empty() {
-                facts.results = result_fields(&signature.results, facts.header.start);
-            }
-        }
-        self.walk_statements(&tree, body.start, &mut facts);
-        self.walk_tree(&tree, body.start);
-        self.functions.push(facts);
-    }
-
-    fn literal(&mut self, signature: Range<usize>, body: Range<usize>) {
-        if body.len() > crate::analysis::budget::MAX_BODY_BYTES {
-            self.exhausted = true;
-            return;
-        }
-        if !self.enter_function() {
-            self.exhausted = self.functions.len() >= MAX_FUNCTIONS;
-            return;
-        }
-        self.nested += 1;
-        if self.nested > MAX_NESTED_SCOPES {
-            self.exhausted = true;
-            return;
-        }
-        let Some(text) = self.source.get(body.clone()) else {
-            return;
-        };
-        let tree = crate::syntax::parse_block(text);
-        if !tree.diagnostics.is_empty() {
-            return;
-        }
-        let mut facts = FunctionFacts {
-            body: body.clone(),
-            header: signature.clone(),
-            results: Vec::new(),
-            returns: Vec::new(),
-        };
-        if let Some(header) = self.source.get(signature.clone()) {
-            let parsed = crate::syntax::parse_literal_signature(header);
-            if parsed.diagnostics.is_empty() {
-                facts.results = result_fields(&parsed.results, signature.start);
-            }
-        }
-        self.walk_statements(&tree, body.start, &mut facts);
-        self.walk_tree(&tree, body.start);
-        self.functions.push(facts);
-        self.nested -= 1;
-    }
-
-    fn enter_function(&mut self) -> bool {
-        if self.exhausted || self.functions.len() >= MAX_FUNCTIONS {
-            return false;
-        }
-        true
-    }
-
-    fn walk_tree(&mut self, tree: &BlockTree, base: usize) {
-        let mut visited = vec![false; tree.expressions.len()];
-        // Children are stored before their parents; processing parents first
-        // lets elided literal elements inherit the expected element type.
-        for id in (0..tree.expressions.len()).rev() {
-            self.collect_expression(&tree.expressions, base, ExprId(id), None, 0, &mut visited);
-        }
-    }
-
-    fn walk_statements(&mut self, tree: &BlockTree, base: usize, facts: &mut FunctionFacts) {
-        let mut pending = vec![tree.root];
-        while let Some(id) = pending.pop() {
-            if self.exhausted {
-                return;
-            }
-            self.statements += 1;
-            if self.statements > MAX_STATEMENTS {
-                self.exhausted = true;
-                return;
-            }
-            let Some(statement) = tree.statements.get(id.0) else {
-                continue;
-            };
-            match &statement.kind {
-                StmtKind::Block { statements } => pending.extend(statements.iter().copied()),
-                StmtKind::Assignment { left, operator, .. } => {
-                    for expression in left {
-                        self.write_position(tree, base, *expression);
-                    }
-                    if self.source.get(base + operator.start..base + operator.end) == Some(":=") {
-                        for expression in left {
-                            self.declaration_position(tree, base, *expression);
-                        }
-                    }
-                }
-                StmtKind::Increment { expression, .. } => {
-                    self.write_position(tree, base, *expression)
-                }
-                StmtKind::Send { channel, .. } => self.write_position(tree, base, *channel),
-                StmtKind::Declaration { keyword, names, .. } => {
-                    if matches!(
-                        self.source.get(base + keyword.start..base + keyword.end),
-                        Some("var" | "const")
-                    ) {
-                        for name in names {
-                            self.writes.push(base + name.start..base + name.end);
-                            self.declarations.push(base + name.start..base + name.end);
-                        }
-                    }
-                }
-                StmtKind::DeclarationGroup { declarations } => {
-                    pending.extend(declarations.iter().copied())
-                }
-                StmtKind::Return { values } => {
-                    let mut results = Vec::with_capacity(values.len());
-                    for value in values {
-                        let Some(span) = tree
-                            .expressions
-                            .get(value.0)
-                            .map(|expression| expression.span.clone())
-                        else {
-                            continue;
-                        };
-                        let mut eligible = Vec::new();
-                        eligible_spans(tree, *value, &mut eligible);
-                        results.push(ReturnExpr {
-                            span: base + span.start..base + span.end,
-                            eligible: eligible
-                                .into_iter()
-                                .map(|span| base + span.start..base + span.end)
-                                .collect(),
-                        });
-                    }
-                    facts.returns.push(ReturnFacts { results });
-                }
-                StmtKind::RangeClause { left, .. } => {
-                    for expression in left {
-                        self.write_position(tree, base, *expression);
-                        self.declaration_position(tree, base, *expression);
-                    }
-                }
-                StmtKind::RangeFor { clause, body } => pending.extend([*clause, *body]),
-                StmtKind::If {
-                    init,
-                    then_block,
-                    otherwise,
-                    ..
-                } => {
-                    pending.extend(init.iter().copied());
-                    pending.push(*then_block);
-                    pending.extend(otherwise.iter().copied());
-                }
-                StmtKind::For {
-                    init, post, body, ..
-                } => {
-                    pending.extend(init.iter().copied());
-                    pending.extend(post.iter().copied());
-                    pending.push(*body);
-                }
-                StmtKind::Switch { init, cases, .. } => {
-                    pending.extend(init.iter().copied());
-                    pending.extend(cases.iter().copied());
-                }
-                StmtKind::TypeSwitch {
-                    init, guard, cases, ..
-                } => {
-                    pending.extend(init.iter().copied());
-                    pending.push(*guard);
-                    pending.extend(cases.iter().copied());
-                }
-                StmtKind::Select { cases } => pending.extend(cases.iter().copied()),
-                StmtKind::CommunicationCase {
-                    communication,
-                    statements,
-                } => {
-                    pending.extend(communication.iter().copied());
-                    pending.extend(statements.iter().copied());
-                }
-                StmtKind::Case { statements, .. } => pending.extend(statements.iter().copied()),
-                StmtKind::Label { statement, .. } => pending.extend(statement.iter().copied()),
-                _ => {}
-            }
-        }
-    }
-
-    /// gopls marks a name assignment target when it is a name, selector field,
-    /// dereference operand or parenthesized target.
-    fn write_position(&mut self, tree: &BlockTree, base: usize, id: ExprId) {
-        let Some(expression) = tree.expressions.get(id.0) else {
-            return;
-        };
-        match &expression.kind {
-            ExprKind::Name => self
-                .writes
-                .push(base + expression.span.start..base + expression.span.end),
-            ExprKind::Selector { field, .. } => {
-                self.writes.push(base + field.start..base + field.end)
-            }
-            ExprKind::Unary { operator, operand } => {
-                if self.source.get(operator.start..operator.end) == Some("*") {
-                    self.write_position(tree, base, *operand);
-                }
-            }
-            ExprKind::Parenthesized { expression } => self.write_position(tree, base, *expression),
-            _ => {}
-        }
-    }
-
-    fn declaration_position(&mut self, tree: &BlockTree, base: usize, id: ExprId) {
-        let Some(expression) = tree.expressions.get(id.0) else {
-            return;
-        };
-        if matches!(expression.kind, ExprKind::Name) {
-            self.declarations
-                .push(base + expression.span.start..base + expression.span.end);
-        }
-    }
-
-    fn collect_expression(
-        &mut self,
-        expressions: &[Expr],
-        base: usize,
-        id: ExprId,
-        expected: Option<&Shape>,
-        depth: usize,
-        visited: &mut [bool],
-    ) {
-        if self.exhausted || depth > MAX_NESTED_SCOPES {
-            self.exhausted |= depth > MAX_NESTED_SCOPES;
-            return;
-        }
-        let index = id.0;
-        if index >= expressions.len() {
-            return;
-        }
-        if visited.get(index).copied().unwrap_or(true) {
-            return;
-        }
-        visited[index] = true;
-        let expression = &expressions[index];
-        match &expression.kind {
-            ExprKind::Composite {
-                literal_type,
-                elements,
-            } => {
-                if self.composites >= MAX_COMPOSITES {
-                    return;
-                }
-                self.composites += 1;
-                let shape = literal_type
-                    .and_then(|literal_type| {
-                        let span = expressions.get(literal_type.0)?.span.clone();
-                        let annotation = self.source[base + span.start..base + span.end].to_owned();
-                        self.shape(&annotation, depth)
-                    })
-                    .or_else(|| expected.cloned());
-                let shape = shape.unwrap_or(Shape::Other);
-                if shape == Shape::Struct {
-                    for element in elements {
-                        if let Some(Expr {
-                            kind: ExprKind::KeyValue { key, .. },
-                            ..
-                        }) = expressions.get(element.0)
-                            && let Some(Expr {
-                                kind: ExprKind::Name,
-                                span,
-                                ..
-                            }) = expressions.get(key.0)
-                        {
-                            self.writes.push(base + span.start..base + span.end);
-                        }
-                    }
-                }
-                let element_shape = match &shape {
-                    Shape::Sequence(element) => self.shape(element, depth + 1),
-                    _ => None,
-                };
-                let map_shape = match &shape {
-                    Shape::Map(key, value) => {
-                        Some((self.shape(key, depth + 1), self.shape(value, depth + 1)))
-                    }
-                    _ => None,
-                };
-                for element in elements {
-                    let child = *element;
-                    let child_index = child.0;
-                    let Some(Expr {
-                        kind: ExprKind::KeyValue { key, value },
-                        ..
-                    }) = expressions.get(child_index)
-                    else {
-                        self.collect_expression(
-                            expressions,
-                            base,
-                            child,
-                            element_shape.as_ref(),
-                            depth + 1,
-                            visited,
-                        );
-                        continue;
-                    };
-                    if let Some((key_shape, value_shape)) = &map_shape {
-                        self.collect_expression(
-                            expressions,
-                            base,
-                            *key,
-                            key_shape.as_ref(),
-                            depth + 1,
-                            visited,
-                        );
-                        self.collect_expression(
-                            expressions,
-                            base,
-                            *value,
-                            value_shape.as_ref(),
-                            depth + 1,
-                            visited,
-                        );
-                    } else {
-                        self.collect_expression(expressions, base, *key, None, depth + 1, visited);
-                        self.collect_expression(
-                            expressions,
-                            base,
-                            *value,
-                            element_shape.as_ref(),
-                            depth + 1,
-                            visited,
-                        );
-                    }
-                }
-            }
-            ExprKind::FunctionLiteral { signature, body } => {
-                let signature = base + signature.start..base + signature.end;
-                self.literal(signature, base + body.start..base + body.end);
-            }
-            _ => self.descend(expressions, base, id, depth, visited),
-        }
-    }
-
-    /// Visits nested expressions that may contain literals or function literals.
-    fn descend(
-        &mut self,
-        expressions: &[Expr],
-        base: usize,
-        id: ExprId,
-        depth: usize,
-        visited: &mut [bool],
-    ) {
-        let Some(expression) = expressions.get(id.0) else {
-            return;
-        };
-        match &expression.kind {
-            ExprKind::Composite { .. } | ExprKind::FunctionLiteral { .. } => {
-                self.collect_expression(expressions, base, id, None, depth, visited)
-            }
-            ExprKind::Unary { operand, .. }
-            | ExprKind::Parenthesized {
-                expression: operand,
-            }
-            | ExprKind::TypeSwitchGuard { operand } => {
-                self.collect_expression(expressions, base, *operand, None, depth + 1, visited)
-            }
-            ExprKind::Binary { left, right, .. } => {
-                self.collect_expression(expressions, base, *left, None, depth + 1, visited);
-                self.collect_expression(expressions, base, *right, None, depth + 1, visited);
-            }
-            ExprKind::Selector { operand, .. } => {
-                self.collect_expression(expressions, base, *operand, None, depth + 1, visited)
-            }
-            ExprKind::Call {
-                function,
-                arguments,
-                ..
-            } => {
-                self.collect_expression(expressions, base, *function, None, depth + 1, visited);
-                for argument in arguments {
-                    self.collect_expression(expressions, base, *argument, None, depth + 1, visited);
-                }
-            }
-            ExprKind::Index { operand, arguments } => {
-                self.collect_expression(expressions, base, *operand, None, depth + 1, visited);
-                for argument in arguments {
-                    self.collect_expression(expressions, base, *argument, None, depth + 1, visited);
-                }
-            }
-            ExprKind::Slice {
-                operand,
-                low,
-                high,
-                max,
-                ..
-            } => {
-                self.collect_expression(expressions, base, *operand, None, depth + 1, visited);
-                for child in low.iter().chain(high.iter()).chain(max.iter()) {
-                    self.collect_expression(expressions, base, *child, None, depth + 1, visited);
-                }
-            }
-            ExprKind::TypeAssertion { operand, .. } => {
-                self.collect_expression(expressions, base, *operand, None, depth + 1, visited)
-            }
-            _ => {}
-        }
-    }
-
-    /// Classifies a written composite-literal type spelling conservatively.
-    fn shape(&mut self, annotation: &str, depth: usize) -> Option<Shape> {
-        if depth > 3 || annotation.len() > MAX_SHAPE_BYTES {
-            return None;
-        }
-        if let Some(shape) = self.shapes.get(annotation) {
-            return Some(shape.clone());
-        }
-        let shape = self.shape_uncached(annotation, depth)?;
-        if self.shapes.len() < 128 {
-            self.shapes.insert(annotation.to_owned(), shape.clone());
-        }
-        Some(shape)
-    }
-
-    #[allow(clippy::only_used_in_recursion)]
-    fn shape_uncached(&mut self, annotation: &str, depth: usize) -> Option<Shape> {
-        let form = self.context.with_sema(|sema| {
-            crate::analysis::types::type_form_in_scope(
-                sema.arena_mut(),
-                self.file,
-                annotation,
-                &Locals::empty(),
-                0,
-            )
-        });
-        match form {
-            Some(TypeForm::Struct) => Some(Shape::Struct),
-            Some(TypeForm::Slice) | Some(TypeForm::Array) => match array_element(annotation) {
-                Some(element) => Some(Shape::Sequence(element)),
-                None => {
-                    let rest = self.underlying_text(annotation)?;
-                    (rest != annotation)
-                        .then(|| self.shape_uncached(&rest, depth + 1))
-                        .flatten()
-                }
-            },
-            Some(TypeForm::Map) => match map_types(annotation) {
-                Some((key, value)) => Some(Shape::Map(key, value)),
-                None => {
-                    let rest = self.underlying_text(annotation)?;
-                    (rest != annotation)
-                        .then(|| self.shape_uncached(&rest, depth + 1))
-                        .flatten()
-                }
-            },
-            Some(TypeForm::Pointer) => {
-                let rest = annotation.trim_start().strip_prefix('*')?.trim_start();
-                (rest != annotation)
-                    .then(|| self.shape_uncached(rest, depth + 1))
-                    .flatten()
-            }
-            Some(_) => Some(Shape::Other),
-            None => {
-                let rest = self.underlying_text(annotation)?;
-                (rest != annotation)
-                    .then(|| self.shape_uncached(&rest, depth + 1))
-                    .flatten()
-            }
-        }
-    }
-
-    /// The written declaration body of a defined type or alias in this module.
-    fn underlying_text(&mut self, annotation: &str) -> Option<String> {
-        let (declaration_file, symbol) = crate::analysis::resolve::resolve_type_declaration(
-            self.workspace,
-            self.file,
-            annotation,
-        )?;
-        let text = if declaration_file == self.file {
-            self.source.to_owned()
-        } else {
-            self.workspace.source(declaration_file)?
-        };
-        let map = SourceMap::new(&text);
-        let end = map.offset(symbol.range.end)?;
-        let body = text.get(symbol.end..end)?;
-        let parameters = crate::syntax::type_parameter_end(body).unwrap_or(0);
-        let mut rest = body.get(parameters..)?.trim_start();
-        if let Some(stripped) = rest.strip_prefix('=') {
-            rest = stripped.trim_start();
-        }
-        (!rest.is_empty() && rest.len() <= MAX_SHAPE_BYTES).then(|| rest.to_owned())
-    }
-}
-
-/// Returns the element type spelling of a slice/array annotation.
-fn array_element(annotation: &str) -> Option<String> {
-    let trimmed = annotation.trim_start();
-    let rest = trimmed.strip_prefix('[')?;
-    let mut depth = 1usize;
-    for (index, byte) in rest.bytes().enumerate() {
-        match byte {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    let element = rest.get(index + 1..)?.trim();
-                    return (!element.is_empty()).then(|| element.to_owned());
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Returns the key and value type spellings of a map annotation.
-fn map_types(annotation: &str) -> Option<(String, String)> {
-    let rest = annotation.trim_start().strip_prefix("map")?;
-    let rest = rest.trim_start().strip_prefix('[')?;
-    let mut depth = 1usize;
-    for (index, byte) in rest.bytes().enumerate() {
-        match byte {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    let key = rest.get(..index)?.trim();
-                    let value = rest.get(index + 1..)?.trim();
-                    return (!key.is_empty() && !value.is_empty())
-                        .then(|| (key.to_owned(), value.to_owned()));
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn result_fields(parameters: &[crate::syntax::Parameter], base: usize) -> Vec<ResultField> {
+fn result_fields(parameters: &[Parameter], base: usize) -> Vec<ResultField> {
     let mut fields: Vec<ResultField> = Vec::new();
     for parameter in parameters {
         let annotation = base + parameter.annotation.start..base + parameter.annotation.end;
@@ -2057,7 +1387,6 @@ fn parse_index(format: &[u8], position: usize, first_arg: usize) -> Option<(usiz
 }
 
 /// Parses an optional width or precision size specifier.
-#[allow(clippy::too_many_arguments)]
 fn parse_size(
     format: &[u8],
     position: usize,
@@ -2084,7 +1413,6 @@ fn control_flow_rows(
     offset: usize,
     rows: &mut Vec<(Range<usize>, HighlightKind)>,
 ) {
-    // Return-statement case: the cursor sits in one of the return expressions.
     if let Some(function) = enclosing_body(functions, offset)
         && let Some(index) = return_index(function, offset)
     {
@@ -2093,7 +1421,6 @@ fn control_flow_rows(
         highlight_returns(function, &marked, rows);
         return;
     }
-    // Result-parameter case: the cursor sits in the results list.
     let Some(function) = functions
         .iter()
         .find(|function| function.header.contains(&offset) || function.body.contains(&offset))
@@ -2200,22 +1527,6 @@ fn highlight_returns(
             }
         }
     }
-}
-
-/// Finds the top-level assignment offset of a declaration header.
-fn top_level_assign(source: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    for token in Lexer::new(source) {
-        match token.kind {
-            TokenKind::Assign if depth == 0 => return Some(token.span.start),
-            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
-            TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                depth = depth.checked_sub(1)?
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
 /// Raw source ranges of the directives in one string literal.

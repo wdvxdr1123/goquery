@@ -25,10 +25,9 @@ use std::path::Path;
 
 /// Resolve the identifier under the cursor into hover facts.
 pub(crate) fn execute(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
 ) -> Result<Option<HoverContent>, (i32, String)> {
-    let source = context.source();
     let file = context.file();
     if !context.workspace().orphan_metadata_available(file) {
         // gopls cannot load a package for an orphaned custom-tag file.
@@ -40,39 +39,17 @@ pub(crate) fn execute(
             ),
         ));
     }
-    let Some(span) = identifier_at(source, offset) else {
-        return Ok(None);
+    let (span, range) = {
+        let source = context.source();
+        let Some(span) = identifier_at(source, offset) else {
+            return Ok(None);
+        };
+        let map = SourceMap::new(source);
+        let range = SourceRange::new(&map, span.clone());
+        (span, range)
     };
-    let map = SourceMap::new(source);
-    let name = &source[span.clone()];
-    let range = SourceRange::new(&map, span.clone());
     if let Some(content) = member::checked(context, &span, range) {
         return Ok(Some(content));
-    }
-    let scope = match context.cursor_scope(offset) {
-        Ok(scope) => scope,
-        Err(_) => {
-            if let Ok(target) = context.navigation_target_for_identifier(offset, &span) {
-                match target {
-                    Target::Member(member) => {
-                        let content = render::member_id(context, member, &span, range);
-                        if !content.is_empty() {
-                            return Ok(Some(content));
-                        }
-                    }
-                    Target::Global(path, symbol) => {
-                        if let Ok(Some(content)) = symbol::reference(context, path, symbol, range) {
-                            return Ok(Some(content));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            return Ok(None);
-        }
-    };
-    if !scope.available {
-        return Ok(None);
     }
     // A declaration name always takes precedence over a use of the same name.
     if let Some(symbol) = context.workspace().files.get(file).and_then(|stub| {
@@ -82,23 +59,52 @@ pub(crate) fn execute(
     }) {
         return symbol::declare(context, file, symbol, range);
     }
-    if let Some(binding) = scope
-        .locals
-        .definition_at(&span, name)
-        .filter(|binding| binding.selection == span)
-        .or_else(|| {
-            scope
-                .locals
-                .visible_bindings(offset)
-                .find(|binding| binding.selection == span)
-        })
-    {
-        return Ok(Some(render::local(context, &scope.locals, binding, range)));
+    if let (Ok(s0), Ok(s1)) = (u32::try_from(span.start), u32::try_from(span.end)) {
+        let selected = [s0, s1];
+        enum LocalMatch<'a> {
+            Object(crate::analysis::sema::SemanticObject<'a>),
+            Binding(crate::analysis::sema::LocalBindingView),
+        }
+        let local_match = {
+            let (doc, sema) = context.split();
+            sema.region_at(
+                doc.file(),
+                doc.source(),
+                selected[0],
+                crate::analysis::sema::RegionMode::Full,
+            )
+            .and_then(|view| {
+                if let Some(site) = view
+                    .symbol_at(selected[0])
+                    .filter(|site| site.span == selected)
+                {
+                    return site.obj.is_local().then_some(LocalMatch::Object(site.obj));
+                }
+                view.local_binding_at_span(selected)
+                    .filter(|b| {
+                        !matches!(b.kind, crate::analysis::sema::LocalDeclKind::TypeSwitchVar)
+                    })
+                    .map(LocalMatch::Binding)
+            })
+        };
+        match local_match {
+            Some(LocalMatch::Object(obj)) => {
+                if let Some(content) = render::local_object(context, obj, &span, range) {
+                    return Ok(Some(content));
+                }
+            }
+            Some(LocalMatch::Binding(b)) => {
+                let is_param = matches!(b.kind, crate::analysis::sema::LocalDeclKind::Param);
+                if let Some(content) =
+                    render::local_by_parts(context, Some(b.id), b.kind, b.def_span, is_param, range)
+                {
+                    return Ok(Some(content));
+                }
+            }
+            None => {}
+        }
     }
-    if let Some(hover) = render::header_binding(context, &span, range)? {
-        return Ok(Some(hover));
-    }
-    if is_package_clause_name(source, span.start) {
+    if is_package_clause_name(context.source(), span.start) {
         return Ok(package::clause(context, range));
     }
     if let Some(hover) = package::import_alias(context, &span, range) {
@@ -113,8 +119,7 @@ pub(crate) fn execute(
             let mut content = symbol::reference(context, path, symbol, range)?;
             if let Some(content_ref) = content.as_mut()
                 && content_ref.code.is_some()
-                && let Some(instantiated) =
-                    generic::instantiated(context, &scope, &span, path, symbol)
+                && let Some(instantiated) = generic::instantiated(context, &span, path, symbol)
             {
                 content_ref.code = Some(instantiated);
             }
@@ -137,21 +142,7 @@ pub(crate) fn execute(
             let content = render::member_id(context, member, &span, range);
             return Ok(Some(content));
         }
-        Target::Local(selection) => {
-            if let Some(binding) = scope
-                .locals
-                .visible_bindings(offset)
-                .find(|binding| binding.selection == selection)
-            {
-                let hover = render::local(context, &scope.locals, binding, range);
-                return Ok(Some(hover));
-            }
-            if let Some(hover) = render::nested_function_binding(context, offset, &selection, range)
-            {
-                return Ok(Some(hover));
-            }
-        }
-        Target::Unresolved | Target::Builtin(_) | Target::CrossFile(..) => {}
+        Target::Local(_) | Target::Unresolved | Target::Builtin(_) | Target::CrossFile(..) => {}
     }
     if let Some(hover) = package_initializer_target(context, offset, &span, range)? {
         return Ok(Some(hover));
@@ -159,10 +150,8 @@ pub(crate) fn execute(
     if let Some(hover) = package::qualifier(context, &span, range) {
         return Ok(Some(hover));
     }
-    if let Some(hover) = builtin::hover(context, name, range) {
-        return Ok(Some(hover));
-    }
-    if let Some(hover) = render::nested_function_local(context, offset, name, range) {
+    let name_buf = context.source()[span.clone()].to_owned();
+    if let Some(hover) = builtin::hover(context, &name_buf, range) {
         return Ok(Some(hover));
     }
     Ok(None)
@@ -189,21 +178,22 @@ fn value_initializer<'a>(context: &'a Context<'_>, offset: usize) -> Option<(usi
 /// References inside package-level value initializers: gopls resolves them with
 /// the file's package scope, while the body-only navigation path does not.
 fn package_initializer_target(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     offset: usize,
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> Result<Option<HoverContent>, (i32, String)> {
     let workspace = context.workspace();
     let file = context.file();
-    let source = context.source();
     let resolved = if let (Ok(s0), Ok(s1)) = (u32::try_from(span.start), u32::try_from(span.end)) {
-        context.with_sema(|sema| {
-            let (region, _) = sema.region_and_arena_at(file, source, s0, None)?;
-            region
-                .use_by_span([s0, s1])
-                .or_else(|| region.selection_by_span([s0, s1]).map(|s| s.obj))
-        })
+        let (doc, sema) = context.split();
+        sema.region_at(
+            doc.file(),
+            doc.source(),
+            s0,
+            crate::analysis::sema::RegionMode::Full,
+        )
+        .and_then(|view| view.use_or_selection([s0, s1]))
     } else {
         None
     }
@@ -214,39 +204,34 @@ fn package_initializer_target(
         }
         let r0 = u32::try_from(span.start.checked_sub(base)?).ok()?;
         let r1 = u32::try_from(span.end.checked_sub(base)?).ok()?;
+        let text = text.to_owned();
         context.with_sema(|sema| {
-            sema.with_expression(file, text, |region, _, _| {
-                region.use_by_span([r0, r1]).or_else(|| {
-                    region
-                        .selection_by_span([r0, r1])
-                        .map(|selection| selection.obj)
-                })
-            })
+            sema.with_expression(file, &text, |view, _| view.use_or_selection([r0, r1]))
         })
     });
     let Some(obj) = resolved else {
         return Ok(None);
     };
     match obj {
-        crate::analysis::obj::ObjectRef::Func(decl)
-        | crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Concrete(
+        crate::analysis::sema::ObjectRef::Func(decl)
+        | crate::analysis::sema::ObjectRef::Method(
+            crate::analysis::sema::MethodOrigin::Concrete(decl),
+        )
+        | crate::analysis::sema::ObjectRef::Const(crate::analysis::sema::SymbolOrigin::Package(
             decl,
         ))
-        | crate::analysis::obj::ObjectRef::Const(crate::analysis::obj::SymbolOrigin::Package(
-            decl,
-        ))
-        | crate::analysis::obj::ObjectRef::Var {
-            origin: crate::analysis::obj::SymbolOrigin::Package(decl),
+        | crate::analysis::sema::ObjectRef::Var {
+            origin: crate::analysis::sema::SymbolOrigin::Package(decl),
             ..
         }
-        | crate::analysis::obj::ObjectRef::TypeName {
-            origin: crate::analysis::obj::SymbolOrigin::Package(decl),
+        | crate::analysis::sema::ObjectRef::TypeName {
+            origin: crate::analysis::sema::SymbolOrigin::Package(decl),
             ..
         } => symbol::reference(context, decl.file, decl.symbol, range),
-        crate::analysis::obj::ObjectRef::Field(member)
-        | crate::analysis::obj::ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(
-            member,
-        )) => {
+        crate::analysis::sema::ObjectRef::Field(member)
+        | crate::analysis::sema::ObjectRef::Method(
+            crate::analysis::sema::MethodOrigin::Interface(member),
+        ) => {
             let Some(member_decl) = member.describe(workspace) else {
                 return Ok(None);
             };
@@ -304,7 +289,7 @@ impl PromotedMethod {
 
 /// gopls appends `// through ...` when the selected method is promoted.
 fn promoted_method(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     span: &Range<usize>,
     method_file: &Path,
     method: &crate::index::IndexedSymbol,
@@ -313,10 +298,10 @@ fn promoted_method(
         u32::try_from(span.start).ok()?,
         u32::try_from(span.end).ok()?,
     ];
-    let promotion = context
-        .with_sema(|sema| sema.selected_promotion(context.file(), context.source(), selected))?;
-    let expected = crate::analysis::obj::ObjectRef::Method(
-        crate::analysis::obj::MethodOrigin::Concrete(crate::analysis::obj::DeclId {
+    let (doc, sema) = context.split();
+    let promotion = sema.selected_promotion(doc.file(), doc.source(), selected)?;
+    let expected = crate::analysis::sema::ObjectRef::Method(
+        crate::analysis::sema::MethodOrigin::Concrete(crate::analysis::sema::DeclId {
             file: method_file,
             symbol: method,
         }),

@@ -2,54 +2,60 @@
 
 use std::path::Path;
 
-use crate::analysis::budget::MAX_BYTES;
-use crate::analysis::check::decls::DeclCache;
-use crate::analysis::check::region::RegionInfo;
-use crate::analysis::check::{RegionChecker, decl_object};
-use crate::analysis::obj::DeclId;
-use crate::analysis::scope::tree::ScopeTree;
-use crate::analysis::types::TypeArena;
+use crate::analysis::engine::budget::MAX_BYTES;
+use crate::analysis::engine::check::decls::DeclTable;
+use crate::analysis::engine::check::region::RegionInfo;
+use crate::analysis::engine::check::{RegionChecker, decl_object};
+use crate::analysis::engine::obj::DeclId;
+use crate::analysis::engine::scope::tree::ScopeTree;
+use crate::analysis::engine::types::TypeArena;
 use crate::index::IndexedSymbol;
 use crate::syntax::{self, DeclSpecKind};
 
 use super::Semantics;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RegionCoverage {
+    Full,
+    UpTo(usize),
+}
+
+impl RegionCoverage {
+    pub(super) fn from_cursor(cursor_offset: Option<usize>) -> Self {
+        match cursor_offset {
+            None => Self::Full,
+            Some(offset) => Self::UpTo(offset),
+        }
+    }
+
+    pub(super) fn satisfies(self, needed: Self) -> bool {
+        match (self, needed) {
+            (Self::Full, _) => true,
+            (Self::UpTo(a), Self::UpTo(b)) => a == b,
+            (Self::UpTo(_), Self::Full) => false,
+        }
+    }
+}
+
+type BuiltFunctionParts<'a> = (
+    RegionInfo<'a>,
+    Option<(usize, std::sync::Arc<syntax::BlockTree>)>,
+    Option<(usize, syntax::Signature)>,
+);
+
 pub(super) struct CachedRegion<'a> {
     pub(super) file: &'a Path,
     pub(super) span: [u32; 2],
-    pub(super) cursor_offset: Option<usize>,
+    pub(super) coverage: RegionCoverage,
     pub(super) region: RegionInfo<'a>,
 }
 
 impl<'a> Semantics<'a> {
     pub(super) fn prepare_for_new_region(&mut self) {
-        let declarations = self
-            .decls
-            .temporary_declarations(self.base_mark.node_count());
         self.failed = None;
         self.cached = None;
-        self.arena.rewind(self.base_mark);
-        self.decls.rewind_above(self.arena.node_count());
-        // Evict the declaration prefix when it would crowd the next body.
-        // A cache miss is preferable to exhausting another function's locals.
-        if self.arena.needs_rewind() {
-            self.arena.rewind(self.root_mark);
-            self.decls.rewind_above(self.arena.node_count());
-        }
-        self.arena.reset_steps();
-        for declaration in declarations {
-            let _ = self.decls.operand_of(&mut self.arena, declaration);
-            if self.arena.needs_rewind() {
-                break;
-            }
-        }
-        if self.arena.needs_rewind() {
-            self.arena.rewind(self.root_mark);
-            self.decls.rewind_above(self.arena.node_count());
-        }
-        self.decls.rewind_above(self.arena.node_count());
-        self.base_mark = self.arena.mark();
-        self.arena.reset_steps();
+        self.cached_completion = None;
+        self.arena.reset_local();
     }
 
     pub(super) fn ensure_region(
@@ -59,20 +65,21 @@ impl<'a> Semantics<'a> {
         offset: u32,
         cursor_offset: Option<usize>,
     ) -> bool {
+        let needed = RegionCoverage::from_cursor(cursor_offset);
         if let Some(cached) = self.cached.as_ref()
             && cached.file == file
             && cached.span[0] <= offset
             && offset <= cached.span[1]
-            && cached.cursor_offset == cursor_offset
+            && cached.coverage.satisfies(needed)
         {
             self.arena.reset_steps();
             return true;
         }
-        if let Some((f_file, f_span, f_cursor)) = self.failed
+        if let Some((f_file, f_span, f_cov)) = self.failed
             && f_file == file
             && f_span[0] <= offset
             && offset <= f_span[1]
-            && f_cursor == cursor_offset
+            && f_cov == needed
         {
             return false;
         }
@@ -91,7 +98,7 @@ impl<'a> Semantics<'a> {
             if decl.start <= offset as usize && (offset as usize) <= decl.end {
                 let built = self.build_function_region(file, source, sym, cursor_offset);
                 if !built {
-                    self.failed = Some((file, [decl.start as u32, decl.end as u32], cursor_offset));
+                    self.failed = Some((file, [decl.start as u32, decl.end as u32], needed));
                 }
                 return built;
             }
@@ -107,7 +114,7 @@ impl<'a> Semantics<'a> {
                     cursor_offset,
                 );
                 if !built {
-                    self.failed = Some((file, [g_start, g_end], cursor_offset));
+                    self.failed = Some((file, [g_start, g_end], needed));
                 }
                 return built;
             }
@@ -123,7 +130,7 @@ impl<'a> Semantics<'a> {
             if decl.start <= offset as usize && (offset as usize) <= decl.end {
                 let built = self.build_value_spec_region(file, source, stub, sym, cursor_offset);
                 if !built {
-                    self.failed = Some((file, [decl.start as u32, decl.end as u32], cursor_offset));
+                    self.failed = Some((file, [decl.start as u32, decl.end as u32], needed));
                 }
                 return built;
             }
@@ -139,7 +146,7 @@ impl<'a> Semantics<'a> {
             if decl.start <= offset as usize && (offset as usize) <= decl.end {
                 let built = self.build_type_decl_region(file, source, sym, cursor_offset);
                 if !built {
-                    self.failed = Some((file, [decl.start as u32, decl.end as u32], cursor_offset));
+                    self.failed = Some((file, [decl.start as u32, decl.end as u32], needed));
                 }
                 return built;
             }
@@ -148,16 +155,64 @@ impl<'a> Semantics<'a> {
         false
     }
 
-    pub(crate) fn arena_and_decls(&mut self) -> (&mut TypeArena<'a>, &mut DeclCache<'a>) {
-        (&mut self.arena, &mut self.decls)
-    }
-
-    pub(crate) fn stream_file_regions(
+    pub(crate) fn visit_file_regions(
         &mut self,
         file: &'a Path,
         source: &str,
         window: Option<std::ops::Range<usize>>,
-        mut visit: impl FnMut(&RegionInfo<'a>, &mut TypeArena<'a>, &mut DeclCache<'a>),
+        visit: impl FnMut(&mut super::RegionView<'_, 'a>),
+    ) {
+        self.visit_matching_file_regions(
+            file,
+            source,
+            |[s, e]| {
+                window
+                    .as_ref()
+                    .is_none_or(|w| (s as usize) < w.end && (e as usize) > w.start)
+            },
+            visit,
+        );
+    }
+
+    pub(crate) fn visit_matching_file_regions(
+        &mut self,
+        file: &'a Path,
+        source: &str,
+        mut include: impl FnMut([u32; 2]) -> bool,
+        mut visit: impl FnMut(&mut super::RegionView<'_, 'a>),
+    ) {
+        self.stream_matching_file_regions(
+            file,
+            source,
+            &mut include,
+            |region, arena, decls, body, sig| {
+                let mut view = super::RegionView {
+                    workspace: self.workspace,
+                    file,
+                    source,
+                    region,
+                    arena,
+                    decls,
+                    syntax_body: body,
+                    syntax_sig: sig,
+                };
+                visit(&mut view);
+            },
+        );
+    }
+
+    pub(super) fn stream_matching_file_regions(
+        &mut self,
+        file: &'a Path,
+        source: &str,
+        include: &mut impl FnMut([u32; 2]) -> bool,
+        mut visit: impl FnMut(
+            &RegionInfo<'a>,
+            &mut TypeArena<'a>,
+            &mut DeclTable<'a>,
+            Option<(usize, &syntax::BlockTree)>,
+            Option<(usize, &syntax::Signature)>,
+        ),
     ) {
         enum RegionItem<'a> {
             Function(&'a IndexedSymbol),
@@ -206,9 +261,7 @@ impl<'a> Semantics<'a> {
             }
         }
 
-        if let Some(ref w) = window {
-            items.retain(|(span, _)| (span[0] as usize) < w.end && (span[1] as usize) > w.start);
-        }
+        items.retain(|(span, _)| include(*span));
         items.sort_by_key(|(span, _)| (span[0], span[1]));
 
         let mut prev_end = 0u32;
@@ -217,18 +270,39 @@ impl<'a> Semantics<'a> {
                 continue;
             }
             prev_end = span[1];
-            let region = match item {
-                RegionItem::Function(sym) => self.compute_function_region(file, source, sym, None),
+            match item {
+                RegionItem::Function(sym) => {
+                    if let Some((region, body, sig)) =
+                        self.compute_function_region_parts(file, source, sym, None)
+                    {
+                        visit(
+                            &region,
+                            &mut self.arena,
+                            &mut self.decls,
+                            body.as_ref().map(|(base, tree)| (*base, tree.as_ref())),
+                            sig.as_ref().map(|(base, s)| (*base, s)),
+                        );
+                    }
+                }
                 RegionItem::ConstGroup(group) => {
-                    self.compute_constant_group_region(file, source, stub, group, None)
+                    if let Some(region) =
+                        self.compute_constant_group_region(file, source, stub, group, None)
+                    {
+                        visit(&region, &mut self.arena, &mut self.decls, None, None);
+                    }
                 }
                 RegionItem::ValueSpec(sym) => {
-                    self.compute_value_spec_region(file, source, stub, sym, None)
+                    if let Some(region) =
+                        self.compute_value_spec_region(file, source, stub, sym, None)
+                    {
+                        visit(&region, &mut self.arena, &mut self.decls, None, None);
+                    }
                 }
-                RegionItem::TypeDecl(sym) => self.compute_type_decl_region(file, source, sym, None),
-            };
-            if let Some(region) = region {
-                visit(&region, &mut self.arena, &mut self.decls);
+                RegionItem::TypeDecl(sym) => {
+                    if let Some(region) = self.compute_type_decl_region(file, source, sym, None) {
+                        visit(&region, &mut self.arena, &mut self.decls, None, None);
+                    }
+                }
             }
             self.parsed_body = None;
         }
@@ -242,26 +316,28 @@ impl<'a> Semantics<'a> {
         sym: &'a IndexedSymbol,
         cursor_offset: Option<usize>,
     ) -> bool {
-        let Some(region) = self.compute_function_region(file, source, sym, cursor_offset) else {
+        let Some((region, _, _)) =
+            self.compute_function_region_parts(file, source, sym, cursor_offset)
+        else {
             return false;
         };
         let span = region.span;
         self.cached = Some(CachedRegion {
             file,
             span,
-            cursor_offset,
+            coverage: RegionCoverage::from_cursor(cursor_offset),
             region,
         });
         true
     }
 
-    fn compute_function_region(
+    fn compute_function_region_parts(
         &mut self,
         file: &'a Path,
         source: &str,
         sym: &'a IndexedSymbol,
         cursor_offset: Option<usize>,
-    ) -> Option<RegionInfo<'a>> {
+    ) -> Option<BuiltFunctionParts<'a>> {
         let decl = sym.declaration()?;
         let header_end = sym.body().map_or(decl.end, |b| b.start);
         if header_end
@@ -309,7 +385,11 @@ impl<'a> Semantics<'a> {
             }
             region.finish_local_diagnostics(source);
             region.finalize();
-            Some(region)
+            Some((
+                region,
+                Some((body_range.start, body_tree)),
+                Some((decl.start, sig)),
+            ))
         } else {
             let empty_tree = syntax::parse_block("{}");
             let scopes = ScopeTree::from_function(
@@ -341,7 +421,7 @@ impl<'a> Semantics<'a> {
             }
             region.finish_local_diagnostics(source);
             region.finalize();
-            Some(region)
+            Some((region, None, Some((decl.start, sig))))
         }
     }
 
@@ -362,7 +442,7 @@ impl<'a> Semantics<'a> {
         self.cached = Some(CachedRegion {
             file,
             span,
-            cursor_offset,
+            coverage: RegionCoverage::from_cursor(cursor_offset),
             region,
         });
         true
@@ -429,7 +509,7 @@ impl<'a> Semantics<'a> {
         self.cached = Some(CachedRegion {
             file,
             span,
-            cursor_offset,
+            coverage: RegionCoverage::from_cursor(cursor_offset),
             region,
         });
         true
@@ -482,6 +562,22 @@ impl<'a> Semantics<'a> {
             );
             checker.check_decl_spec(sym.is_const());
         }
+        if cursor_offset.is_none() && tree.diagnostics().is_empty() {
+            for s in &stub.symbols {
+                if s.start >= decl.start
+                    && s.end <= decl.end
+                    && (s.is_var() || s.is_const())
+                    && !stub
+                        .constant_groups
+                        .iter()
+                        .any(|g| (g[0] as usize) <= s.start && s.start < (g[1] as usize))
+                    && let Some(local_id) = region.scopes.definition_at(s.start as u32)
+                    && let Some(op) = region.local_type(local_id)
+                {
+                    self.decls.seed_value(DeclId { file, symbol: s }, op);
+                }
+            }
+        }
         region.finish_local_diagnostics(source);
         region.finalize();
         Some(region)
@@ -501,7 +597,7 @@ impl<'a> Semantics<'a> {
         self.cached = Some(CachedRegion {
             file,
             span,
-            cursor_offset,
+            coverage: RegionCoverage::from_cursor(cursor_offset),
             region,
         });
         true

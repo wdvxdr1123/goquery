@@ -24,6 +24,7 @@ pub use literal::decode_rune_literal;
 pub use literal::decode_string_literal;
 pub use literal::quote_bytes;
 pub use literal::quote_string;
+pub use parser::parse_constraint;
 pub use parser::parse_type;
 pub use parser::parse_type_prefix;
 pub use parser::validate_file;

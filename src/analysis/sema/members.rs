@@ -1,7 +1,7 @@
 //! Presentation projections of proven native member selections.
 use super::Semantics;
-use crate::analysis::obj::{DeclId, MemberDeclId, MethodOrigin, ObjectRef};
-use crate::analysis::types::{Qualifier, Selection, SelectionKind, TypeArena, TypeId};
+use crate::analysis::engine::obj::{DeclId, MemberDeclId, MethodOrigin, ObjectRef};
+use crate::analysis::engine::types::{Qualifier, Selection, SelectionKind, TypeArena, TypeId};
 use std::path::Path;
 
 pub(crate) struct PromotedField {
@@ -28,7 +28,7 @@ pub(crate) struct MethodView<'a> {
 
 /// Owned type spellings and source-name decoration from one native signature.
 pub(crate) struct CallableView {
-    pub(crate) names: Option<crate::analysis::types::CallableNames>,
+    pub(crate) names: Option<crate::analysis::engine::types::CallableNames>,
     pub(crate) parameters: Vec<String>,
     pub(crate) results: Vec<String>,
     pub(crate) variadic: bool,
@@ -54,7 +54,7 @@ impl CallableView {
                 .collect::<Option<_>>()?,
             variadic,
         };
-        (view.bytes() <= crate::analysis::budget::MAX_BYTES).then_some(view)
+        (view.bytes() <= crate::analysis::engine::budget::MAX_BYTES).then_some(view)
     }
 
     fn bytes(&self) -> usize {
@@ -113,7 +113,7 @@ impl MemberTypeView {
         let bytes = type_text.len()
             + receiver.as_ref().map_or(0, String::len)
             + callable.as_ref().map_or(0, CallableView::bytes);
-        (bytes <= crate::analysis::budget::MAX_BYTES).then_some(Self {
+        (bytes <= crate::analysis::engine::budget::MAX_BYTES).then_some(Self {
             type_text,
             callable,
             receiver,
@@ -180,13 +180,13 @@ impl<'a> Semantics<'a> {
         declaration: DeclId<'_>,
         consumer: &Path,
     ) -> Option<Vec<MethodView<'a>>> {
-        let (file, stub) = self.workspace.files.get_key_value(declaration.file)?;
-        let symbol = stub.symbols.iter().find(|symbol| {
-            symbol.start == declaration.symbol.start && symbol.name == declaration.symbol.name
-        })?;
+        let declaration = self.canonical_decl(declaration)?;
+        let file = declaration.file;
+        let symbol = declaration.symbol;
         self.arena.with_projection(true, |arena| {
-            let receiver = arena.declaration_type(DeclId { file, symbol })?;
-            let interface = arena.form(receiver)? == crate::analysis::types::TypeForm::Interface;
+            let receiver = arena.declaration_type(declaration)?;
+            let interface =
+                arena.form(receiver)? == crate::analysis::engine::types::TypeForm::Interface;
             let members = arena.accessible_members(receiver, true, consumer)?;
             let mut methods = Vec::new();
             let mut bytes = 0usize;
@@ -195,9 +195,14 @@ impl<'a> Semantics<'a> {
                     continue;
                 }
                 if interface
-                    && let ObjectRef::Method(crate::analysis::obj::MethodOrigin::Interface(member)) = selection.obj
+                    && let ObjectRef::Method(crate::analysis::engine::obj::MethodOrigin::Interface(
+                        member,
+                    )) = selection.obj
                     && member.file == file
-                    && symbol.declaration().is_some_and(|span| span.start <= member.selection[0] as usize && member.selection[1] as usize <= span.end)
+                    && symbol.declaration().is_some_and(|span| {
+                        span.start <= member.selection[0] as usize
+                            && member.selection[1] as usize <= span.end
+                    })
                 {
                     continue;
                 }
@@ -209,13 +214,36 @@ impl<'a> Semantics<'a> {
                 let receiver = arena.format_type(owner, qualifier)?;
                 let signature = arena.format_type(selection.ty, qualifier)?;
                 let (parameters, results, variadic) = arena.signature_parts(selection.ty)?;
-                let parameters = parameters.into_iter().map(|ty| arena.format_type(ty, qualifier)).collect::<Option<Vec<_>>>()?;
-                let results = results.into_iter().map(|ty| arena.format_type(ty, qualifier)).collect::<Option<Vec<_>>>()?;
-                bytes = bytes.checked_add(name.len() + receiver.len() + signature.len() + parameters.iter().chain(&results).map(String::len).sum::<usize>())?;
-                if bytes > crate::analysis::budget::MAX_BYTES {
+                let parameters = parameters
+                    .into_iter()
+                    .map(|ty| arena.format_type(ty, qualifier))
+                    .collect::<Option<Vec<_>>>()?;
+                let results = results
+                    .into_iter()
+                    .map(|ty| arena.format_type(ty, qualifier))
+                    .collect::<Option<Vec<_>>>()?;
+                bytes = bytes.checked_add(
+                    name.len()
+                        + receiver.len()
+                        + signature.len()
+                        + parameters
+                            .iter()
+                            .chain(&results)
+                            .map(String::len)
+                            .sum::<usize>(),
+                )?;
+                if bytes > crate::analysis::engine::budget::MAX_BYTES {
                     return None;
                 }
-                methods.push(MethodView { name, object:selection.obj, receiver, signature, parameters, results, variadic });
+                methods.push(MethodView {
+                    name,
+                    object: selection.obj,
+                    receiver,
+                    signature,
+                    parameters,
+                    results,
+                    variadic,
+                });
             }
             Some(methods)
         })
@@ -281,7 +309,7 @@ impl<'a> Semantics<'a> {
                 let type_text =
                     arena.format_type(selection.ty, Qualifier::Presentation(consumer))?;
                 bytes = bytes.checked_add(name.len() + type_text.len() + path.len())?;
-                if bytes > crate::analysis::budget::MAX_BYTES {
+                if bytes > crate::analysis::engine::budget::MAX_BYTES {
                     return None;
                 }
                 fields.push(PromotedField {

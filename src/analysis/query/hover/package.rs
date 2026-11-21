@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 const MAX_PACKAGE_FILES: usize = 256;
 
 /// Hover over the package name in the package clause.
-pub(super) fn clause(context: &Context<'_>, range: super::SourceRange) -> Option<HoverContent> {
+pub(super) fn clause(context: &mut Context<'_>, range: super::SourceRange) -> Option<HoverContent> {
     let workspace = context.workspace();
     let file = context.file();
     let name = workspace.files.get(file)?.package.clone();
@@ -25,38 +25,38 @@ pub(super) fn clause(context: &Context<'_>, range: super::SourceRange) -> Option
 
 /// Hover over an explicit import alias identifier (`str "strings"`).
 pub(super) fn import_alias(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> Option<HoverContent> {
     let workspace = context.workspace();
     let file = context.file();
-    let source = context.source();
-    let name = source.get(span.clone())?;
-    let import = workspace
-        .files
-        .get(file)?
-        .imports
-        .iter()
-        .find(|import| import.explicit_name() == Some(name))?
-        .clone();
-    if import.is_blank() || import.is_dot() {
-        return None;
-    }
-    // gopls reports the import path literal's range for import-spec hover.
-    let path_span = alias_path_span(source, span.start, &import.path)?;
+    let (name, import_path, path_span) = {
+        let source = context.source();
+        let name = source.get(span.clone())?.to_owned();
+        let import = workspace
+            .files
+            .get(file)?
+            .imports
+            .iter()
+            .find(|import| import.explicit_name() == Some(&name))?;
+        if import.is_blank() || import.is_dot() {
+            return None;
+        }
+        // gopls reports the import path literal's range for import-spec hover.
+        let path_span = alias_path_span(source, span.start, &import.path)?;
+        let range = super::SourceRange::new(&crate::text::SourceMap::new(source), path_span);
+        (name, import.path.clone(), range)
+    };
     let package = context
         .resolver()
-        .declared_package_name(file, &import.path)
+        .declared_package_name(file, &import_path)
         .map(str::to_owned)
-        .or_else(|| import.path.rsplit('/').next().map(str::to_owned))?;
-    let mut content = HoverContent::new(super::SourceRange::new(
-        &crate::text::SourceMap::new(source),
-        path_span,
-    ));
+        .or_else(|| import_path.rsplit('/').next().map(str::to_owned))?;
+    let mut content = HoverContent::new(path_span);
     let _ = range;
     content.code = Some(format!("package {package}"));
-    if let Some(documents) = imported_package_doc(context, file, &import.path, &package) {
+    if let Some(documents) = imported_package_doc(context, file, &import_path, &package) {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -115,24 +115,26 @@ fn alias_path_span(source: &str, offset: usize, import_path: &str) -> Option<Ran
 
 /// Hover over an imported package's qualifier identifier.
 pub(super) fn qualifier(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> Option<HoverContent> {
     let workspace = context.workspace();
     let file = context.file();
-    let source = context.source();
-    if !qualified(source, span.end) {
-        return None;
-    }
-    let name = source.get(span.clone())?;
-    let stub = workspace.files.get(file)?;
-    let import = stub.imports.iter().find(|import| {
-        !import.is_dot()
-            && !import.is_blank()
-            && context.resolver().import_name(file, import) == Some(name)
-    })?;
-    let import_path = import.path.clone();
+    let (name, import_path) = {
+        let source = context.source();
+        if !qualified(source, span.end) {
+            return None;
+        }
+        let name = source.get(span.clone())?.to_owned();
+        let stub = workspace.files.get(file)?;
+        let import = stub.imports.iter().find(|import| {
+            !import.is_dot()
+                && !import.is_blank()
+                && context.resolver().import_name(file, import) == Some(&name)
+        })?;
+        (name, import.path.clone())
+    };
     let package = context
         .resolver()
         .declared_package_name(file, &import_path)
@@ -184,7 +186,11 @@ fn qualified(source: &str, end: usize) -> bool {
 }
 
 /// First production file with a package documentation comment.
-fn package_doc(context: &Context<'_>, file: &Path, package: &str) -> Option<super::doc::Documents> {
+fn package_doc(
+    context: &mut Context<'_>,
+    file: &Path,
+    package: &str,
+) -> Option<super::doc::Documents> {
     let workspace = context.workspace();
     let directory = file.parent()?;
     let external = package.ends_with("_test");
@@ -228,7 +234,7 @@ fn package_doc(context: &Context<'_>, file: &Path, package: &str) -> Option<supe
 }
 
 fn package_comment(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     file: &Path,
     source: &str,
 ) -> Option<super::doc::Documents> {
@@ -256,7 +262,7 @@ fn package_comment(
 
 /// Package documentation for an imported package, searched in file-path order.
 fn imported_package_doc(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     _from: &Path,
     import_path: &str,
     package: &str,
@@ -264,7 +270,7 @@ fn imported_package_doc(
     let workspace = context.workspace();
     let directory = imported_directory(context, import_path)?;
     let external = package.ends_with("_test");
-    for (path, _stub) in workspace
+    let files: Vec<PathBuf> = workspace
         .files
         .range::<Path, _>((
             std::ops::Bound::Included(directory.as_path()),
@@ -277,9 +283,11 @@ fn imported_package_doc(
                 && context.resolver().file_visible(path)
                 && (external || crate::workspace::production_file(path))
         })
+        .map(|(path, _)| path.clone())
         .take(MAX_PACKAGE_FILES)
-    {
-        let Some(source) = header_source(workspace, path) else {
+        .collect();
+    for path in &files {
+        let Some(source) = header_source(context.workspace(), path) else {
             continue;
         };
         if let Some(documents) = package_comment(context, path, &source)

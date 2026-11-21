@@ -1,11 +1,7 @@
-//! Native field identities plus syntax-only anonymous-aggregate conflict sites.
-use super::super::Context;
-use crate::analysis::obj::ObjectRef;
-use crate::analysis::scope::occurrences::{Name, Occurrences, Role};
-use crate::analysis::sema::LiteralKey;
+//! Syntax-only anonymous-aggregate conflict sites for rename validation.
 use crate::syntax::{Lexer, MemberKind, TokenKind};
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 struct InlineStruct {
     members: Vec<(String, Range<usize>)>,
@@ -28,62 +24,6 @@ pub(crate) struct InlineField {
     pub(crate) file: PathBuf,
     pub(crate) selection: Range<usize>,
     pub(crate) name: String,
-}
-
-/// Only a checked field object can establish a selector/declaration identity.
-pub(crate) fn field_at<View>(
-    context: &Context<'_, View>,
-    file: &Path,
-    source: &str,
-    selection: &Range<usize>,
-) -> Option<InlineField> {
-    let span = [
-        u32::try_from(selection.start).ok()?,
-        u32::try_from(selection.end).ok()?,
-    ];
-    context.with_sema(|sema| {
-        let (found, ObjectRef::Field(member)) = sema.object_at(file, source, span[0])? else {
-            return None;
-        };
-        (found == span && !member.builtin && member.selection[0] < member.selection[1]).then(|| {
-            InlineField {
-                file: member.file.to_path_buf(),
-                selection: member.selection[0] as usize..member.selection[1] as usize,
-                name: source.get(selection.clone()).unwrap_or_default().to_owned(),
-            }
-        })
-    })
-}
-
-/// Candidate roles supply literal container coordinates, never type spellings.
-pub(crate) fn occurrence_field<View>(
-    context: &Context<'_, View>,
-    file: &Path,
-    source: &str,
-    analysis: &Occurrences,
-    occurrence: &Name,
-) -> Option<InlineField> {
-    if let Some(field) = field_at(context, file, source, &occurrence.span) {
-        return Some(field);
-    }
-    let (annotation, projections) = match &occurrence.role {
-        Role::LiteralKey(annotation) => (annotation.clone(), Vec::new()),
-        Role::LiteralElementKey(key) => analysis.literal_element_projection(*key)?,
-        _ => return None,
-    };
-    let name = source.get(occurrence.span.clone())?;
-    context.with_sema(|sema| {
-        let LiteralKey::Field(member) =
-            sema.literal_key_at(file, source, annotation, &projections, name)
-        else {
-            return None;
-        };
-        Some(InlineField {
-            file: member.file.to_path_buf(),
-            selection: member.selection[0] as usize..member.selection[1] as usize,
-            name: name.to_owned(),
-        })
-    })
 }
 
 /// A direct field conflict in the same anonymous aggregate.

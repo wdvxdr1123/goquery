@@ -1,19 +1,19 @@
 //! Cursor syntax locates sites; only checked native facts create members.
 use super::{CompletionMember, CompletionMembers, FieldKey};
-use crate::analysis::obj::{MethodOrigin, ObjectRef};
 use crate::analysis::query::Context;
-use crate::analysis::scope::CursorScope;
-use crate::analysis::sema::{CompletionSite, MemberRequest};
+use crate::analysis::sema::{
+    CompletionSite, CursorBody, MemberRequest, MethodOrigin, SemanticObject,
+};
 use crate::syntax::{ExprKind, Lexer, TokenKind};
 use crate::text::SourceMap;
 
 impl<'a> Context<'a> {
     pub(in crate::analysis::query) fn completion_selector_members(
-        &self,
-        scope: &CursorScope,
+        &mut self,
+        body: Option<&CursorBody>,
         offset: usize,
     ) -> Option<CompletionMembers<'a>> {
-        let body = scope.body.as_ref()?;
+        let body = body?;
         let operand = body.tree.expressions.iter().find_map(|expression| {
             let ExprKind::Selector { operand, field } = &expression.kind else {
                 return None;
@@ -36,30 +36,30 @@ impl<'a> Context<'a> {
         ];
         let offset = u32::try_from(offset).ok()?;
         let site = crate::analysis::sema::CompletionSite::Selector(operand);
-        let members = self
-            .with_sema(|sema| {
-                sema.completion_members(
-                    self.file(),
-                    self.source(),
-                    crate::analysis::sema::MemberRequest {
-                        site,
-                        offset,
-                        used: &[],
-                    },
-                )
-            })?
+        let (doc, sema) = self.split();
+        let workspace = doc.workspace();
+        let members = sema
+            .completion_members(
+                doc.file(),
+                doc.source(),
+                crate::analysis::sema::MemberRequest {
+                    site,
+                    offset,
+                    used: &[],
+                },
+            )?
             .into_iter()
             .map(|(name, object)| {
                 let method = match object {
-                    ObjectRef::Method(MethodOrigin::Concrete(decl)) => {
+                    SemanticObject::Method(MethodOrigin::Concrete(decl)) => {
                         Some((decl.file, decl.symbol))
                     }
                     _ => None,
                 };
                 let declaration = match object {
-                    ObjectRef::Field(member)
-                    | ObjectRef::Method(MethodOrigin::Interface(member)) => {
-                        member.describe_name(self.workspace, &name)
+                    SemanticObject::Field(member)
+                    | SemanticObject::Method(MethodOrigin::Interface(member)) => {
+                        member.describe_name(workspace, &name)
                     }
                     _ => None,
                 };
@@ -82,13 +82,13 @@ impl<'a> Context<'a> {
     }
 
     pub(in crate::analysis::query) fn completion_literal_members(
-        &self,
-        scope: &CursorScope,
+        &mut self,
+        body: Option<&CursorBody>,
         offset: usize,
-        map: &SourceMap<'_>,
     ) -> Option<(CompletionMembers<'a>, bool)> {
-        let body = scope.body.as_ref()?;
+        let body = body?;
         let source = self.source();
+        let map = SourceMap::new(source);
         let (expression, elements, opening) = body
             .tree
             .expressions
@@ -162,27 +162,28 @@ impl<'a> Context<'a> {
             u32::try_from(body.base + expression.span.start).ok()?,
             u32::try_from(body.base + expression.span.end).ok()?,
         ]);
-        let raw = self.with_sema(|sema| {
-            sema.completion_members(
-                self.file(),
-                source,
-                MemberRequest {
-                    site,
-                    offset,
-                    used: &used,
-                },
-            )
-        })?;
+        let comma = map.position(opening).line != map.position(offset as usize).line;
+        let (doc, sema) = self.split();
+        let workspace = doc.workspace();
+        let raw = sema.completion_members(
+            doc.file(),
+            doc.source(),
+            MemberRequest {
+                site,
+                offset,
+                used: &used,
+            },
+        )?;
         let key = FieldKey {
             colon: !existing_key,
-            comma: map.position(opening).line != map.position(offset as usize).line,
+            comma,
         };
         let members = raw
             .into_iter()
             .enumerate()
             .map(|(index, (name, object))| {
                 let declaration = match object {
-                    ObjectRef::Field(member) => member.describe_name(self.workspace, &name),
+                    SemanticObject::Field(member) => member.describe_name(workspace, &name),
                     _ => None,
                 };
                 CompletionMember {

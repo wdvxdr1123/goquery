@@ -6,8 +6,8 @@
 //! workspace metadata, so valid files never produce false positives. Unsupported
 //! constructs stay unreported; the remaining gaps are listed in the design doc.
 use super::Context;
-use crate::analysis::check::diagnostics::MAX_DIAGNOSTICS;
-pub(crate) use crate::analysis::check::diagnostics::{Code, Diagnostic, Kind};
+use crate::analysis::sema::MAX_DIAGNOSTICS;
+pub(crate) use crate::analysis::sema::{Code, Diagnostic, Kind};
 use crate::syntax::{self, view};
 use crate::workspace::Workspace;
 use std::collections::HashSet;
@@ -47,29 +47,30 @@ impl ImportSpec {
 
 /// All diagnostics for the admitted file, or an empty list when the workspace
 /// has no metadata for it.
-pub(crate) fn diagnostics(context: &Context<'_>) -> Vec<Diagnostic> {
+pub(crate) fn diagnostics(context: &mut Context<'_>) -> Vec<Diagnostic> {
     let workspace = context.workspace();
     let file = context.file();
-    let source = context.source();
     if !workspace.files.contains_key(file) {
         return Vec::new();
     }
-    let mut rows = match validate_imports(source) {
-        Ok(specs) => unused_imports_of(workspace, source, &specs)
-            .into_iter()
-            .map(|import| Diagnostic {
-                span: import.span,
-                kind: Kind::Compiler(Code::UnusedImport),
-                message: import.message,
-                unnecessary: true,
-                related: Vec::new(),
-            })
-            .collect(),
-        Err(error) => return vec![error],
+    let mut rows = {
+        let source = context.source();
+        match validate_imports(source) {
+            Ok(specs) => unused_imports_of(workspace, source, &specs)
+                .into_iter()
+                .map(|import| Diagnostic {
+                    span: import.span,
+                    kind: Kind::Compiler(Code::UnusedImport),
+                    message: import.message,
+                    unnecessary: true,
+                    related: Vec::new(),
+                })
+                .collect(),
+            Err(error) => return vec![error],
+        }
     };
-    context.with_sema(|sema| {
-        sema.file_diagnostics(file, source, &mut rows);
-    });
+    let (doc, sema) = context.split();
+    sema.file_diagnostics(doc.file(), doc.source(), &mut rows);
     rows.truncate(MAX_DIAGNOSTICS);
     rows
 }

@@ -242,9 +242,34 @@ impl BuiltinFunction {
     }
 }
 
+/// Non-empty byte span `[start, end)` of a type-switch `case` clause (`end > 0`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct CaseScope {
+    pub(crate) start: u32,
+    pub(crate) end: std::num::NonZeroU32,
+}
+
+impl CaseScope {
+    pub(crate) fn from_span(span: [u32; 2]) -> Option<Self> {
+        let end = std::num::NonZeroU32::new(span[1])?;
+        (span[0] < span[1]).then_some(Self {
+            start: span[0],
+            end,
+        })
+    }
+
+    pub(crate) fn span(self) -> [u32; 2] {
+        [self.start, self.end.get()]
+    }
+}
+
+/// Source declaration target resolved from a semantic [`Object`].
+/// Transition alias while analysis modules adopt [`Object`].
+pub(crate) type ObjectRef<'a> = Object<'a>;
+
 /// Unified identity of a resolved Go semantic object (`go/types.Object` analog).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ObjectRef<'a> {
+pub(crate) enum Object<'a> {
     PkgName {
         import_path_span: [u32; 2],
         target_dir: &'a Path,
@@ -262,6 +287,8 @@ pub(crate) enum ObjectRef<'a> {
     Var {
         origin: SymbolOrigin<'a>,
         kind: VarKind,
+        /// Type-switch clause span (`case T:`) distinguishing per-clause bindings.
+        case_scope: Option<CaseScope>,
     },
     Field(MemberDeclId<'a>),
     Func(DeclId<'a>),
@@ -276,5 +303,81 @@ pub(crate) enum ObjectRef<'a> {
     },
 }
 
+impl<'a> Object<'a> {
+    pub(crate) fn case_scope(self) -> Option<[u32; 2]> {
+        match self {
+            Self::Var {
+                case_scope: Some(scope),
+                ..
+            } => Some(scope.span()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_local(self) -> bool {
+        matches!(
+            self,
+            Self::Const(SymbolOrigin::Local { .. })
+                | Self::TypeName {
+                    origin: SymbolOrigin::Local { .. },
+                    ..
+                }
+                | Self::Var {
+                    origin: SymbolOrigin::Local { .. },
+                    ..
+                }
+                | Self::TypeParam { .. }
+                | Self::Label { .. }
+        )
+    }
+
+    /// Reference identity equality. When `match_case_scope` is false (`references`
+    /// and `rename`), distinct clauses of the same type-switch guard group under
+    /// the guard declaration span; when true (`documentHighlight`), each case
+    /// clause remains isolated by its clause span and `LocalId`.
+    pub(crate) fn same_reference_target(self, other: Self, match_case_scope: bool) -> bool {
+        if !match_case_scope
+            && let (
+                Self::Var {
+                    origin:
+                        SymbolOrigin::Local {
+                            file: f1, span: s1, ..
+                        },
+                    kind: k1,
+                    case_scope: Some(_),
+                },
+                Self::Var {
+                    origin:
+                        SymbolOrigin::Local {
+                            file: f2, span: s2, ..
+                        },
+                    kind: k2,
+                    case_scope: Some(_),
+                },
+            ) = (self, other)
+        {
+            return f1 == f2 && s1 == s2 && k1 == k2;
+        }
+        self == other
+    }
+}
+
+pub(crate) fn decl_object(decl: DeclId<'_>) -> Object<'_> {
+    match decl.symbol.kind {
+        crate::syntax::SymbolKind::Constant => Object::Const(SymbolOrigin::Package(decl)),
+        crate::syntax::SymbolKind::Type => Object::TypeName {
+            origin: SymbolOrigin::Package(decl),
+            is_alias: decl.symbol.alias,
+        },
+        crate::syntax::SymbolKind::Variable => Object::Var {
+            origin: SymbolOrigin::Package(decl),
+            kind: VarKind::Package,
+            case_scope: None,
+        },
+        crate::syntax::SymbolKind::Function => Object::Func(decl),
+        crate::syntax::SymbolKind::Method => Object::Method(MethodOrigin::Concrete(decl)),
+    }
+}
+
 #[cfg(target_pointer_width = "64")]
-const _: () = assert!(std::mem::size_of::<ObjectRef<'static>>() <= 48);
+const _: () = assert!(std::mem::size_of::<Object<'static>>() <= 48);

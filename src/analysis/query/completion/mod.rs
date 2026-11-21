@@ -7,14 +7,14 @@ mod presentation;
 mod signatures;
 mod type_position;
 use super::Context;
-use crate::analysis::obj::{MethodOrigin, ObjectRef};
 use crate::analysis::resolve::MemberDescription;
+use crate::analysis::sema::{MethodOrigin, SemanticObject};
 use crate::index::IndexedSymbol;
 
 /// Source metadata decorates a proven selection; its type stays native.
 pub(in crate::analysis::query) struct CompletionMember<'a> {
     pub(crate) name: String,
-    pub(crate) object: ObjectRef<'a>,
+    pub(crate) object: SemanticObject<'a>,
     pub(crate) method: Option<(&'a std::path::Path, &'a IndexedSymbol)>,
     pub(crate) declaration: Option<MemberDescription<'a>>,
     pub(crate) field_key: Option<FieldKey>,
@@ -24,10 +24,9 @@ pub(in crate::analysis::query) struct CompletionMember<'a> {
 impl CompletionMember<'_> {
     fn origin(&self) -> &std::path::Path {
         match self.object {
-            ObjectRef::Method(MethodOrigin::Concrete(decl)) => decl.file,
-            ObjectRef::Field(member) | ObjectRef::Method(MethodOrigin::Interface(member)) => {
-                member.file
-            }
+            SemanticObject::Method(MethodOrigin::Concrete(decl)) => decl.file,
+            SemanticObject::Field(member)
+            | SemanticObject::Method(MethodOrigin::Interface(member)) => member.file,
             _ => unreachable!("only native members enter completion"),
         }
     }
@@ -94,7 +93,7 @@ pub(crate) struct Item {
 
 impl<'a> Context<'a> {
     pub(crate) fn completion(
-        &self,
+        &mut self,
         offset: usize,
         call_context: bool,
         render_documentation: Option<&mut dyn FnMut(&str) -> String>,

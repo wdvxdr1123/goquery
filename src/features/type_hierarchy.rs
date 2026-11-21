@@ -9,7 +9,7 @@ pub(super) enum Relation {
     Structural,
     Embedding,
 }
-pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symbol) -> Value {
+pub(super) fn item<View>(context: &mut Context<'_, View>, file: &Path, symbol: &Symbol) -> Value {
     let uri = workspace::uri(file);
     let kind = if context.type_is_interface(file, symbol) {
         tower_lsp::lsp_types::SymbolKind::INTERFACE
@@ -24,7 +24,7 @@ pub(super) fn item<View>(context: &Context<'_, View>, file: &Path, symbol: &Symb
 }
 
 pub(super) fn execute(
-    context: &Context<'_, ()>,
+    context: &mut Context<'_, ()>,
     params: &Value,
     supers: bool,
     relation: Relation,
@@ -72,34 +72,32 @@ pub(super) fn execute(
         Relation::Structural => context.type_relations(target.file, target.symbol, supers)?,
         Relation::Embedding => context.embedding_relations(target.file, target.symbol, supers)?,
     };
-    let mut results: Vec<_> = results
-        .into_iter()
-        .map(|target| {
-            let node = item(context, target.file, target.symbol);
-            let detail = if structural {
-                node["detail"].as_str().unwrap_or_default().to_owned()
-            } else {
-                String::new()
-            };
-            let name = if structural {
-                target.symbol.name.as_str()
-            } else {
-                ""
-            };
+    let mut encoded = Vec::with_capacity(results.len());
+    for target in results {
+        let node = item(context, target.file, target.symbol);
+        let detail = if structural {
+            node["detail"].as_str().unwrap_or_default().to_owned()
+        } else {
+            String::new()
+        };
+        let name = if structural {
+            target.symbol.name.as_str()
+        } else {
+            ""
+        };
+        encoded.push((
             (
-                (
-                    structural && detail != package,
-                    detail,
-                    name,
-                    workspace::uri(target.file),
-                    target.symbol.start,
-                ),
-                node,
-            )
-        })
-        .collect();
-    results.sort_by(|a, b| a.0.cmp(&b.0));
+                structural && detail != package,
+                detail,
+                name,
+                workspace::uri(target.file),
+                target.symbol.start,
+            ),
+            node,
+        ));
+    }
+    encoded.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Value::Array(
-        results.into_iter().map(|(_, item)| item).collect(),
+        encoded.into_iter().map(|(_, item)| item).collect(),
     ))
 }

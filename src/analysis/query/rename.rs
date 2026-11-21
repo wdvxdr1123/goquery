@@ -5,12 +5,11 @@
 //! name), and declaration doc comments/doc links are renamed with it.
 use super::locations::SourcePosition;
 use super::{Context, ReferenceTarget, SourceRange};
-use crate::analysis::obj::MemberDeclId;
 use crate::analysis::resolve::MemberDescription;
 use crate::analysis::resolve::{self, NameProbe};
-use crate::analysis::scope;
-use crate::analysis::scope::occurrences::{Occurrences, Role};
-use crate::analysis::sema::{Identity, IdentityResolver};
+use crate::analysis::sema::{
+    MemberDeclId, RegionMode, SemanticObject, SymbolOrigin, lexical_name_spans,
+};
 use crate::index::IndexedSymbol as Symbol;
 use crate::syntax::{Lexer, MemberKind, TokenKind};
 use crate::text::SourceMap;
@@ -135,7 +134,7 @@ const PACKAGE_RENAME_ERROR: &str =
 
 impl<'a> Context<'a> {
     pub(crate) fn prepare_rename(
-        &self,
+        &mut self,
         offset: usize,
     ) -> Result<Option<PrepareItem>, (i32, String)> {
         let source = self.source();
@@ -152,12 +151,13 @@ impl<'a> Context<'a> {
                 .import_spec_at(source, offset)
                 .and_then(|import| self.prepare_import(&import)));
         };
-        if let Some(import) = self.import_object_at(source, &ident) {
+        if let Some(import) = self.import_object_at(&ident) {
             return Ok(self.prepare_import(&import));
         }
-        let Some(target) = self.prepare_target(source, &ident) else {
+        let Some(target) = self.prepare_target(&ident) else {
             return Ok(None);
         };
+        let source = self.source();
         if !prepare_renamable(self.workspace(), source, self.file(), &ident, &target) {
             return Ok(None);
         }
@@ -169,55 +169,62 @@ impl<'a> Context<'a> {
     }
 
     pub(crate) fn rename_edits(
-        &self,
+        &mut self,
         offset: usize,
         new_name: &str,
     ) -> Result<RenameEdits, (i32, String)> {
-        let source = self.source();
         let file = self.file();
-        if let Some(span) = package_name_span(source)
-            && contains_span(&span, offset)
-        {
-            return Err((0, PACKAGE_RENAME_ERROR.into()));
-        }
-        if func_keyword_at(source, offset) {
-            return Err((
-                0,
-                if valid_identifier(new_name) {
-                    "parsed signature is *ast.Ident, not a function type".into()
-                } else {
-                    format!("invalid identifier to rename: {new_name:?}")
-                },
-            ));
-        }
-        if !valid_identifier(new_name) {
-            return Err((0, format!("invalid identifier to rename: {new_name:?}")));
-        }
-        let Some(ident) = cursor_identifier(source, offset) else {
-            let import = self
-                .import_spec_at(source, offset)
-                .ok_or_else(|| (0, "no identifier found".to_string()))?;
-            return self.finish_import(file, &import, new_name);
+        let ident = {
+            let source = self.source();
+            if let Some(span) = package_name_span(source)
+                && contains_span(&span, offset)
+            {
+                return Err((0, PACKAGE_RENAME_ERROR.into()));
+            }
+            if func_keyword_at(source, offset) {
+                return Err((
+                    0,
+                    if valid_identifier(new_name) {
+                        "parsed signature is *ast.Ident, not a function type".into()
+                    } else {
+                        format!("invalid identifier to rename: {new_name:?}")
+                    },
+                ));
+            }
+            if !valid_identifier(new_name) {
+                return Err((0, format!("invalid identifier to rename: {new_name:?}")));
+            }
+            let Some(ident) = cursor_identifier(source, offset) else {
+                let import = self
+                    .import_spec_at(source, offset)
+                    .ok_or_else(|| (0, "no identifier found".to_string()))?;
+                return self.finish_import(file, &import, new_name);
+            };
+            if let Some(import) = self.import_object_at(&ident) {
+                return self.finish_import(file, &import, new_name);
+            }
+            ident
         };
-        if let Some(import) = self.import_object_at(source, &ident) {
-            return self.finish_import(file, &import, new_name);
-        }
         let target = self
-            .rename_target(source, &ident)?
+            .rename_target(&ident)?
             .ok_or_else(|| (0, "no identifier found".to_string()))?;
-        let old_name = target_name(source, &target);
-        if old_name == new_name {
-            return Err((0, format!("old and new names are the same: {new_name}")));
-        }
-        if let Some(error) = check_renamable(self.workspace(), source, file, &ident, &target) {
-            return Err((0, error));
-        }
+        let old_name = {
+            let source = self.source();
+            let old_name = target_name(source, &target);
+            if old_name == new_name {
+                return Err((0, format!("old and new names are the same: {new_name}")));
+            }
+            if let Some(error) = check_renamable(self.workspace(), source, file, &ident, &target) {
+                return Err((0, error));
+            }
+            old_name
+        };
         if let Some(error) = self.method_package_error(&target, &old_name, new_name) {
             return Err((0, error));
         }
         let mut edits = self.target_edits(file, &target, &old_name, new_name)?;
         self.export_check(&target, &edits, &old_name, new_name)?;
-        edits.extend(self.declaration_doc_edits(source, file, &target, &old_name));
+        edits.extend(self.declaration_doc_edits(self.source(), file, &target, &old_name));
         edits.extend(self.link_edits(&target, &old_name)?);
         Ok(RenameEdits {
             edits: finalize(edits),
@@ -225,7 +232,7 @@ impl<'a> Context<'a> {
     }
 
     fn finish_import(
-        &self,
+        &mut self,
         file: &Path,
         import: &ImportAt,
         new_name: &str,
@@ -254,21 +261,16 @@ impl<'a> Context<'a> {
 impl<'a> Context<'a> {
     /// Prepare reports `null` for every unresolvable position; only the
     /// package-name declaration surfaces a user-facing error.
-    fn prepare_target(&self, source: &str, ident: &Range<usize>) -> Option<Target> {
-        self.rename_target(source, ident).ok().flatten()
+    fn prepare_target(&mut self, ident: &Range<usize>) -> Option<Target> {
+        self.rename_target(ident).ok().flatten()
     }
 
-    fn rename_target(
-        &self,
-        source: &str,
-        ident: &Range<usize>,
-    ) -> Result<Option<Target>, (i32, String)> {
-        let file = self.file();
-        if let Some(import) = self.import_object_at(source, ident) {
+    fn rename_target(&mut self, ident: &Range<usize>) -> Result<Option<Target>, (i32, String)> {
+        if let Some(import) = self.import_object_at(ident) {
             return Ok(Some(Target::Import { name: import.name }));
         }
         let Some(index) = self.reference_probe(ident.start) else {
-            return self.unresolved_target(source, file, ident);
+            return self.unresolved_target(ident);
         };
         let target = self.reference_target(&index, ident.start, true)?;
         Ok(match target {
@@ -281,7 +283,7 @@ impl<'a> Context<'a> {
             }
             ReferenceTarget::Local(spans) => {
                 let selection = self
-                    .local_declaration(source, ident, &spans)
+                    .local_declaration(ident, &spans)
                     .unwrap_or_else(|| ident.clone());
                 Some(Target::Local { selection, spans })
             }
@@ -291,70 +293,60 @@ impl<'a> Context<'a> {
                 name: field.name,
             }),
             ReferenceTarget::Unresolved => {
-                if let Some(label) = self.label_target(source, ident)? {
+                if let Some(label) = self.label_target(self.source(), ident)? {
                     return Ok(Some(label));
                 }
-                self.unresolved_target(source, file, ident)?
+                self.unresolved_target(ident)?
             }
         })
     }
 
     /// Locates the declaring occurrence of a local binding among its references.
     fn local_declaration(
-        &self,
-        source: &str,
+        &mut self,
         ident: &Range<usize>,
         spans: &[Range<usize>],
     ) -> Option<Range<usize>> {
-        let file = self.file();
-        let stub = self.workspace().files.get(file)?;
-        let analysis = Occurrences::new(source, stub).ok()?;
-        let mut resolver = IdentityResolver::new(self.workspace(), file);
-        for name in &analysis.names {
-            if !spans.contains(&name.span) {
-                continue;
-            }
-            if matches!(self.resolve_identity(&mut resolver, &analysis, source, name), Some(Identity::Local(selection)) if selection == name.span)
+        let (doc, sema) = self.split();
+        let file = doc.file();
+        let source = doc.source();
+        for span in spans {
+            let key = [
+                u32::try_from(span.start).unwrap_or(u32::MAX),
+                u32::try_from(span.end).unwrap_or(u32::MAX),
+            ];
+            if sema
+                .region_at(file, source, key[0], RegionMode::Full)
+                .and_then(|view| view.def_by_span(key))
+                .is_some()
             {
-                return Some(name.span.clone());
+                return Some(span.clone());
             }
         }
         spans.iter().find(|span| **span == *ident).cloned()
     }
 
     /// Blank declarations and predeclared names never resolve to a symbol.
-    fn unresolved_target(
-        &self,
-        source: &str,
-        file: &Path,
-        ident: &Range<usize>,
-    ) -> Result<Option<Target>, (i32, String)> {
+    fn unresolved_target(&mut self, ident: &Range<usize>) -> Result<Option<Target>, (i32, String)> {
+        let (doc, sema) = self.split();
+        let source = doc.source();
+        let file = doc.file();
         let spelling = &source[ident.clone()];
-        let stub = &self.workspace().files[file];
-        let analysis = Occurrences::new(source, stub)?;
-        let role = analysis
-            .names
-            .iter()
-            .find(|name| name.span == *ident)
-            .map(|name| &name.role);
-        if matches!(role, Some(Role::BlankDeclaration { .. })) {
-            return Err((0, "can't rename \"_\"".into()));
-        }
         if spelling == "_" {
-            if blank_declaration(source, ident) {
+            let is_range_blank = sema
+                .region_at(
+                    file,
+                    source,
+                    ident.start as u32,
+                    RegionMode::Prefix(ident.start),
+                )
+                .is_some_and(|view| view.is_range_blank([ident.start as u32, ident.end as u32]));
+            if is_range_blank || blank_declaration(source, ident) {
                 return Err((0, "can't rename \"_\"".into()));
             }
             return Err((0, "no object found for \"_\"".into()));
         }
-        if scope::universe::builtin(spelling)
-            && scope::universe::visible(
-                self.workspace(),
-                file,
-                Some(&analysis.locals),
-                ident.start,
-                spelling,
-            )
-        {
+        if sema.universe_builtin_visible(file, source, ident.start as u32, spelling) {
             return Err((0, format!("{spelling} is built in and cannot be renamed")));
         }
         Err((0, format!("no object found for {spelling:?}")))
@@ -476,45 +468,66 @@ impl<'a> Context<'a> {
 
     /// Detects import objects selected at an identifier: explicit alias,
     /// qualifier use, or the package name of an import path.
-    fn import_object_at(&self, source: &str, ident: &Range<usize>) -> Option<ImportAt> {
-        let specs = self.import_specs(source);
-        let stub = self.workspace().files.get(self.file())?;
-        if let Some((index, spec)) = specs
-            .iter()
-            .enumerate()
-            .find(|(_, spec)| spec.alias.as_ref() == Some(ident))
-        {
-            let import = stub.imports.get(index)?;
-            return Some(ImportAt {
-                index,
-                name: self.import_effective_name(import),
-                spec: Some(spec.clone()),
-                cursor: Some(ident.clone()),
-            });
-        }
-        let spelling = &source[ident.clone()];
-        let index = stub
-            .imports
-            .iter()
-            .position(|import| self.import_effective_name(import) == spelling)?;
-        if !qualifier_use(source, ident) {
-            return None;
-        }
-        if crate::analysis::resolve::unqualified_symbol(self.workspace(), self.file(), spelling)
+    fn import_object_at(&mut self, ident: &Range<usize>) -> Option<ImportAt> {
+        let (index, name, spec, cursor, spelling) = {
+            let source = self.source();
+            let specs = self.import_specs(source);
+            let stub = self.workspace().files.get(self.file())?;
+            if let Some((index, spec)) = specs
+                .iter()
+                .enumerate()
+                .find(|(_, spec)| spec.alias.as_ref() == Some(ident))
+            {
+                let import = stub.imports.get(index)?;
+                return Some(ImportAt {
+                    index,
+                    name: self.import_effective_name(import),
+                    spec: Some(spec.clone()),
+                    cursor: Some(ident.clone()),
+                });
+            }
+            let spelling = source[ident.clone()].to_owned();
+            let index = stub
+                .imports
+                .iter()
+                .position(|import| self.import_effective_name(import) == spelling)?;
+            if !qualifier_use(source, ident) {
+                return None;
+            }
+            if crate::analysis::resolve::unqualified_symbol(
+                self.workspace(),
+                self.file(),
+                &spelling,
+            )
             .is_some()
-        {
-            return None;
-        }
-        if let Ok(scope) = self.cursor_scope(ident.start)
-            && scope.locals.resolve_at(ident.start, spelling).is_some()
+            {
+                return None;
+            }
+            (
+                index,
+                spelling.clone(),
+                specs.get(index).cloned(),
+                Some(ident.clone()),
+                spelling,
+            )
+        };
+        let (doc, sema) = self.split();
+        if sema
+            .region_at(
+                doc.file(),
+                doc.source(),
+                ident.start as u32,
+                RegionMode::Prefix(ident.start),
+            )
+            .is_some_and(|view| view.is_local_defined_at(ident.start as u32, &spelling))
         {
             return None;
         }
         Some(ImportAt {
             index,
-            name: spelling.to_owned(),
-            spec: specs.get(index).cloned(),
-            cursor: Some(ident.clone()),
+            name,
+            spec,
+            cursor,
         })
     }
 
@@ -552,12 +565,13 @@ impl<'a> Context<'a> {
     }
 
     fn import_edits(
-        &self,
+        &mut self,
         file: &Path,
         import: &ImportAt,
         rows: &mut Vec<RenameEdit>,
     ) -> Result<(), (i32, String)> {
-        let source = self.source();
+        let source_buf = self.source().to_owned();
+        let source = source_buf.as_str();
         let map = SourceMap::new(source);
         let stub = self.workspace().files.get(file).ok_or((
             crate::error::INVALID_PARAMS,
@@ -597,15 +611,15 @@ impl<'a> Context<'a> {
                 && crate::analysis::resolve::unqualified_symbol(self.workspace(), file, old_name)
                     .is_none()
             {
-                let shadowed = self
-                    .cursor_scope(token.span.start)
-                    .ok()
-                    .is_some_and(|scope| {
-                        scope
-                            .locals
-                            .resolve_at(token.span.start, old_name)
-                            .is_some()
-                    });
+                let shadowed = self.with_sema(|sema| {
+                    sema.region_at(
+                        file,
+                        source,
+                        token.span.start as u32,
+                        RegionMode::Prefix(token.span.start),
+                    )
+                    .is_some_and(|view| view.is_local_defined_at(token.span.start as u32, old_name))
+                });
                 if !shadowed {
                     rows.push(RenameEdit {
                         file: file.to_path_buf(),
@@ -750,7 +764,7 @@ fn at_member_declaration(
 
 impl<'a> Context<'a> {
     fn target_edits(
-        &self,
+        &mut self,
         file: &Path,
         target: &Target,
         old_name: &str,
@@ -937,7 +951,7 @@ impl<'a> Context<'a> {
     /// gopls renames receivers of every other method of the same type when the
     /// rename is initiated at a receiver declaration.
     fn receiver_group_edits(
-        &self,
+        &mut self,
         file: &Path,
         owner: &str,
         old_name: &str,
@@ -950,7 +964,6 @@ impl<'a> Context<'a> {
         };
         let directory = file.parent().map(Path::to_path_buf);
         let package = stub.package.clone();
-        let index = NameProbe::new(old_name);
         let methods: Vec<(&PathBuf, &Symbol)> = workspace
             .files
             .iter()
@@ -982,21 +995,31 @@ impl<'a> Context<'a> {
             let Some(candidate_stub) = workspace.files.get(method_file) else {
                 continue;
             };
-            let analysis = Occurrences::for_name(&source, candidate_stub, old_name)?;
-            if analysis.names.is_empty() {
+            let spans = lexical_name_spans(&source, candidate_stub, old_name);
+            if spans.is_empty() {
                 continue;
             }
+            let target_decl = [
+                u32::try_from(span.start).unwrap_or(u32::MAX),
+                u32::try_from(span.end).unwrap_or(u32::MAX),
+            ];
             let map = SourceMap::new(&source);
-            let mut resolver = IdentityResolver::for_name(workspace, method_file, &index);
-            for name in &analysis.names {
-                if &source[name.span.clone()] != old_name {
+            for ident_span in spans {
+                let key = [ident_span.start as u32, ident_span.end as u32];
+                let Some(SemanticObject::Var {
+                    origin:
+                        SymbolOrigin::Local {
+                            span: decl_span, ..
+                        },
+                    ..
+                }) = self.with_sema(|sema| sema.resolve_offset(method_file, &source, key))
+                else {
                     continue;
-                }
-                if matches!(self.resolve_identity(&mut resolver, &analysis, &source, name), Some(Identity::Local(binding)) if binding == span)
-                {
+                };
+                if decl_span == target_decl {
                     rows.push(RenameEdit {
                         file: method_file.clone(),
-                        range: SourceRange::new(&map, name.span.clone()),
+                        range: SourceRange::new(&map, ident_span),
                         text: RenameText::Name,
                     });
                 }
@@ -1008,7 +1031,7 @@ impl<'a> Context<'a> {
     /// Renaming an exported type whose declaration is embedded in another
     /// package must also rename the embedding field and its promoted selectors.
     fn embedded_type_consequences(
-        &self,
+        &mut self,
         target_file: &Path,
         symbol: &Symbol,
         rows: &mut Vec<RenameEdit>,
@@ -1847,6 +1870,7 @@ fn blank_declaration(source: &str, ident: &Range<usize>) -> bool {
         if token.span.start == ident.start {
             let next = tokens.next().map(|next| next.kind);
             return match next {
+                Some(TokenKind::Define) => true,
                 Some(TokenKind::Assign) => {
                     matches!(previous, Some(TokenKind::Var) | Some(TokenKind::Const))
                 }

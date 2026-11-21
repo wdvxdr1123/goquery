@@ -10,22 +10,18 @@
 //! Mirrors `tokenVisitor.comment`'s `lookupObjects`: an optional import
 //! qualifier, then either a package-scope name or `Type.Member`. Unresolved links stay comments. Bare non-exported names also stay comments;
 //! members of a named package type follow native package visibility.
-use crate::analysis::obj::{DeclId, MethodOrigin, ObjectRef};
-use crate::analysis::resolve;
-use crate::analysis::types::TypeArena;
+use crate::analysis::sema::{DocLinkKind, DocLinkTarget, MethodOrigin, SemanticObject};
 use crate::syntax::TypeConstructor;
 use std::ops::Range;
-use std::path::Path;
 
 use super::SemanticTokenKind;
 
 const COMMENT: SemanticTokenKind = SemanticTokenKind::Comment;
 
-pub(super) fn split(
-    arena: &mut TypeArena<'_>,
-    file: &Path,
+pub(super) fn split<'a>(
     source: &str,
     span: &Range<usize>,
+    mut resolve_link: impl FnMut(&str) -> Vec<DocLinkTarget<'a>>,
 ) -> Vec<(Range<usize>, SemanticTokenKind, u64)> {
     let text = &source[span.clone()];
     // A known `//go:directive` highlights the directive name as a namespace.
@@ -40,7 +36,7 @@ pub(super) fn split(
     let mut offset = span.start;
     for line in text.split('\n') {
         let line_end = offset + line.len();
-        split_line(arena, file, line, offset, line_end, &mut tokens);
+        split_line(line, offset, line_end, &mut resolve_link, &mut tokens);
         offset = line_end + 1;
     }
     if tokens.is_empty() {
@@ -87,12 +83,11 @@ fn godirective(text: &str, start: usize) -> Option<Vec<(Range<usize>, SemanticTo
     Some(tokens)
 }
 
-fn split_line(
-    arena: &mut TypeArena<'_>,
-    file: &Path,
+fn split_line<'a>(
     line: &str,
     base: usize,
     line_end: usize,
+    resolve_link: &mut impl FnMut(&str) -> Vec<DocLinkTarget<'a>>,
     tokens: &mut Vec<(Range<usize>, SemanticTokenKind, u64)>,
 ) {
     let bytes = line.as_bytes();
@@ -108,7 +103,26 @@ fn split_line(
             continue;
         };
         let name = &line[name_start..name_end];
-        let objects = lookup(arena, file, name);
+        let targets = resolve_link(name);
+        let Some(objects) = targets
+            .into_iter()
+            .map(|target| {
+                let (kind, modifiers) = match target.kind {
+                    DocLinkKind::Namespace => (SemanticTokenKind::Namespace, 0),
+                    DocLinkKind::Symbol(sym) => style(sym),
+                    DocLinkKind::Member(member) => member_style(member)?,
+                };
+                Some(Found {
+                    name: target.name,
+                    kind,
+                    modifiers,
+                })
+            })
+            .collect::<Option<Vec<_>>>()
+        else {
+            index += 1;
+            continue;
+        };
         if objects.is_empty() {
             index += 1;
             continue;
@@ -176,169 +190,14 @@ struct Found {
     modifiers: u64,
 }
 
-fn lookup(arena: &mut TypeArena<'_>, file: &Path, name: &str) -> Vec<Found> {
-    let parts: Vec<&str> = name.split('.').collect();
-    if parts.is_empty() || parts.len() > 3 {
-        return Vec::new();
-    }
-    if parts.len() > 1 {
-        if import_path(arena, file, parts[0]).is_some() {
-            return imported(arena, file, parts[0], &parts[1..]);
-        }
-        // `T.M` resolves in the current package.
-        return current_member(arena, file, parts[0], parts[1], parts.len() == 3);
-    }
-    let Some((_, symbol)) = arena.resolver().package_symbol(file, parts[0]) else {
-        return Vec::new();
-    };
-    if !exported(&symbol.name) {
-        return Vec::new();
-    }
-    let (kind, modifiers) = style(symbol);
-    vec![Found {
-        name: parts[0].to_owned(),
-        kind,
-        modifiers,
-    }]
-}
-
-/// Resolves an import alias to its canonical import path.
-fn import_path<'a>(arena: &TypeArena<'a>, file: &Path, alias: &str) -> Option<&'a str> {
-    let resolver = arena.resolver();
-    arena
-        .workspace()
-        .files
-        .get(file)?
-        .imports
-        .iter()
-        .find(|import| {
-            !import.is_dot()
-                && !import.is_blank()
-                && resolver.import_name(file, import) == Some(alias)
-        })
-        .map(|import| import.path.as_str())
-}
-
-fn imported(arena: &mut TypeArena<'_>, file: &Path, alias: &str, rest: &[&str]) -> Vec<Found> {
-    let mut objects = vec![Found {
-        name: alias.to_owned(),
-        kind: SemanticTokenKind::Namespace,
-        modifiers: 0,
-    }];
-    if rest.len() == 1 {
-        let name = rest[0];
-        let Some((_, symbol)) = arena
-            .resolver()
-            .imported_symbol_candidates(
-                file,
-                alias,
-                Some(crate::bloom::Fingerprint::new(name.as_bytes())),
-            )
-            .find(|(_, symbol)| symbol.name == name && symbol.receiver.is_none())
-        else {
-            return Vec::new();
-        };
-        if !exported(name) {
-            return Vec::new();
-        }
-        let (kind, modifiers) = style(symbol);
-        objects.push(Found {
-            name: name.to_owned(),
-            kind,
-            modifiers,
-        });
-        return objects;
-    }
-    if rest.len() != 2 {
-        return Vec::new();
-    }
-    let (receiver_name, member_name) = (rest[0], rest[1]);
-    let Some((origin, receiver)) = arena
-        .resolver()
-        .resolve_type_declaration(file, &format!("{alias}.{receiver_name}"))
-        .filter(|(_, receiver)| !receiver.alias)
-    else {
-        return Vec::new();
-    };
-    let Some(member) = arena.declaration_member(
-        DeclId {
-            file: origin,
-            symbol: receiver,
-        },
-        file,
-        member_name,
-    ) else {
-        return Vec::new();
-    };
-    let (kind, modifiers) = style(receiver);
-    objects.push(Found {
-        name: receiver_name.to_owned(),
-        kind,
-        modifiers,
-    });
-    let Some((kind, modifiers)) = member_style(member) else {
-        return Vec::new();
-    };
-    objects.push(Found {
-        name: member_name.to_owned(),
-        kind,
-        modifiers,
-    });
-    objects
-}
-
-fn current_member(
-    arena: &mut TypeArena<'_>,
-    file: &Path,
-    receiver_name: &str,
-    member_name: &str,
-    has_extra: bool,
-) -> Vec<Found> {
-    if has_extra {
-        return Vec::new();
-    }
-    let Some((origin, receiver)) = arena
-        .resolver()
-        .package_symbol(file, receiver_name)
-        .filter(|(_, symbol)| symbol.is_type() && !symbol.alias)
-    else {
-        return Vec::new();
-    };
-    let Some(member) = arena.declaration_member(
-        DeclId {
-            file: origin,
-            symbol: receiver,
-        },
-        file,
-        member_name,
-    ) else {
-        return Vec::new();
-    };
-    let (kind, modifiers) = style(receiver);
-    let mut objects = vec![Found {
-        name: receiver_name.to_owned(),
-        kind,
-        modifiers,
-    }];
-    let Some((kind, modifiers)) = member_style(member) else {
-        return Vec::new();
-    };
-    objects.push(Found {
-        name: member_name.to_owned(),
-        kind,
-        modifiers,
-    });
-    objects
-}
-
-fn member_style(member: ObjectRef<'_>) -> Option<(SemanticTokenKind, u64)> {
+fn member_style(member: SemanticObject<'_>) -> Option<(SemanticTokenKind, u64)> {
     use super::modifiers::SIGNATURE;
     match member {
-        ObjectRef::Method(MethodOrigin::Concrete(decl)) => Some(style(decl.symbol)),
-        ObjectRef::Method(MethodOrigin::Interface(_)) => {
+        SemanticObject::Method(MethodOrigin::Concrete(decl)) => Some(style(decl.symbol)),
+        SemanticObject::Method(MethodOrigin::Interface(_)) => {
             Some((SemanticTokenKind::Method, SIGNATURE))
         }
-        ObjectRef::Field(_) => Some((SemanticTokenKind::Property, 0)),
+        SemanticObject::Field(_) => Some((SemanticTokenKind::Property, 0)),
         _ => None,
     }
 }
@@ -381,9 +240,4 @@ fn constructor_modifiers(constructor: &TypeConstructor) -> u64 {
         TypeConstructor::Slice => SLICE,
         TypeConstructor::Named | TypeConstructor::Unknown => 0,
     }
-}
-
-/// Exported-name guard matching `go/types.Object.Exported` for doc links.
-pub(super) fn exported(name: &str) -> bool {
-    resolve::exported(name)
 }

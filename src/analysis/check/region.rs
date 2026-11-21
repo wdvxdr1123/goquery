@@ -1,9 +1,9 @@
 //! Compact per-region semantic snapshot aligned with `go/types::Info`.
 
 use super::diagnostics::Diagnostic;
-use crate::analysis::obj::{DeclId, LocalId, ObjectRef};
-use crate::analysis::scope::tree::ScopeTree;
-use crate::analysis::types::{Operand, Selection, TypeId};
+use crate::analysis::engine::obj::{DeclId, LocalId, ObjectRef};
+use crate::analysis::engine::scope::tree::ScopeTree;
+use crate::analysis::engine::types::{Operand, Selection, TypeId};
 
 pub(super) const MAX_REGION_DIAGNOSTICS: usize = 128;
 const MAX_REGION_DIAGNOSTIC_BYTES: usize = 16 * 1024;
@@ -43,7 +43,7 @@ pub(crate) struct RegionInfo<'a> {
     pub(crate) defs: Vec<([u32; 2], ObjectRef<'a>)>,
     pub(crate) uses: Vec<([u32; 2], ObjectRef<'a>)>,
     /// Bare identifiers assigned without reading their previous value.
-    pub(super) writes: Vec<[u32; 2]>,
+    pub(crate) writes: Vec<[u32; 2]>,
     /// False when recovery, cursor filtering, or budgets can omit reads.
     /// An unknown operand type alone does not affect this.
     pub(super) uses_complete: bool,
@@ -103,6 +103,37 @@ impl<'a> RegionInfo<'a> {
 
     pub(crate) fn local_type(&self, id: LocalId) -> Option<Operand> {
         self.local_types.get(id.0 as usize).copied().flatten()
+    }
+
+    pub(crate) fn local_binding_at(
+        &self,
+        selection: [u32; 2],
+        scope_start: u32,
+    ) -> Option<(LocalId, u32)> {
+        if let Some(
+            ObjectRef::Var {
+                origin: crate::analysis::engine::obj::SymbolOrigin::Local { id, .. },
+                ..
+            }
+            | ObjectRef::Const(crate::analysis::engine::obj::SymbolOrigin::Local { id, .. }),
+        ) = self.def_by_span(selection)
+        {
+            return Some((id, selection[0]));
+        }
+        self.implicits.iter().find_map(|&(cspan, obj)| {
+            if cspan[0] <= scope_start
+                && scope_start < cspan[1]
+                && let ObjectRef::Var {
+                    origin: crate::analysis::engine::obj::SymbolOrigin::Local { id, span, .. },
+                    ..
+                } = obj
+                && span == selection
+            {
+                Some((id, scope_start))
+            } else {
+                None
+            }
+        })
     }
 
     pub(super) fn record_expected(&mut self, span: [u32; 2], ty: Option<TypeId>) {
@@ -270,7 +301,7 @@ fn record_context(
         *previous = ty;
         return;
     }
-    if entries.len() >= crate::analysis::budget::MAX_NODES {
+    if entries.len() >= crate::analysis::engine::budget::MAX_NODES {
         entries.clear();
         *overflow = true;
         return;

@@ -1,14 +1,14 @@
 //! Missing-name errors are emitted at native expression/type reference sites.
 use super::{Code, Diagnostic, Kind};
-use crate::analysis::check::{FileSymbolLookup, RegionChecker};
-use crate::analysis::scope::universe;
+use crate::analysis::engine::check::{FileSymbolLookup, RegionChecker};
+use crate::analysis::engine::scope::universe;
 use std::ops::Range;
 
 impl RegionChecker<'_, '_> {
     /// Absence of a type/value is not absence of its declaration. Only an exact
     /// negative lookup may report a missing name; budgets and invalid types
     /// leave the fact unknown.
-    pub(in crate::analysis::check) fn report_missing_name(
+    pub(in crate::analysis::engine::check) fn report_missing_name(
         &mut self,
         name: &str,
         span: Range<usize>,
@@ -23,10 +23,15 @@ impl RegionChecker<'_, '_> {
                 .resolve_at(self.source, span.start as u32, name)
                 .is_some()
             || self
+                .env
                 .type_formals
                 .iter()
                 .any(|(formal, _, _)| formal == name)
-            || self.type_param_env.iter().any(|(formal, _)| formal == name)
+            || self
+                .env
+                .type_param_env
+                .iter()
+                .any(|(formal, _)| formal == name)
             || !matches!(
                 self.resolve_file_or_package_symbol(name),
                 FileSymbolLookup::NotFound
@@ -58,7 +63,7 @@ impl RegionChecker<'_, '_> {
 
     /// Imported metadata must prove a unique visible package and an absent
     /// exported declaration. An unavailable dependency proves neither.
-    pub(in crate::analysis::check) fn report_missing_imported_name(
+    pub(in crate::analysis::engine::check) fn report_missing_imported_name(
         &mut self,
         qualifier: &str,
         name: &str,
@@ -74,10 +79,12 @@ impl RegionChecker<'_, '_> {
                 .resolve_at(self.source, qualifier_start as u32, qualifier)
                 .is_some()
             || self
+                .env
                 .type_formals
                 .iter()
                 .any(|(formal, _, _)| formal == qualifier)
             || self
+                .env
                 .type_param_env
                 .iter()
                 .any(|(formal, _)| formal == qualifier)

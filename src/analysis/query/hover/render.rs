@@ -520,7 +520,9 @@ use super::content::HoverContent;
 use super::{HoverLink, doc};
 use crate::analysis::query::Context;
 use crate::analysis::resolve::MemberDescription;
-use crate::analysis::scope::{Binding, DeclarationKind, Locals, ObjectKind};
+use crate::analysis::sema::{
+    LocalDeclKind, LocalId, RegionMode, SemanticObject, SymbolOrigin, VarKind,
+};
 use crate::syntax::TokenKind;
 use crate::text::SourceMap;
 use crate::workspace::Workspace;
@@ -555,102 +557,161 @@ pub(super) fn declaration_source<'a>(
     }
 }
 
-/// Local values use only the region's checked binding type.
-pub(super) fn binding_text(
-    context: &Context<'_>,
-    locals: &Locals,
-    binding: &Binding,
-) -> Option<String> {
-    let workspace = context.workspace();
-    let file = context.file();
-    let source = context.source();
-    if binding.declaration == DeclarationKind::TypeParameter {
-        return locals
-            .type_parameter_constraint(binding)
-            .and_then(|span| source.get(span.clone()))
-            .and_then(|text| {
-                crate::analysis::query::signatures::label::signature_type(
-                    workspace, file, file, text,
-                )
-            })
-            .or_else(|| binding.declared_type.clone());
+/// Local declaration/reference display driven purely by checked [`SemanticObject`] or [`LocalDeclKind`].
+pub(super) fn local_object<'a>(
+    context: &mut Context<'a>,
+    object: SemanticObject<'a>,
+    _span: &Range<usize>,
+    range: super::SourceRange,
+) -> Option<HoverContent> {
+    match object {
+        SemanticObject::TypeParam { span: def_span, .. } => local_by_parts(
+            context,
+            None,
+            LocalDeclKind::TypeParam,
+            def_span,
+            false,
+            range,
+        ),
+        SemanticObject::TypeName {
+            origin: SymbolOrigin::Local {
+                id, span: def_span, ..
+            },
+            ..
+        } => local_by_parts(
+            context,
+            Some(id),
+            LocalDeclKind::Type,
+            def_span,
+            false,
+            range,
+        ),
+        SemanticObject::Const(SymbolOrigin::Local {
+            id, span: def_span, ..
+        }) => local_by_parts(
+            context,
+            Some(id),
+            LocalDeclKind::Const,
+            def_span,
+            false,
+            range,
+        ),
+        SemanticObject::Var {
+            origin: SymbolOrigin::Local {
+                id, span: def_span, ..
+            },
+            kind,
+            ..
+        } => {
+            let is_param = matches!(kind, VarKind::Receiver | VarKind::Param);
+            local_by_parts(
+                context,
+                Some(id),
+                LocalDeclKind::Var,
+                def_span,
+                is_param,
+                range,
+            )
+        }
+        _ => None,
     }
-    context
-        .binding_presentation(binding)
-        .map(|text| normalize_type(&text))
 }
 
-/// Local declaration display, using the region's checked binding type.
-pub(super) fn local(
-    context: &Context<'_>,
-    locals: &Locals,
-    binding: &Binding,
+pub(super) fn local_by_parts(
+    context: &mut Context<'_>,
+    id: Option<LocalId>,
+    kind: LocalDeclKind,
+    def_span: [u32; 2],
+    is_param: bool,
     range: super::SourceRange,
-) -> HoverContent {
-    let mut content = HoverContent::new(range);
+) -> Option<HoverContent> {
     let file = context.file();
-    let source = context.source();
     let workspace = context.workspace();
-    if !in_function_header(context, binding.selection.start)
-        && binding.object_kind != ObjectKind::Parameter
-        && !multi_name_short_declaration(source, binding.selection.start)
-        && !control_header_statement(source, binding.selection.start)
-        && let Some(documents) = doc::attached(
-            context,
-            file,
-            source,
-            doc::Target {
-                start: line_start_token(source, binding.selection.start),
-                end: binding.selection.end,
-                declaration: None,
-                trailing: true,
-            },
-        )
-    {
-        content.doc = Some(documents.text);
-        content.doc_links = documents.links;
+    let def_range = def_span[0] as usize..def_span[1] as usize;
+    let name = context.source().get(def_range.clone())?.to_owned();
+    let mut content = HoverContent::new(range);
+    let doc_target = {
+        let source = context.source();
+        (!in_function_header(workspace, file, def_range.start)
+            && !is_param
+            && !multi_name_short_declaration(source, def_range.start)
+            && !control_header_statement(source, def_range.start))
+        .then(|| doc::Target {
+            start: line_start_token(source, def_range.start),
+            end: def_range.end,
+            declaration: None,
+            trailing: true,
+        })
+    };
+    if let Some(target) = doc_target {
+        let (doc_view, sema) = context.split();
+        if let Some(documents) = doc::attached_with(doc_view, sema, file, doc_view.source(), target)
+        {
+            content.doc = Some(documents.text);
+            content.doc_links = documents.links;
+        }
     }
-    content.code = match binding.declaration {
-        DeclarationKind::TypeParameter => binding_text(context, locals, binding)
-            .map(|constraint| format!("type parameter {} {constraint}", binding.name)),
-        DeclarationKind::Type => binding
-            .annotation()
-            .and_then(|span| source.get(span.clone()))
-            .and_then(|annotation| {
-                crate::analysis::query::signatures::label::signature_type(
-                    workspace, file, file, annotation,
-                )
-            })
-            .filter(|annotation| annotation.len() <= MAX_SIGNATURE_BYTES)
-            .map(|annotation| {
-                let line_start = source[..binding.selection.start]
+    content.code = match kind {
+        LocalDeclKind::TypeParam => {
+            let constraint_text = type_parameter_constraint_after(context.source(), def_range.end)?;
+            let rendered = crate::analysis::query::signatures::label::signature_type(
+                workspace,
+                file,
+                file,
+                constraint_text,
+            )?;
+            Some(format!(
+                "type parameter {name} {}",
+                normalize_type(&rendered)
+            ))
+        }
+        LocalDeclKind::Type => {
+            let source = context.source();
+            let annotation = local_type_annotation(source, def_range.end)?;
+            let rendered = crate::analysis::query::signatures::label::signature_type(
+                workspace, file, file, annotation,
+            )?;
+            (rendered.len() <= MAX_SIGNATURE_BYTES).then(|| {
+                let line_start = source[..def_range.start]
                     .rfind('\n')
                     .map_or(0, |index| index + 1);
-                let prefix = &source[line_start..binding.selection.start];
+                let prefix = &source[line_start..def_range.start];
                 let indentation = &prefix[..prefix
                     .bytes()
                     .take_while(|byte| matches!(byte, b' ' | b'\t'))
                     .count()];
                 let spec = format!(
-                    "{} {}",
-                    binding.name,
-                    declaration_without_indent(&annotation, indentation)
+                    "{name} {}",
+                    declaration_without_indent(&rendered, indentation)
                 );
                 format!("type {}", super::declaration::format_spec(&spec))
-            }),
-        DeclarationKind::Constant => local_constant(context, binding),
-        DeclarationKind::Value | DeclarationKind::Variadic => {
-            binding_text(context, locals, binding).map(|ty| format!("var {} {ty}", binding.name))
+            })
+        }
+        LocalDeclKind::Const => local_constant(context, id?, &name, &def_range),
+        LocalDeclKind::Var | LocalDeclKind::Param | LocalDeclKind::TypeSwitchVar => {
+            let rendered = {
+                let (doc_view, sema) = context.split();
+                sema.region_at(
+                    doc_view.file(),
+                    doc_view.source(),
+                    def_span[0],
+                    RegionMode::Full,
+                )
+                .and_then(|mut view| view.local_var_hover_type(id?, def_span, doc_view.file()))
+            };
+            rendered.map(|ty| {
+                let formatted =
+                    crate::analysis::query::signatures::label::function_types(&ty).unwrap_or(ty);
+                format!("var {name} {}", normalize_type(&formatted))
+            })
         }
     };
-    if matches!(
-        binding.declaration,
-        DeclarationKind::Type | DeclarationKind::TypeParameter
-    ) && let Some(code) = content.code.take()
+    if matches!(kind, LocalDeclKind::Type | LocalDeclKind::TypeParam)
+        && let Some(code) = content.code.take()
     {
         content.code = Some(replace_invalid_qualified(workspace, file, &code));
     }
-    content
+    Some(content)
 }
 
 /// Remove a local declaration's enclosing indentation without changing literals.
@@ -685,41 +746,27 @@ fn declaration_without_indent(text: &str, indentation: &str) -> String {
     output
 }
 
-fn local_constant(context: &Context<'_>, binding: &Binding) -> Option<String> {
+fn local_constant(
+    context: &mut Context<'_>,
+    id: LocalId,
+    name: &str,
+    selection: &Range<usize>,
+) -> Option<String> {
+    let sel0 = u32::try_from(selection.start).ok()?;
+    let (ty, value, span) = {
+        let (doc, sema) = context.split();
+        let mut view = sema.region_at(doc.file(), doc.source(), sel0, RegionMode::Full)?;
+        let (ty, int_val, span) = view.local_constant_info_by_id(id)?;
+        (ty, int_val, span[0] as usize..span[1] as usize)
+    };
     let source = context.source();
-    let selection = [
-        u32::try_from(binding.selection.start).ok()?,
-        u32::try_from(binding.selection.end).ok()?,
-    ];
-    let (ty, value, span) = context.with_sema(|sema| {
-        let (region, arena) =
-            sema.region_and_arena_at(context.file(), source, selection[0], None)?;
-        let (id, _) = crate::analysis::query::signatures::resolve_local_binding_id(
-            region,
-            selection,
-            binding.scope_start(),
-        )?;
-        let operand = region.local_type(id)?;
-        (operand.mode == crate::analysis::types::Mode::Constant).then_some(())?;
-        let span = region.local_init(id)?;
-        Some((
-            arena.format_type(
-                operand.ty,
-                crate::analysis::types::Qualifier::Presentation(context.file()),
-            )?,
-            operand.value,
-            span[0] as usize..span[1] as usize,
-        ))
-    })?;
     if span.len() > MAX_SIGNATURE_BYTES {
         return None;
     }
     let expression = source.get(span.clone())?;
-    let own = binding.selection.end < span.start;
+    let own = selection.end < span.start;
     let mut literal = super::value::literal(expression).or_else(|| {
-        let crate::analysis::types::Constant::Int(value) = value? else {
-            return None;
-        };
+        let value = value?;
         Some(super::value::Literal {
             value: value.to_string(),
             declaration: own.then(|| expression.to_owned()),
@@ -730,65 +777,93 @@ fn local_constant(context: &Context<'_>, binding: &Binding) -> Option<String> {
         literal.declaration = None;
     }
     format!(
-        "const {} {} = {}",
-        binding.name,
+        "const {name} {} = {}",
         normalize_type(&ty),
         literal.assigned()
     )
     .into()
 }
 
-/// Bindings declared by an enclosing function header: parameters, results,
-/// receivers and type parameters.
-pub(super) fn header_binding(
-    context: &Context<'_>,
-    span: &Range<usize>,
-    range: super::SourceRange,
-) -> Result<Option<HoverContent>, (i32, String)> {
-    let source = context.source();
-    for symbol in &context.workspace().files[context.file()].symbols {
-        let Some(body) = symbol.body() else {
-            continue;
-        };
-        let Some(declaration) = symbol.declaration() else {
-            continue;
-        };
-        if !(declaration.start <= span.start && span.end <= body.start) {
-            continue;
-        }
-        let Some(header) = source.get(declaration.start..body.start) else {
-            continue;
-        };
-        if header.len() > MAX_SIGNATURE_BYTES {
-            continue;
-        }
-        let parsed = crate::syntax::parse_signature(header);
-        if !parsed.diagnostics.is_empty() {
-            continue;
-        }
-        let locals = Locals::from_header(source, declaration.start, body.clone(), &parsed);
-        if let Some(binding) = locals
-            .definition_at(span, &source[span.clone()])
-            .filter(|binding| {
-                binding.selection == *span
-                    || binding.declaration == DeclarationKind::TypeParameter
-                        && parsed.type_references.iter().any(|reference| {
-                            reference.qualifier.is_none()
-                                && (declaration.start + reference.name.start
-                                    ..declaration.start + reference.name.end)
-                                    == *span
-                        })
-            })
-        {
-            return Ok(Some(local(context, &locals, binding, range)));
+fn local_type_annotation(source: &str, name_end: usize) -> Option<&str> {
+    let tail = source.get(
+        name_end
+            ..name_end
+                .saturating_add(MAX_SIGNATURE_BYTES)
+                .min(source.len()),
+    )?;
+    let mut tokens = crate::syntax::Lexer::new(tail).peekable();
+    if tokens
+        .peek()
+        .is_some_and(|tok| tok.kind == TokenKind::LBrack)
+    {
+        let mut depth = 0usize;
+        for tok in tokens.by_ref() {
+            match tok.kind {
+                TokenKind::LBrack => depth += 1,
+                TokenKind::RBrack => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
         }
     }
-    Ok(None)
+    if tokens
+        .peek()
+        .is_some_and(|tok| tok.kind == TokenKind::Assign)
+    {
+        tokens.next();
+    }
+    let first = tokens.peek()?;
+    let start = name_end + first.span.start;
+    let parsed = crate::syntax::parse_type_prefix(&source[start..]);
+    (parsed.span.end > parsed.span.start).then(|| &source[start..start + parsed.span.end])
+}
+
+fn type_parameter_constraint_after(source: &str, name_end: usize) -> Option<&str> {
+    let tail = source.get(
+        name_end
+            ..name_end
+                .saturating_add(MAX_SIGNATURE_BYTES)
+                .min(source.len()),
+    )?;
+    let mut tokens = crate::syntax::Lexer::new(tail).peekable();
+    while tokens
+        .peek()
+        .is_some_and(|tok| tok.kind == TokenKind::Comma)
+    {
+        tokens.next();
+        if tokens.next()?.kind != TokenKind::Ident {
+            return None;
+        }
+    }
+    let first = tokens.peek()?;
+    let start = name_end + first.span.start;
+    let mut depth = 0usize;
+    let mut end = start;
+    for tok in tokens {
+        match tok.kind {
+            TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => depth += 1,
+            TokenKind::RParen | TokenKind::RBrace if depth > 0 => depth -= 1,
+            TokenKind::RBrack => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            }
+            TokenKind::Comma if depth == 0 => break,
+            _ => {}
+        }
+        end = name_end + tok.span.end;
+    }
+    (start < end).then(|| source[start..end].trim())
 }
 
 pub(super) fn member_id(
-    context: &Context<'_>,
-    identity: crate::analysis::obj::MemberDeclId<'_>,
+    context: &mut Context<'_>,
+    identity: crate::analysis::sema::MemberDeclId<'_>,
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> HoverContent {
@@ -799,33 +874,39 @@ pub(super) fn member_id(
 }
 
 pub(super) fn member(
-    context: &Context<'_>,
+    context: &mut Context<'_>,
     member: MemberDescription<'_>,
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> HoverContent {
     let mut content = HoverContent::new(range);
-    let Some(source_text) = declaration_source(context, member.file) else {
+    let selected = [u32::try_from(span.start).ok(), u32::try_from(span.end).ok()];
+    let (Some(start), Some(end)) = (selected[0], selected[1]) else {
         return content;
     };
-    let source = source_text.text();
+    let (view, source_owned) = {
+        let Some(source_text) = declaration_source(context, member.file) else {
+            return content;
+        };
+        let Some(identity) = member.identity_in_source(source_text.text()) else {
+            return content;
+        };
+        let owned = source_text.text().to_owned();
+        let (doc, sema) = context.split();
+        (
+            sema.member_type_view(doc.file(), doc.source(), [start, end], identity),
+            owned,
+        )
+    };
+    let Some(view) = view else {
+        return content;
+    };
+    let source = source_owned.as_str();
     let map = SourceMap::new(source);
     let Some(data) = member.data_in_source(source, &map) else {
         return content;
     };
     let Some(annotation) = data.annotation.as_deref() else {
-        return content;
-    };
-    let Some(identity) = member.identity_in_source(source) else {
-        return content;
-    };
-    let selected = [u32::try_from(span.start).ok(), u32::try_from(span.end).ok()];
-    let [Some(start), Some(end)] = selected else {
-        return content;
-    };
-    let Some(view) = context.with_sema(|sema| {
-        sema.member_type_view(context.file(), context.source(), [start, end], identity)
-    }) else {
         return content;
     };
     let ty = if matches!(member.kind, crate::syntax::MemberKind::Field)
@@ -951,17 +1032,14 @@ pub(super) fn member(
     }
     if matches!(member.kind, crate::syntax::MemberKind::Field)
         && let Some(identity) = member.identity_in_source(source)
-        && let Some(promotion) = context.with_sema(|sema| {
-            sema.selected_promotion(
-                context.file(),
-                context.source(),
-                [
-                    u32::try_from(span.start).ok()?,
-                    u32::try_from(span.end).ok()?,
-                ],
-            )
-        })
-        && promotion.object == crate::analysis::obj::ObjectRef::Field(identity)
+        && let Some(selected) = u32::try_from(span.start)
+            .ok()
+            .zip(u32::try_from(span.end).ok())
+        && let Some(promotion) = {
+            let (doc, sema) = context.split();
+            sema.selected_promotion(doc.file(), doc.source(), [selected.0, selected.1])
+        }
+        && promotion.object == crate::analysis::sema::ObjectRef::Field(identity)
         && !promotion.through.is_empty()
         && let Some(code) = content.code.as_mut()
     {
@@ -1083,129 +1161,6 @@ pub(super) fn package_link(
     })
 }
 
-/// Enclosing function literal `(func_start, body_start, body_end)` for a cursor.
-fn nested_literal(source: &str, offset: usize) -> Option<(usize, usize, usize)> {
-    let tokens: Vec<_> = crate::syntax::Lexer::new(source)
-        .filter(|token| !token.inserted)
-        .collect();
-    let mut best: Option<(usize, usize, usize)> = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.kind != TokenKind::Func || token.span.start >= offset {
-            continue;
-        }
-        let Some(_open) = tokens
-            .get(index + 1)
-            .filter(|token| token.kind == TokenKind::LParen)
-        else {
-            continue;
-        };
-        let mut depth = 0usize;
-        let mut close = None;
-        for (position, token) in tokens.iter().enumerate().skip(index + 1) {
-            match token.kind {
-                TokenKind::LParen => depth += 1,
-                TokenKind::RParen => {
-                    depth = depth.saturating_sub(1);
-                    if depth == 0 {
-                        close = Some(position);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        let Some(close) = close else { continue };
-        let mut body_index = None;
-        for (position, token) in tokens.iter().enumerate().skip(close + 1) {
-            match token.kind {
-                TokenKind::LBrace => {
-                    body_index = Some(position);
-                    break;
-                }
-                TokenKind::Semicolon | TokenKind::RBrace => break,
-                _ => {}
-            }
-        }
-        let Some(body_index) = body_index else {
-            continue;
-        };
-        let body_start = tokens[body_index].span.start;
-        let mut depth = 0usize;
-        let mut body_end = None;
-        for token in tokens.iter().skip(body_index) {
-            match token.kind {
-                TokenKind::LBrace => depth += 1,
-                TokenKind::RBrace => {
-                    depth = depth.saturating_sub(1);
-                    if depth == 0 {
-                        body_end = Some(token.span.end);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        let Some(body_end) = body_end else { continue };
-        if token.span.start < offset
-            && offset < body_end
-            && best.is_none_or(|(start, _, _)| token.span.start > start)
-        {
-            best = Some((token.span.start, body_start, body_end));
-        }
-    }
-    best
-}
-
-/// Resolve a parameter of an enclosing function literal that the cursor scope
-/// did not record (callbacks inside call arguments).
-pub(super) fn nested_function_binding(
-    context: &Context<'_>,
-    offset: usize,
-    selection: &Range<usize>,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let source = context.source();
-    let (func_start, body_start, body_end) = nested_literal(source, offset)?;
-    let header = source.get(func_start..body_start)?;
-    if header.len() > MAX_SIGNATURE_BYTES {
-        return None;
-    }
-    let parsed = crate::syntax::parse_literal_signature(header);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let locals = Locals::from_header(source, func_start, body_start..body_end, &parsed);
-    let binding = locals
-        .definition_at(selection, source.get(selection.clone())?)
-        .filter(|binding| binding.selection == *selection)?;
-    Some(local(context, &locals, binding, range))
-}
-
-/// Resolve a value name to an enclosing function literal parameter.
-pub(super) fn nested_function_local(
-    context: &Context<'_>,
-    offset: usize,
-    name: &str,
-    range: super::SourceRange,
-) -> Option<HoverContent> {
-    let source = context.source();
-    let literal = nested_literal(source, offset);
-    let (func_start, body_start, body_end) = literal?;
-    let header = source.get(func_start..body_start)?;
-    if header.len() > MAX_SIGNATURE_BYTES {
-        return None;
-    }
-    let parsed = crate::syntax::parse_literal_signature(header);
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-    let locals = Locals::from_header(source, func_start, body_start..body_end, &parsed);
-    let binding = locals
-        .visible_bindings(offset)
-        .find(|binding| binding.name == name)?;
-    Some(local(context, &locals, binding, range))
-}
-
 /// A `_test.go` file whose name carries the host GOOS/GOARCH suffix: gopls
 /// resolves it through a dynamic platform view whose metadata hides links.
 pub(super) fn platform_test_variant(context: &Context<'_>) -> bool {
@@ -1245,19 +1200,16 @@ pub(super) fn gopls_test_view_link(context: &Context<'_>) -> bool {
 }
 
 /// `[len(packageVAR)]` folded to its declared array literal length.
-fn array_literal_length(context: &Context<'_>, origin: &Path, name: &str) -> Option<usize> {
+fn array_literal_length(context: &mut Context<'_>, origin: &Path, name: &str) -> Option<usize> {
     let workspace = context.workspace();
     let (file, symbol) = crate::analysis::resolve::unqualified_symbol(workspace, origin, name)?;
     if !symbol.is_var() {
         return None;
     }
-    context.with_sema(|sema| {
-        let operand = sema.operand_of_decl(crate::analysis::obj::DeclId { file, symbol })?;
-        usize::try_from(sema.arena_mut().array_length(operand.ty)?).ok()
-    })
+    context.with_sema(|sema| sema.decl_array_length(crate::analysis::sema::DeclId { file, symbol }))
 }
 
-pub(super) fn fold_array_lengths(context: &Context<'_>, origin: &Path, text: &str) -> String {
+pub(super) fn fold_array_lengths(context: &mut Context<'_>, origin: &Path, text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut index = 0usize;
     while let Some(offset) = text[index..].find("len(") {

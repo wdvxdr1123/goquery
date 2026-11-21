@@ -1,5 +1,4 @@
 //! Bounded comment attachment and Go CommentGroup.Text shared by document features.
-use super::Context;
 use crate::syntax::{Lexer, TokenKind};
 use std::ops::Range;
 
@@ -29,21 +28,21 @@ pub(crate) fn multi_name_short_declaration(source: &str, offset: usize) -> bool 
 }
 
 /// Whether `offset` is inside a function/method declaration header.
-pub(crate) fn in_function_header(context: &Context<'_>, offset: usize) -> bool {
-    context
-        .workspace()
-        .files
-        .get(context.file())
-        .is_some_and(|stub| {
-            stub.symbols.iter().any(|symbol| {
-                symbol
-                    .body()
-                    .zip(symbol.declaration())
-                    .is_some_and(|(body, declaration)| {
-                        declaration.start <= offset && offset < body.start
-                    })
-            })
+pub(crate) fn in_function_header(
+    workspace: &crate::workspace::Workspace,
+    file: &std::path::Path,
+    offset: usize,
+) -> bool {
+    workspace.files.get(file).is_some_and(|stub| {
+        stub.symbols.iter().any(|symbol| {
+            symbol
+                .body()
+                .zip(symbol.declaration())
+                .is_some_and(|(body, declaration)| {
+                    declaration.start <= offset && offset < body.start
+                })
         })
+    })
 }
 
 /// Whether the token sits in a control-statement header (`for x := ...`).

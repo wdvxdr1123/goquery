@@ -1,7 +1,7 @@
 //! External go/types differential entry point, compiled only for tests.
-use crate::analysis::obj::{ObjectRef, SymbolOrigin};
-use crate::analysis::sema::Semantics;
-use crate::analysis::types::{ComplexPart, Constant, Mode};
+use crate::analysis::engine::obj::{ObjectRef, SymbolOrigin};
+use crate::analysis::engine::sema::Semantics;
+use crate::analysis::engine::types::{Constant, Mode};
 use crate::workspace::{self, Workspace};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -104,16 +104,16 @@ fn type_oracle() {
 
 fn exact_numeric(value: Constant) -> Option<Value> {
     let (real, imaginary) = match value {
-        Constant::Int(value)
+        Constant::Int(_)
+        | Constant::WideInt(_)
         | Constant::Float {
-            integral: Some(value),
-            ..
-        } => (value, 0),
-        Constant::Complex {
-            real: ComplexPart::Integer(real),
-            imaginary: ComplexPart::Integer(imaginary),
-        } => (real, imaginary),
+            integral: Some(_), ..
+        } => (value.as_wide()?.to_string(), "0".to_owned()),
+        Constant::Complex { real, imaginary } => (
+            real.as_wide()?.to_string(),
+            imaginary.as_wide()?.to_string(),
+        ),
         _ => return None,
     };
-    Some(json!({"real":real.to_string(),"imaginary":imaginary.to_string()}))
+    Some(json!({"real":real,"imaginary":imaginary}))
 }

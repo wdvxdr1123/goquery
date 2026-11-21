@@ -1,5 +1,4 @@
-//! Universe recognition shares local, package and import shadow guards.
-use super::Locals;
+//! Go universe predeclared identifiers and file import-name guards.
 use crate::workspace::Workspace;
 use std::path::Path;
 
@@ -9,17 +8,6 @@ pub(crate) fn imported_name(workspace: &Workspace, file: &Path, name: &str) -> b
             !import.is_dot() && !import.is_blank() && workspace.import_name(import) == Some(name)
         })
     })
-}
-pub(crate) fn visible(
-    workspace: &Workspace,
-    file: &Path,
-    locals: Option<&Locals>,
-    offset: usize,
-    name: &str,
-) -> bool {
-    locals.is_none_or(|locals| locals.resolve_at(offset, name).is_none())
-        && crate::analysis::resolve::unqualified_symbol(workspace, file, name).is_none()
-        && !imported_name(workspace, file, name)
 }
 
 pub(crate) fn builtin(name: &str) -> bool {

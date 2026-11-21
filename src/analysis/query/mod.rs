@@ -23,10 +23,10 @@ pub(crate) use navigation::ReferenceTarget;
 pub(crate) use signatures::SignatureTrigger;
 pub(crate) use signatures::label::CallableSignature;
 mod source;
+use crate::analysis::sema::SemanticSession;
 use crate::workspace::Workspace;
 use source::SourceView;
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::path::Path;
 
@@ -35,44 +35,78 @@ pub(crate) struct Document<'a> {
     source: SourceView<'a>,
 }
 
+/// Read-only copyable snapshot of workspace + admitted document source, split cleanly from [`SemanticSession`].
+#[derive(Clone, Copy)]
+pub(in crate::analysis::query) struct DocumentView<'b, 'a> {
+    pub(in crate::analysis::query) workspace: &'a Workspace,
+    pub(in crate::analysis::query) file: &'a Path,
+    pub(in crate::analysis::query) source: &'b str,
+    build_view: Option<crate::workspace::BuildView<'a>>,
+}
+
+impl<'b, 'a> DocumentView<'b, 'a> {
+    pub(in crate::analysis::query) fn workspace(&self) -> &'a Workspace {
+        self.workspace
+    }
+
+    pub(in crate::analysis::query) fn file(&self) -> &'a Path {
+        self.file
+    }
+
+    pub(in crate::analysis::query) fn source(&self) -> &'b str {
+        self.source
+    }
+
+    pub(in crate::analysis::query) fn resolver(&self) -> crate::analysis::resolve::View<'a> {
+        crate::analysis::resolve::View::new(
+            self.workspace,
+            self.build_view
+                .unwrap_or_else(|| self.workspace.build_view(None)),
+        )
+    }
+}
+
 pub(crate) struct Context<'a, View = Document<'a>> {
     workspace: &'a Workspace,
     view: View,
-    build_view: Cell<Option<crate::workspace::BuildView<'a>>>,
-    sema: RefCell<Option<crate::analysis::sema::Semantics<'a>>>,
+    build_view: Option<crate::workspace::BuildView<'a>>,
+    sema: Option<SemanticSession<'a>>,
 }
+
 impl<'a, View> Context<'a, View> {
-    pub(in crate::analysis::query) fn with_sema<R>(
-        &self,
-        f: impl FnOnce(&mut crate::analysis::sema::Semantics<'a>) -> R,
-    ) -> R {
-        let mut guard = self.sema.borrow_mut();
-        let sema = guard.get_or_insert_with(|| {
-            crate::analysis::sema::Semantics::new(
-                self.workspace,
-                self.build_view
-                    .get()
-                    .unwrap_or_else(|| self.workspace.build_view(None)),
+    fn ensure_sema(&mut self) -> &mut SemanticSession<'a> {
+        let workspace = self.workspace;
+        let build_view = self.build_view;
+        self.sema.get_or_insert_with(|| {
+            SemanticSession::new(
+                workspace,
+                build_view.unwrap_or_else(|| workspace.build_view(None)),
             )
-        });
+        })
+    }
+
+    pub(in crate::analysis::query) fn with_sema<R>(
+        &mut self,
+        f: impl FnOnce(&mut SemanticSession<'a>) -> R,
+    ) -> R {
+        let sema = self.ensure_sema();
         f(sema)
     }
 
     pub(in crate::analysis::query) fn select_query_file(
-        &self,
+        &mut self,
         file: &Path,
     ) -> Result<(), (i32, String)> {
-        if self.build_view.get().is_some() {
+        if self.build_view.is_some() {
             return Ok(());
         }
-        if self.sema.borrow().is_some() {
+        if self.sema.is_some() {
             return Err((
                 crate::error::REQUEST_FAILED,
                 "semantic context has no selected build view".into(),
             ));
         }
-        self.build_view
-            .set(Some(self.workspace.build_view(Some(file))));
+        self.build_view = Some(self.workspace.build_view(Some(file)));
         Ok(())
     }
 
@@ -80,28 +114,13 @@ impl<'a, View> Context<'a, View> {
         crate::analysis::resolve::View::new(
             self.workspace,
             self.build_view
-                .get()
                 .unwrap_or_else(|| self.workspace.build_view(None)),
         )
     }
 
     pub(crate) fn hierarchy_view_origin(&self, file: &Path) -> Option<&'a Path> {
         self.build_view
-            .get()
             .and_then(|view| view.origin_for(self.workspace, file))
-    }
-
-    pub(in crate::analysis::query) fn resolve_identity<'identity>(
-        &self,
-        resolver: &mut crate::analysis::sema::IdentityResolver<'identity>,
-        analysis: &crate::analysis::scope::occurrences::Occurrences,
-        source: &str,
-        name: &crate::analysis::scope::occurrences::Name,
-    ) -> Option<crate::analysis::sema::Identity<'identity>>
-    where
-        'a: 'identity,
-    {
-        self.with_sema(|sema| resolver.resolve(sema, analysis, source, name))
     }
 
     pub(in crate::analysis) fn workspace(&self) -> &'a Workspace {
@@ -130,18 +149,14 @@ impl<'a, View> Context<'a, View> {
     pub(crate) fn trace_candidates(&self, query: &str, count: usize) {
         crate::analysis::resolve::trace_candidates(self.workspace, query, count);
     }
-
-    pub(crate) fn read_source(&self, file: &Path) -> Option<String> {
-        self.workspace.source(file)
-    }
 }
 impl<'a> Context<'a, ()> {
     pub(crate) fn metadata(workspace: &'a Workspace) -> Self {
         Self {
             workspace,
             view: (),
-            build_view: Cell::new(None),
-            sema: RefCell::new(None),
+            build_view: None,
+            sema: None,
         }
     }
 }
@@ -168,8 +183,8 @@ impl<'a> Context<'a> {
                 file,
                 source: SourceView::admitted(workspace, file, closed),
             },
-            build_view: Cell::new(Some(workspace.build_view(Some(file)))),
-            sema: RefCell::new(None),
+            build_view: Some(workspace.build_view(Some(file))),
+            sema: None,
         })
     }
 
@@ -199,10 +214,31 @@ impl<'a> Context<'a> {
         Ok(Self {
             workspace,
             view,
-            build_view: Cell::new(Some(workspace.build_view(Some(file)))),
-            sema: RefCell::new(None),
+            build_view: Some(workspace.build_view(Some(file))),
+            sema: None,
         })
     }
+
+    pub(in crate::analysis::query) fn split(
+        &mut self,
+    ) -> (DocumentView<'_, 'a>, &mut SemanticSession<'a>) {
+        let workspace = self.workspace;
+        let build_view = self.build_view;
+        let sema = self.sema.get_or_insert_with(|| {
+            SemanticSession::new(
+                workspace,
+                build_view.unwrap_or_else(|| workspace.build_view(None)),
+            )
+        });
+        let doc = DocumentView {
+            workspace,
+            file: self.view.file,
+            source: self.view.source.text(),
+            build_view,
+        };
+        (doc, sema)
+    }
+
     pub(crate) fn file(&self) -> &'a Path {
         self.view.file
     }

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 const MAX_RESULTS: usize = 1024;
 
-pub(super) fn execute(context: &Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
+pub(super) fn execute(context: &mut Context<'_>, offset: usize) -> Result<Value, (i32, String)> {
     let Some(rows) = context.implementation_locations(offset)? else {
         return Ok(Value::Null);
     };

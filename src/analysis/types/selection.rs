@@ -1,7 +1,7 @@
 //! Unified selector resolution results, mirroring `go/types.Selection`.
 
 use super::{Ty, TypeArena, TypeId};
-use crate::analysis::obj::{DeclId, ObjectRef};
+use crate::analysis::engine::obj::{DeclId, ObjectRef};
 
 /// Kind of selector expression resolved by field/method lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -72,7 +72,7 @@ impl<'a> TypeArena<'a> {
 
     pub(crate) fn receiver_base(&mut self, input: TypeId) -> Option<TypeId> {
         let mut root = self.unalias(input)?;
-        if let Ty::Pointer(element) = self.nodes.get(usize::from(root.0))? {
+        if let Ty::Pointer(element) = self.node(root)? {
             root = self.unalias(*element)?;
         }
         Some(root)
@@ -89,18 +89,12 @@ impl<'a> TypeArena<'a> {
         for index in indices {
             self.step()?;
             let mut root = self.unalias(input)?;
-            if let Ty::Pointer(element) = self.nodes.get(usize::from(root.0))? {
+            if let Ty::Pointer(element) = self.node(root)? {
                 root = self.unalias(*element)?;
             }
             let root = self.underlying(root)?;
-            let Ty::Struct { fields, .. } = self.nodes.get(usize::from(root.0))? else {
-                return None;
-            };
-            let field_index = fields.start.checked_add(usize::from(*index))?;
-            let field = self
-                .fields
-                .get(field_index)
-                .filter(|_| field_index < fields.end)?;
+            let fields = self.struct_data(root)?.fields.clone();
+            let field = self.fields_slice(root, fields)?.get(usize::from(*index))?;
             if !field.embedded {
                 return None;
             }

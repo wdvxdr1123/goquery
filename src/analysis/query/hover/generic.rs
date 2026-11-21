@@ -8,8 +8,7 @@ const MAX_GENERIC_HEADER: usize = 16 * 1024;
 /// gopls' call-site instantiation note: the substituted signature followed by
 /// the generic declaration signature as a comment.
 pub(super) fn instantiated(
-    context: &Context<'_>,
-    _scope: &crate::analysis::scope::CursorScope,
+    context: &mut Context<'_>,
     span: &Range<usize>,
     path: &Path,
     symbol: &crate::index::IndexedSymbol,
@@ -24,25 +23,30 @@ pub(super) fn instantiated(
         .map(|(p, _)| p.as_path())?;
     let s0 = u32::try_from(span.start).ok()?;
     let s1 = u32::try_from(span.end).ok()?;
-    let checked = context.with_sema(|sema| {
-        if let Some((region, arena)) =
-            sema.region_and_arena_at(context.file(), context.source(), s0, None)
-            && let Some(inst) = region.instance_by_span([s0, s1])
+    let checked = {
+        let (doc, sema) = context.split();
+        if let Some(mut view) = sema.region_at(
+            doc.file(),
+            doc.source(),
+            s0,
+            crate::analysis::sema::RegionMode::Full,
+        ) && let Some(inst) = view.instance_by_span([s0, s1])
             && matches!(
                 inst.target,
-                crate::analysis::obj::ObjectRef::Func(d)
+                crate::analysis::sema::SemanticObject::Func(d)
                     if d.file == decl_file && std::ptr::eq(d.symbol, symbol)
             )
         {
-            return crate::analysis::query::signatures::instantiated::format_instantiated_signature(
-                context.file(),
-                arena,
+            crate::analysis::query::signatures::instantiated::format_instantiated_signature(
+                doc.file(),
+                &mut view,
                 &symbol.name,
                 inst.instantiated,
-            );
+            )
+        } else {
+            None
         }
-        None
-    });
+    };
     let instantiated = match checked {
         Some(res) => Some(res),
         None => {
@@ -52,13 +56,15 @@ pub(super) fn instantiated(
             }
             let r0 = u32::try_from(span.start.checked_sub(base)?).ok()?;
             let r1 = u32::try_from(span.end.checked_sub(base)?).ok()?;
-            context.with_sema(|sema| sema.with_expression(context.file(), text, |region, arena, _| {
-                let inst = region.instance_by_span([r0, r1])?;
-                if !matches!(inst.target, crate::analysis::obj::ObjectRef::Func(d) if d.file == decl_file && std::ptr::eq(d.symbol, symbol)) {
+            let text = text.to_owned();
+            let file = context.file();
+            context.with_sema(|sema| sema.with_expression(file, &text, |view, _| {
+                let inst = view.instance_by_span([r0, r1])?;
+                if !matches!(inst.target, crate::analysis::sema::SemanticObject::Func(d) if d.file == decl_file && std::ptr::eq(d.symbol, symbol)) {
                     return None;
                 }
                 crate::analysis::query::signatures::instantiated::format_instantiated_signature(
-                    context.file(), arena, &symbol.name, inst.instantiated,
+                    file, view, &symbol.name, inst.instantiated,
                 )
             }))
         }

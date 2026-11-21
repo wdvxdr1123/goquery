@@ -1,29 +1,33 @@
-//! Parse constraints independently of ordinary interface value types.
+//! Parse constraints on top of the unified `interface`/`union` representation.
 use super::{MAX_TERMS, Term, TypeSet};
-use crate::analysis::types::constraints::{self, Constraint};
-use crate::analysis::types::declaration_body;
-use crate::analysis::types::interface::Method;
-use crate::analysis::types::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId};
+use crate::analysis::engine::types::constraints::{self, Constraint};
+use crate::analysis::engine::types::declaration_body;
+use crate::analysis::engine::types::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Ty, TypeArena, TypeId};
 use crate::syntax::{Lexer, TokenKind};
-use std::collections::HashSet;
 use std::path::Path;
 
 impl TypeArena<'_> {
-    pub(in crate::analysis::types) fn constraint_set(
+    pub(in crate::analysis::engine::types) fn constraint_set_checked(
         &mut self,
         origin: &Path,
         text: &str,
         environment: &[(&str, TypeId)],
         depth: usize,
-    ) -> Option<TypeSet> {
-        self.step()?;
-        if depth >= MAX_DEPTH || text.len() > MAX_BYTES {
-            return None;
+    ) -> crate::analysis::engine::types::CheckOutcome<TypeSet> {
+        use crate::analysis::engine::types::{CheckOutcome, UnknownReason};
+        if self.step().is_none() || depth >= MAX_DEPTH || text.len() > MAX_BYTES {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         }
         let tokens: Vec<_> = Lexer::new(text).collect();
-        let first = tokens.first()?;
-        let last = tokens.iter().rfind(|t| t.kind != TokenKind::Semicolon)?;
-        let text = text.get(first.span.start..last.span.end)?;
+        let (Some(first), Some(last)) = (
+            tokens.first(),
+            tokens.iter().rfind(|t| t.kind != TokenKind::Semicolon),
+        ) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        let Some(text) = text.get(first.span.start..last.span.end) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
         // Union separators inside signatures and composite types belong to the
         // nested grammar, not to this constraint's term list.
         let mut nesting = 0usize;
@@ -33,36 +37,55 @@ impl TypeArena<'_> {
             match token.kind {
                 TokenKind::LParen | TokenKind::LBrack | TokenKind::LBrace => nesting += 1,
                 TokenKind::RParen | TokenKind::RBrack | TokenKind::RBrace => {
-                    nesting = nesting.checked_sub(1)?;
+                    let Some(next) = nesting.checked_sub(1) else {
+                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                    };
+                    nesting = next;
                 }
                 TokenKind::Or if nesting == 0 => {
-                    parts.push(text.get(start..token.span.start)?);
+                    let Some(part) = text.get(start..token.span.start) else {
+                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+                    };
+                    parts.push(part);
                     start = token.span.end;
                 }
                 _ => {}
             }
         }
         if nesting != 0 {
-            return None;
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         }
         if !parts.is_empty() {
-            parts.push(text.get(start..)?);
+            let Some(tail) = text.get(start..) else {
+                return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+            };
+            parts.push(tail);
             if parts.len() > MAX_TERMS {
-                return None;
+                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
             }
             let mut result = TypeSet::all();
             result.terms = Some(Vec::new());
             let mut direct = Vec::new();
             for part in parts {
-                let set = self.constraint_set(origin, part, environment, depth + 1)?;
+                let set = match self.constraint_set_checked(origin, part, environment, depth + 1) {
+                    CheckOutcome::Ok(set) => set,
+                    other => return other,
+                };
                 if set.comparable || set.methods.is_some() {
-                    return None;
+                    return CheckOutcome::Invalid(());
                 }
                 if !set.interface {
-                    for &term in set.terms.as_ref()? {
+                    let Some(part_terms) = set.terms.as_ref() else {
+                        return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                    };
+                    for &term in part_terms {
                         for &previous in &direct {
-                            if self.term_intersection(term, previous)?.is_some() {
-                                return None;
+                            match self.term_intersection(term, previous) {
+                                Some(Some(_)) => return CheckOutcome::Invalid(()),
+                                Some(None) => {}
+                                None => {
+                                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                                }
                             }
                         }
                         direct.push(term);
@@ -71,160 +94,122 @@ impl TypeArena<'_> {
                 result.terms = match (result.terms, set.terms) {
                     (Some(mut left), Some(right)) => {
                         left.extend(right);
-                        Some(self.normalize_terms(left)?)
+                        match self.normalize_terms(left) {
+                            Some(normalized) => Some(normalized),
+                            None => return CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+                        }
                     }
                     _ => None,
                 };
                 result.checks.extend(set.checks);
                 if result.checks.len() > MAX_NODES {
-                    return None;
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
                 }
             }
-            return Some(result);
+            return CheckOutcome::Ok(result);
         }
         if first.kind == TokenKind::Interface {
-            return self.interface_set(origin, text, environment, depth + 1);
+            let iface =
+                match self.read_interface_at_checked(origin, text, None, environment, depth + 1) {
+                    CheckOutcome::Ok(id) => id,
+                    other => {
+                        return match other {
+                            CheckOutcome::Ok(_) => unreachable!(),
+                            CheckOutcome::Invalid(()) => CheckOutcome::Invalid(()),
+                            CheckOutcome::Unknown(reason) => CheckOutcome::Unknown(reason),
+                        };
+                    }
+                };
+            return self.interface_type_set_checked(iface, depth + 1);
         }
         if first.kind == TokenKind::LParen && last.kind == TokenKind::RParen {
-            return self.constraint_set(origin, &text[1..text.len() - 1], environment, depth + 1);
+            return self.constraint_set_checked(
+                origin,
+                &text[1..text.len() - 1],
+                environment,
+                depth + 1,
+            );
         }
         if matches!(text, "any" | "comparable")
-            && self.universe_constraint(origin, text, environment)?
+            && self.universe_constraint(origin, text, environment) == Some(true)
         {
             let mut set = TypeSet::all();
             set.comparable = text == "comparable";
-            return Some(set);
+            return CheckOutcome::Ok(set);
         }
         let approximate = first.kind == TokenKind::Tilde;
         let term = if approximate {
-            text.get(1..)?.trim()
+            let Some(rest) = text.get(1..) else {
+                return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+            };
+            rest.trim()
         } else {
             text
         };
         if environment.iter().any(|(name, _)| *name == term) {
-            return None;
+            return CheckOutcome::Invalid(());
         }
-        let ty = self.parse_in(origin, term, environment)?;
-        if self.interface_constructor(ty)? {
+        let ty = match self.parse_in_checked(origin, term, None, environment) {
+            CheckOutcome::Ok(ty) => ty,
+            CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
+            CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+        };
+        let Some(is_iface) = self.interface_constructor(ty) else {
+            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+        };
+        if is_iface {
             if approximate {
-                return None;
+                return CheckOutcome::Invalid(());
             }
-            if matches!(
-                self.nodes[usize::from(ty.0)],
-                Ty::Named { .. } | Ty::Alias { .. }
-            ) {
-                return self.named_set(ty, depth + 1);
+            if self.named_info(ty).is_some() {
+                return match self.named_set(ty, depth + 1) {
+                    Some(set) => CheckOutcome::Ok(set),
+                    None => CheckOutcome::Unknown(UnknownReason::MissingMetadata),
+                };
             }
-            let mut set = TypeSet::all();
-            let root = self.underlying(ty)?;
-            let Ty::Interface { ref methods, .. } = self.nodes[usize::from(root.0)] else {
-                return None;
+            let Some(root) = self.underlying(ty) else {
+                return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
             };
-            if !methods.is_empty() {
-                set.methods = Some(root);
-            }
-            return Some(set);
+            return self.interface_type_set_checked(root, depth + 1);
         }
-        let ty = self.unalias(ty)?;
-        if matches!(self.nodes[usize::from(ty.0)], Ty::Parameter(_))
-            || approximate && matches!(self.nodes[usize::from(ty.0)], Ty::Named { .. })
+        let Some(ty) = self.unalias(ty) else {
+            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+        };
+        if matches!(self.node(ty), Some(Ty::TypeParam(_)))
+            || (approximate && matches!(self.node(ty), Some(Ty::Named { .. })))
         {
-            return None;
+            return CheckOutcome::Invalid(());
         }
-        self.underlying(ty)?;
-        self.constraint_terms += 1;
-        if self.constraint_terms > self.node_limit {
-            return None;
+        if self.underlying(ty).is_none() {
+            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
         }
-        Some(TypeSet {
+        if self.alloc_tier == crate::analysis::engine::types::ty::AllocTier::Local {
+            self.local.constraint_terms += 1;
+            if self.local.constraint_terms > self.local.pool.node_limit {
+                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+            }
+        }
+        CheckOutcome::Ok(TypeSet {
             terms: Some(vec![Term { ty, approximate }]),
             interface: false,
             ..TypeSet::all()
         })
     }
 
-    fn interface_set(
-        &mut self,
-        origin: &Path,
-        source: &str,
-        environment: &[(&str, TypeId)],
-        depth: usize,
-    ) -> Option<TypeSet> {
-        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
-        let parsed = crate::syntax::parse_type(source);
-        if !parsed.diagnostics.is_empty() {
-            return None;
-        }
-        let container = Lexer::new(source).nth(1)?.span.start;
-        let mut set = TypeSet::all();
-        let mut methods = Vec::new();
-        let mut explicit = HashSet::new();
-        for member in parsed
-            .interface_members
-            .iter()
-            .filter(|m| m.container == container)
-        {
-            if let Some(name) = &member.name {
-                let name = source.get(name.clone())?;
-                if name == "_" || !explicit.insert(name) {
-                    return None;
-                }
-                let header = source.get(member.annotation.clone())?;
-                let signature = crate::syntax::parse_method_signature(header);
-                let signature =
-                    self.signature(origin, header, None, &signature, environment, depth + 1)?;
-                methods.push(Method {
-                    name: name.to_owned(),
-                    origin,
-                    signature,
-                    declared_on: None,
-                    selection: [0, 0],
-                    builtin: false,
-                });
-                if methods.len() > MAX_NODES {
-                    return None;
-                }
-            } else {
-                let embedded = self.constraint_set(
-                    origin,
-                    source.get(member.annotation.clone())?,
-                    environment,
-                    depth + 1,
-                )?;
-                set = self.intersect_sets(set, embedded)?;
-            }
-        }
-        if !methods.is_empty() {
-            let mut required = TypeSet::all();
-            required.methods = Some(self.store_interface(origin, methods)?);
-            set = self.intersect_sets(set, required)?;
-        }
-        set.interface = true;
-        Some(set)
-    }
-
-    fn named_set(&mut self, input: TypeId, depth: usize) -> Option<TypeSet> {
+    pub(super) fn named_set(&mut self, input: TypeId, depth: usize) -> Option<TypeSet> {
         if depth >= MAX_DEPTH {
             return None;
         }
-        let (declaration, arguments) = match self.nodes[usize::from(input.0)].clone() {
-            Ty::Named {
-                declaration,
-                arguments,
-            }
-            | Ty::Alias {
-                declaration,
-                arguments,
-            } => (declaration, arguments),
-            _ => return None,
-        };
+        let (declaration, arguments, _) = self.named_info(input)?;
         let (file, symbol) = (declaration.file, declaration.symbol);
-        let arguments = self.arguments[arguments.range()].to_vec();
+        let arguments = self.arguments_slice(input, arguments).to_vec();
         let source = self
             .workspace
             .source_slice(file, symbol.end..symbol.declaration()?.end)?;
-        let (header, signature) =
-            crate::analysis::types::named::parse_type_parameters_of(&source, symbol.generic)?;
+        let (header, signature) = crate::analysis::engine::types::named::parse_type_parameters_of(
+            &source,
+            symbol.generic,
+        )?;
         if !signature.diagnostics.is_empty() {
             return None;
         }
@@ -232,13 +217,17 @@ impl TypeArena<'_> {
         if names.len() != arguments.len() {
             return None;
         }
-        let mut environment = Vec::new();
+        let mut param_ids = Vec::with_capacity(names.len());
+        let mut environment = Vec::with_capacity(names.len());
         for (index, name) in names.into_iter().enumerate() {
-            environment.push((name, self.push(Ty::Parameter(index))?));
+            let param = self.with_local_alloc(|store| store.push_type_param(index))?;
+            param_ids.push(param);
+            environment.push((name, param));
         }
         let constraints = self.constraints(file, header, &signature, &environment)?;
-        let mut set =
-            self.constraint_set(file, declaration_body(&source)?, &environment, depth + 1)?;
+        let mut set = self
+            .constraint_set_checked(file, declaration_body(&source)?, &environment, depth + 1)
+            .ok()?;
         for (constraint, (_, parameter)) in constraints.into_iter().zip(&environment) {
             if !matches!(constraint, Constraint::Any) {
                 set.checks.push((constraint, *parameter));
@@ -248,7 +237,7 @@ impl TypeArena<'_> {
             return None;
         }
         let bindings: Vec<_> = arguments.into_iter().map(Some).collect();
-        set = self.substitute_set(&set, &bindings)?;
+        set = self.substitute_set(&set, &param_ids, &bindings)?;
         set.interface = true;
         Some(set)
     }

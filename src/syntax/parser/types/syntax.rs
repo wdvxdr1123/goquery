@@ -9,13 +9,19 @@ use std::ops::Range;
 
 /// Parses one type, collecting name spans and array-length expressions.
 pub fn parse_type(source: &str) -> TypeSyntax {
-    parse(source, End::Complete)
+    parse(source, End::Complete, false)
+}
+
+/// Parses one type constraint element (allowing `~` and `|` unions directly),
+/// collecting name spans without requiring synthetic `interface{...}` wrapping.
+pub fn parse_constraint(source: &str) -> TypeSyntax {
+    parse(source, End::Complete, true)
 }
 
 /// Parses the first complete type in a larger token stream; span ends before
 /// the following delimiter. Diagnostics still describe the complete prefix.
 pub fn parse_type_prefix(source: &str) -> TypeSyntax {
-    parse(source, End::Prefix)
+    parse(source, End::Prefix, false)
 }
 
 #[derive(PartialEq, Eq)]
@@ -24,9 +30,13 @@ enum End {
     Prefix,
 }
 
-fn parse(source: &str, end: End) -> TypeSyntax {
+fn parse(source: &str, end: End, constraint: bool) -> TypeSyntax {
     let mut parser = Parser::new(source);
-    let span = parser.type_syntax(0);
+    let span = if constraint {
+        parser.type_elem(0)
+    } else {
+        parser.type_syntax(0)
+    };
     while parser
         .tokens
         .peek()

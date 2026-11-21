@@ -1,5 +1,5 @@
 //! Query-local reverse import reachability, without loading candidate sources.
-use crate::analysis::resolve;
+use crate::analysis::engine::resolve;
 use crate::bloom::Fingerprint;
 use crate::index::{IndexedFile, IndexedSymbol as Symbol};
 use crate::workspace::Workspace;

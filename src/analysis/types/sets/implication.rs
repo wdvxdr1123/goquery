@@ -1,10 +1,10 @@
 //! Formal constraint satisfaction uses bounded term and method-set inclusion.
 use super::{Term, TypeSet};
-use crate::analysis::types::constraints::Constraint;
-use crate::analysis::types::{MAX_DEPTH, Mode, Operand, TypeArena, TypeId};
+use crate::analysis::engine::types::constraints::Constraint;
+use crate::analysis::engine::types::{MAX_DEPTH, Mode, Operand, TypeArena, TypeId};
 
 impl TypeSet {
-    pub(in crate::analysis::types) fn from_constraint(constraint: &Constraint) -> Self {
+    pub(in crate::analysis::engine::types) fn from_constraint(constraint: &Constraint) -> Self {
         match constraint {
             Constraint::Set(set) => set.clone(),
             Constraint::Any => Self::all(),
@@ -24,7 +24,7 @@ impl TypeSet {
 }
 
 impl TypeArena<'_> {
-    pub(in crate::analysis::types) fn prove_parameter_constraint(
+    pub(in crate::analysis::engine::types) fn prove_parameter_constraint(
         &mut self,
         actual: TypeId,
         required: &Constraint,
