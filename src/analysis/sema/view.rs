@@ -5,8 +5,10 @@ use std::path::Path;
 
 use crate::analysis::engine::budget::MAX_BYTES;
 use crate::analysis::engine::check::decls::DeclTable;
-use crate::analysis::engine::check::region::RegionInfo;
-use crate::analysis::engine::obj::{DeclId, LocalId, MethodOrigin, Object, SymbolOrigin};
+use crate::analysis::engine::check::region::{RegionInfo, WriteKind};
+use crate::analysis::engine::obj::{
+    DeclId, LocalId, MemberDeclId, MethodOrigin, Object, SymbolOrigin,
+};
 use crate::analysis::engine::resolve;
 use crate::analysis::engine::scope::tree::LocalBindingKind;
 use crate::analysis::engine::types::{Qualifier, TypeArena, TypeForm, TypeId};
@@ -233,6 +235,89 @@ impl<'r, 'a> RegionView<'r, 'a> {
         self.region.local_init(id)
     }
 
+    pub(crate) fn is_write(&self, span: [u32; 2]) -> bool {
+        self.region.is_write(span)
+    }
+
+    pub(crate) fn write_kind_at(&self, span: [u32; 2]) -> Option<WriteKind> {
+        self.region.write_kind_at(span)
+    }
+
+    /// Locate the checked struct type that directly declares `member` at `span`
+    /// along with its 0-based field ordinal, using already-checked types in this
+    /// region without re-parsing source text.
+    pub(crate) fn field_owner_struct(
+        &mut self,
+        member: MemberDeclId<'a>,
+        span: [u32; 2],
+    ) -> Option<(TypeRef<'r>, usize)> {
+        if let Some(sel) = self.region.selection_by_span(span)
+            && sel.obj == Object::Field(member)
+            && let [ordinal] = sel.indices.as_slice()
+            && let Some(base) = self.arena.receiver_base(sel.recv)
+            && self.arena.is_struct(base) == Some(true)
+        {
+            return Some((TypeRef::new(base), usize::from(*ordinal)));
+        }
+        let name = self.source.get(span[0] as usize..span[1] as usize)?;
+        const MAX_CANDIDATES: usize = 64;
+        let mut seen = Vec::new();
+        let file = self.file;
+        let mut check = |arena: &mut TypeArena<'a>, ty: TypeId| -> Option<(TypeRef<'r>, usize)> {
+            if (!ty.is_decl() && !ty.is_local())
+                || seen.len() >= MAX_CANDIDATES
+                || seen.contains(&ty)
+            {
+                return None;
+            }
+            seen.push(ty);
+            let base = arena.receiver_base(ty)?;
+            if arena.is_struct(base) != Some(true) {
+                return None;
+            }
+            let sel = arena.literal_field(base, file, name)?;
+            if sel.obj == Object::Field(member)
+                && let [ordinal] = sel.indices.as_slice()
+            {
+                Some((TypeRef::new(base), usize::from(*ordinal)))
+            } else {
+                None
+            }
+        };
+        // 1. Enclosing expressions (e.g. anonymous struct composite literals).
+        for &(expr_span, op) in &self.region.expr_types {
+            if expr_span != span
+                && expr_span[0] <= span[0]
+                && span[1] <= expr_span[1]
+                && let Some(found) = check(self.arena, op.ty)
+            {
+                return Some(found);
+            }
+        }
+        // 2. Immediately preceding expressions (e.g. outer field whose annotation is a nested struct).
+        for &(expr_span, op) in self.region.expr_types.iter().rev() {
+            if expr_span[1] <= span[0]
+                && let Some(found) = check(self.arena, op.ty)
+            {
+                return Some(found);
+            }
+        }
+        // 3. Checked local bindings (vars, params, results, local type declarations).
+        for op in self.region.local_types.iter().flatten() {
+            if let Some(found) = check(self.arena, op.ty) {
+                return Some(found);
+            }
+        }
+        // 4. Region owner declaration (e.g. package-level `var X struct { ... }`).
+        if let Some(owner) = self.region.owner
+            && let Some(op) = self.decls.operand_of(self.arena, owner)
+            && let Some(found) = check(self.arena, op.ty)
+        {
+            return Some(found);
+        }
+        None
+    }
+
     pub(crate) fn calls(&self) -> impl Iterator<Item = CallView<'r, 'a>> + use<'r, 'a> {
         self.region.calls.iter().map(|c| CallView {
             span: c.span,
@@ -333,10 +418,10 @@ impl<'r, 'a> RegionView<'r, 'a> {
 
     pub(crate) fn callable_view(
         &mut self,
-        ty: TypeRef<'_>,
+        ty: TypeRef<'r>,
         consumer: &Path,
     ) -> Option<CallableView> {
-        self.types().callable_view(TypeRef::new(ty.id), consumer)
+        self.types().callable_view(ty, consumer)
     }
 
     pub(crate) fn decl_type_shape(&mut self, decl: DeclId<'a>, constant: bool) -> TypeShape {

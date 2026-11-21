@@ -34,11 +34,11 @@ pub(crate) enum ReferenceTarget<'a> {
     Unresolved,
 }
 
-/// One import spec, in source order, paired with its package metadata name.
+/// One import spec, in source order, paired with its indexed import metadata.
 struct ImportSite<'a> {
     alias: Option<Range<usize>>,
     path: Range<usize>,
-    name: Option<&'a str>,
+    explicit_name: Option<&'a str>,
     import_path: &'a str,
 }
 
@@ -67,9 +67,8 @@ fn import_qualifier_target(
     }
 }
 
-/// Import specs in source order. `path` is the quoted literal span; `name` is
-/// the package identifier the file uses for it (explicit alias or the imported
-/// package's declared name from indexed metadata, never a path suffix guess).
+/// Import specs in source order. `path` is the quoted literal span; package
+/// names are resolved lazily only if a `PkgName` lacks `import_path_span`.
 fn import_sites<'a>(context: &Context<'a>, source: &str) -> Vec<ImportSite<'a>> {
     let workspace = context.workspace();
     let file = context.file();
@@ -78,7 +77,7 @@ fn import_sites<'a>(context: &Context<'a>, source: &str) -> Vec<ImportSite<'a>> 
         sites.push(ImportSite {
             alias: spec.alias,
             path: spec.path,
-            name: None,
+            explicit_name: None,
             import_path: "",
         });
     });
@@ -93,11 +92,35 @@ fn import_sites<'a>(context: &Context<'a>, source: &str) -> Vec<ImportSite<'a>> 
         {
             continue;
         }
-        site.name = import
-            .explicit_name()
-            .or_else(|| context.resolver().declared_package_name(file, &import.path));
+        site.explicit_name = import.explicit_name();
     }
     sites
+}
+
+fn find_import_site_by_name<'s>(
+    context: &Context<'_>,
+    sites: &'s [ImportSite<'_>],
+    source: &str,
+    name: &str,
+) -> Option<&'s ImportSite<'s>> {
+    let file = context.file();
+    sites.iter().find(|site| {
+        if let Some(alias) = &site.alias
+            && matches!(&source[alias.clone()], "_" | ".")
+        {
+            return false;
+        }
+        let local = site.explicit_name.or_else(|| {
+            (!site.import_path.is_empty())
+                .then(|| {
+                    context
+                        .resolver()
+                        .declared_package_name(file, site.import_path)
+                })
+                .flatten()
+        });
+        local == Some(name)
+    })
 }
 
 /// Identifier span of the package clause name, if this file has one.
@@ -375,9 +398,18 @@ impl<'a> Context<'a> {
         let file = self.view.file;
         let source = self.source();
         match obj {
-            ObjectRef::PkgName { .. } => {
+            ObjectRef::PkgName {
+                import_path_span, ..
+            } => {
+                if import_path_span[0] < import_path_span[1] {
+                    let path = import_path_span[0] as usize..import_path_span[1] as usize;
+                    if let Some(site) = sites.iter().find(|site| site.path == path) {
+                        return Some(Target::Local(import_qualifier_target(self, site, source)));
+                    }
+                    return Some(Target::Local(path));
+                }
                 let name = source.get(selection.clone())?;
-                let site = sites.iter().find(|site| site.name == Some(name))?;
+                let site = find_import_site_by_name(self, sites, source, name)?;
                 Some(Target::Local(import_qualifier_target(self, site, source)))
             }
             ObjectRef::Var {

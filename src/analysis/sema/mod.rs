@@ -24,6 +24,7 @@ use crate::workspace::Workspace;
 pub(crate) use crate::analysis::engine::check::diagnostics::{
     Code, Diagnostic, Kind, MAX_DIAGNOSTICS,
 };
+pub(crate) use crate::analysis::engine::check::region::WriteKind;
 pub(crate) use crate::analysis::engine::obj::{
     DeclId, LocalId, MemberDeclId, MethodOrigin, NamedObject, Object, Object as SemanticObject,
     Object as ObjectRef, SymbolOrigin, VarKind, decl_object,
@@ -41,6 +42,7 @@ pub(crate) use crate::analysis::engine::types::{Constant, Qualifier, TypeDeclara
 pub(crate) use bodies::CursorBody;
 pub(crate) use completion::{CompletionSite, CompletionTypeView, MemberRequest};
 pub(crate) use expected::CompletionProbe;
+pub(crate) use layout::{FieldLayout, Layout, StructLayout};
 pub(crate) use members::MethodView;
 pub(crate) use members::{CallableView, MemberTypeView};
 use region_cache::{CachedRegion, RegionCoverage};

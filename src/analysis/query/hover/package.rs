@@ -1,6 +1,7 @@
 //! Package-name descriptions: imported package references and package clauses.
 use super::content::HoverContent;
 use crate::analysis::query::Context;
+use crate::analysis::sema::Object;
 use crate::syntax::{Lexer, TokenKind};
 use crate::workspace::{self, Workspace};
 use std::ops::Range;
@@ -56,7 +57,7 @@ pub(super) fn import_alias(
     let mut content = HoverContent::new(path_span);
     let _ = range;
     content.code = Some(format!("package {package}"));
-    if let Some(documents) = imported_package_doc(context, file, &import_path, &package) {
+    if let Some(documents) = imported_package_doc(context, file, &import_path, &package, None) {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -68,49 +69,19 @@ pub(super) fn import_alias(
 
 /// Source span of the import path literal whose alias starts at `offset`.
 fn alias_path_span(source: &str, offset: usize, import_path: &str) -> Option<Range<usize>> {
-    let mut tokens = Lexer::new(source).peekable();
-    while let Some(token) = tokens.next() {
-        if token.kind != TokenKind::Import {
-            continue;
+    let mut found = None;
+    crate::syntax::visit_import_spans(source, |spec| {
+        if found.is_none()
+            && spec.alias.is_some_and(|alias| alias.start == offset)
+            && source
+                .get(spec.path.clone())
+                .and_then(crate::syntax::decode_import_path)
+                .is_some_and(|decoded| decoded == import_path)
+        {
+            found = Some(spec.path);
         }
-        let grouped = tokens
-            .peek()
-            .is_some_and(|token| token.kind == TokenKind::LParen);
-        if grouped {
-            tokens.next();
-        }
-        loop {
-            let first = tokens.next()?;
-            if first.kind == TokenKind::RParen {
-                break;
-            }
-            if first.kind == TokenKind::Semicolon {
-                continue;
-            }
-            if first.kind == TokenKind::String {
-                if !grouped {
-                    break;
-                }
-                continue;
-            }
-            let Some(path) = tokens
-                .next()
-                .filter(|token| token.kind == TokenKind::String)
-            else {
-                break;
-            };
-            if first.span.start == offset
-                && crate::syntax::decode_import_path(&source[path.span.clone()])
-                    .is_some_and(|decoded| decoded == import_path)
-            {
-                return Some(path.span);
-            }
-            if !grouped {
-                break;
-            }
-        }
-    }
-    None
+    });
+    found
 }
 
 /// Hover over an imported package's qualifier identifier.
@@ -119,22 +90,61 @@ pub(super) fn qualifier(
     span: &Range<usize>,
     range: super::SourceRange,
 ) -> Option<HoverContent> {
-    let workspace = context.workspace();
     let file = context.file();
-    let (name, import_path) = {
-        let source = context.source();
+    let (name, import_path, target_dir) = {
+        let sel = u32::try_from(span.start)
+            .ok()
+            .zip(u32::try_from(span.end).ok())
+            .map(|(s, e)| [s, e]);
+        let (doc, sema) = context.split();
+        let source = doc.source();
         if !qualified(source, span.end) {
             return None;
         }
         let name = source.get(span.clone())?.to_owned();
-        let stub = workspace.files.get(file)?;
-        let import = stub.imports.iter().find(|import| {
-            !import.is_dot()
-                && !import.is_blank()
-                && context.resolver().import_name(file, import) == Some(&name)
-        })?;
-        (name, import.path.clone())
+        let resolved_pkg = sel
+            .and_then(|sel| sema.resolve_navigation_offset(doc.file(), source, sel))
+            .and_then(|obj| match obj {
+                Object::PkgName {
+                    import_path_span,
+                    target_dir,
+                } => {
+                    let decoded = (import_path_span[0] < import_path_span[1])
+                        .then(|| {
+                            source
+                                .get(import_path_span[0] as usize..import_path_span[1] as usize)
+                                .and_then(crate::syntax::decode_import_path)
+                        })
+                        .flatten();
+                    let dir =
+                        (!target_dir.as_os_str().is_empty()).then(|| target_dir.to_path_buf());
+                    Some((decoded, dir))
+                }
+                _ => None,
+            });
+        match resolved_pkg {
+            Some((Some(import_path), dir)) => (name, import_path, dir),
+            Some((None, dir)) => {
+                let stub = doc.workspace().files.get(file)?;
+                let import = stub.imports.iter().find(|import| {
+                    !import.is_dot()
+                        && !import.is_blank()
+                        && doc.resolver().import_name(file, import) == Some(&name)
+                })?;
+                (name, import.path.clone(), dir)
+            }
+            None => {
+                let stub = doc.workspace().files.get(file)?;
+                let import = stub.imports.iter().find(|import| {
+                    !import.is_dot()
+                        && !import.is_blank()
+                        && doc.resolver().import_name(file, import) == Some(&name)
+                })?;
+                (name, import.path.clone(), None)
+            }
+        }
     };
+    let workspace = context.workspace();
     let package = context
         .resolver()
         .declared_package_name(file, &import_path)
@@ -142,7 +152,9 @@ pub(super) fn qualifier(
         .or_else(|| import_path.rsplit('/').next().map(str::to_owned))?;
     let mut content = HoverContent::new(range);
     content.code = Some(format!("package {package}"));
-    if let Some(documents) = imported_package_doc(context, file, &import_path, &package) {
+    if let Some(documents) =
+        imported_package_doc(context, file, &import_path, &package, target_dir.as_deref())
+    {
         content.doc = Some(documents.text);
         content.doc_links = documents.links;
     }
@@ -266,9 +278,12 @@ fn imported_package_doc(
     _from: &Path,
     import_path: &str,
     package: &str,
+    target_dir: Option<&Path>,
 ) -> Option<super::doc::Documents> {
     let workspace = context.workspace();
-    let directory = imported_directory(context, import_path)?;
+    let directory = target_dir
+        .map(Path::to_path_buf)
+        .or_else(|| imported_directory(context, import_path))?;
     let external = package.ends_with("_test");
     let files: Vec<PathBuf> = workspace
         .files

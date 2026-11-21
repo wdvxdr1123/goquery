@@ -10,7 +10,7 @@ use crate::analysis::engine::types::{
     type_form_in_scope,
 };
 
-use super::CallableView;
+use super::{CallableView, Layout, StructLayout};
 
 /// Lifetime-locked 4-byte handle to a [`TypeId`] within the active [`super::RegionView`]
 /// or [`super::PackageView`]. Prevents dangling handles across `LocalArena` epoch resets
@@ -82,15 +82,22 @@ impl<'t, 'r, 'a> TypeInspector<'t, 'r, 'a> {
     /// Semantically tests whether `ty` (unaliasing aliases) is the universe `error` type,
     /// without rendering to a `String` or mutating persistent arena state.
     pub(crate) fn is_error(&mut self, ty: TypeRef<'r>) -> bool {
+        if !ty.id.is_decl() && !ty.id.is_local() {
+            return false;
+        }
         let Some(unaliased) = self.arena.unalias(ty.id) else {
             return false;
         };
-        if self.arena.basic_kind(unaliased).is_some()
+        if (!unaliased.is_decl() && !unaliased.is_local())
             || self.arena.named_declaration(unaliased).is_some()
+            || self.arena.local_type_annotation(unaliased).is_some()
         {
             return false;
         }
-        if self.is_interface(TypeRef::new(unaliased)) != Some(true) {
+        // Only `TypeOrigin::BuiltinError` (non-package, non-local named type) has
+        // a distinct underlying interface; structural types, anonymous interfaces
+        // (`any`, `interface{...}`), and type parameters satisfy `underlying == unaliased`.
+        if self.arena.underlying(unaliased) == Some(unaliased) {
             return false;
         }
         let file = self.file;
@@ -102,10 +109,20 @@ impl<'t, 'r, 'a> TypeInspector<'t, 'r, 'a> {
             .unwrap_or(false)
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn layout(&mut self, ty: TypeRef<'r>) -> Option<Layout> {
+        self.arena.layout(ty.id)
+    }
+
+    pub(crate) fn struct_layout(&mut self, ty: TypeRef<'r>) -> Option<StructLayout> {
+        self.arena.struct_layout(ty.id)
+    }
+
     pub(crate) fn is_callable(&mut self, ty: TypeRef<'r>) -> Option<bool> {
         self.arena.is_callable(ty.id)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn is_interface(&mut self, ty: TypeRef<'r>) -> Option<bool> {
         self.arena.is_interface(ty.id)
     }
@@ -195,14 +212,19 @@ impl<'t, 'r, 'a> TypeInspector<'t, 'r, 'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::sema::{RegionMode, SemanticSession};
+    use crate::analysis::sema::{RegionMode, SemanticSession, WriteKind};
     use crate::workspace::{Workspace, WorkspaceEvent};
     use std::path::PathBuf;
 
     fn session_for(source: &str) -> (Workspace, PathBuf) {
         let mut ws = Workspace::default();
         ws.initialize(&serde_json::json!({
-            "initializationOptions": { "goroot": "", "fileWatch": false }
+            "initializationOptions": {
+                "goroot": "",
+                "fileWatch": false,
+                "goos": "linux",
+                "goarch": "amd64"
+            }
         }))
         .expect("initialize workspace");
         let file = PathBuf::from("test.go");
@@ -215,6 +237,20 @@ mod tests {
         (ws, file)
     }
 
+    fn lookup_ty<'r, 'a>(
+        region: &mut super::super::RegionView<'r, 'a>,
+        source: &str,
+        needle: &str,
+    ) -> TypeRef<'r> {
+        let off = source.find(needle).expect(needle) as u32 + 4;
+        let (span, obj) = region
+            .object_at(off)
+            .unwrap_or_else(|| panic!("object at {needle} (off={off})"));
+        region
+            .type_of_object(obj, span)
+            .unwrap_or_else(|| panic!("type_of_object at {needle}"))
+    }
+
     #[test]
     fn type_inspector_checks_error_callable_and_interface_semantically() {
         let source = concat!(
@@ -223,8 +259,8 @@ mod tests {
             "type CustomErr struct{}\n",
             "func (CustomErr) Error() string { return \"\" }\n",
             "type Fn func(string, ...any)\n",
-            "func probe(e error, ea ErrAlias, ce CustomErr, f Fn, n int) {\n",
-            "\t_ = e; _ = ea; _ = ce; _ = f; _ = n\n",
+            "func probe(e error, ea ErrAlias, ce CustomErr, f Fn, n int, a any, anon interface{ Error() string }) {\n",
+            "\t_ = e; _ = ea; _ = ce; _ = f; _ = n; _ = a; _ = anon\n",
             "\t{\n",
             "\t\ttype error int\n",
             "\t\tvar shadowed error\n",
@@ -240,25 +276,13 @@ mod tests {
             .region_at(&file, source, probe_off, RegionMode::Full)
             .expect("probe region");
 
-        fn lookup_ty<'r, 'a>(
-            region: &mut super::super::RegionView<'r, 'a>,
-            source: &str,
-            needle: &str,
-        ) -> TypeRef<'r> {
-            let off = source.find(needle).expect(needle) as u32 + 4;
-            let (span, obj) = region
-                .object_at(off)
-                .unwrap_or_else(|| panic!("object at {needle} (off={off})"));
-            region
-                .type_of_object(obj, span)
-                .unwrap_or_else(|| panic!("type_of_object at {needle}"))
-        }
-
         let e_ty = lookup_ty(&mut region, source, "_ = e");
         let ea_ty = lookup_ty(&mut region, source, "_ = ea");
         let ce_ty = lookup_ty(&mut region, source, "_ = ce");
         let f_ty = lookup_ty(&mut region, source, "_ = f");
         let n_ty = lookup_ty(&mut region, source, "_ = n");
+        let a_ty = lookup_ty(&mut region, source, "_ = a");
+        let anon_ty = lookup_ty(&mut region, source, "_ = anon");
         let shadowed_ty = lookup_ty(&mut region, source, "_ = shadowed");
 
         let mut inspector = region.types();
@@ -266,9 +290,13 @@ mod tests {
         assert!(inspector.is_error(ea_ty));
         assert!(!inspector.is_error(ce_ty));
         assert!(!inspector.is_error(n_ty));
+        assert!(!inspector.is_error(a_ty));
+        assert!(!inspector.is_error(anon_ty));
         assert!(!inspector.is_error(shadowed_ty));
 
         assert_eq!(inspector.is_interface(e_ty), Some(true));
+        assert_eq!(inspector.is_interface(a_ty), Some(true));
+        assert_eq!(inspector.is_interface(anon_ty), Some(true));
         assert_eq!(inspector.is_interface(ce_ty), Some(false));
 
         assert_eq!(inspector.is_callable(f_ty), Some(true));
@@ -281,5 +309,167 @@ mod tests {
             inspector.type_shape(n_ty, false),
             TypeShape::Form(TypeForm::Number)
         );
+    }
+
+    #[test]
+    fn type_inspector_computes_layout_and_struct_layout() {
+        let source = concat!(
+            "package p\n",
+            "type Padded struct {\n",
+            "\tFlag bool\n",
+            "\tCount int64\n",
+            "\tTail struct{}\n",
+            "}\n",
+            "func probe(p Padded, s []byte, n int32) {\n",
+            "\tvar anon struct {\n",
+            "\t\tB byte\n",
+            "\t\tW int32\n",
+            "\t}\n",
+            "\t_ = p; _ = s; _ = n; _ = anon\n",
+            "}\n",
+        );
+        let (ws, file) = session_for(source);
+        let view = ws.build_view(Some(&file));
+        let mut sema = SemanticSession::new(&ws, view);
+        let probe_off = source.find("_ = p").expect("probe body") as u32;
+        let mut region = sema
+            .region_at(&file, source, probe_off, RegionMode::Full)
+            .expect("probe region");
+
+        let p_ty = lookup_ty(&mut region, source, "_ = p");
+        let s_ty = lookup_ty(&mut region, source, "_ = s");
+        let n_ty = lookup_ty(&mut region, source, "_ = n");
+        let anon_ty = lookup_ty(&mut region, source, "_ = anon");
+
+        let mut inspector = region.types();
+        assert_eq!(inspector.layout(n_ty), Some(Layout { size: 4, align: 4 }));
+        assert_eq!(inspector.layout(s_ty), Some(Layout { size: 24, align: 8 }));
+        // Zero-sized final field after non-zero offset pads by 1 byte, aligned to 8 => 24.
+        assert_eq!(inspector.layout(p_ty), Some(Layout { size: 24, align: 8 }));
+        assert!(inspector.struct_layout(n_ty).is_none());
+
+        let padded = inspector.struct_layout(p_ty).expect("Padded struct layout");
+        assert_eq!(padded.layout, Layout { size: 24, align: 8 });
+        assert_eq!(padded.fields.len(), 3);
+        assert_eq!(padded.fields[0].name, "Flag");
+        assert_eq!(
+            (
+                padded.fields[0].size,
+                padded.fields[0].offset,
+                padded.fields[0].align
+            ),
+            (1, 0, 1)
+        );
+        assert_eq!(padded.fields[1].name, "Count");
+        assert_eq!(
+            (
+                padded.fields[1].size,
+                padded.fields[1].offset,
+                padded.fields[1].align
+            ),
+            (8, 8, 8)
+        );
+        assert_eq!(padded.fields[2].name, "Tail");
+        assert_eq!(
+            (
+                padded.fields[2].size,
+                padded.fields[2].offset,
+                padded.fields[2].align
+            ),
+            (0, 16, 1)
+        );
+
+        let anon = inspector
+            .struct_layout(anon_ty)
+            .expect("anon struct layout");
+        assert_eq!(anon.layout, Layout { size: 8, align: 4 });
+        assert_eq!(anon.fields.len(), 2);
+        assert_eq!(anon.fields[0].name, "B");
+        assert_eq!(
+            (
+                anon.fields[0].size,
+                anon.fields[0].offset,
+                anon.fields[0].align
+            ),
+            (1, 0, 1)
+        );
+        assert_eq!(anon.fields[1].name, "W");
+        assert_eq!(
+            (
+                anon.fields[1].size,
+                anon.fields[1].offset,
+                anon.fields[1].align
+            ),
+            (4, 4, 4)
+        );
+    }
+
+    #[test]
+    fn region_view_exposes_classified_write_kinds() {
+        let source = concat!(
+            "package p\n",
+            "type Box struct { V int }\n",
+            "func writes(ch chan int, p *int, b Box) {\n",
+            "\tx := 0\n",
+            "\tx = 1\n",
+            "\tx++\n",
+            "\tx--\n",
+            "\tch <- x\n",
+            "\t(*p)++\n",
+            "\tb.V++\n",
+            "\t_ = &x\n",
+            "\t_ = &b.V\n",
+            "\t_ = x\n",
+            "}\n",
+        );
+        let (ws, file) = session_for(source);
+        let view = ws.build_view(Some(&file));
+        let mut sema = SemanticSession::new(&ws, view);
+        let body_off = source.find("x = 1").expect("body") as u32;
+        let region = sema
+            .region_at(&file, source, body_off, RegionMode::Full)
+            .expect("writes region");
+
+        let span_of = |needle: &str, inner_offset: usize, len: usize| -> [u32; 2] {
+            let start = source.find(needle).expect(needle) + inner_offset;
+            [start as u32, (start + len) as u32]
+        };
+
+        let assign_x = span_of("x = 1", 0, 1);
+        let inc_x = span_of("x++", 0, 1);
+        let dec_x = span_of("x--", 0, 1);
+        let send_ch = span_of("ch <- x", 0, 2);
+        let send_rhs = span_of("ch <- x", 6, 1);
+        let inc_ptr = span_of("(*p)++", 2, 1);
+        let inc_field = span_of("b.V++", 2, 1);
+        let addr_x = span_of("&x", 1, 1);
+        let addr_field = span_of("&b.V", 3, 1);
+        let read_x = span_of("_ = x", 4, 1);
+
+        assert_eq!(region.write_kind_at(assign_x), Some(WriteKind::Assign));
+        assert!(region.is_write(assign_x));
+
+        for modify_span in [inc_x, dec_x, send_ch, inc_ptr, inc_field] {
+            assert_eq!(
+                region.write_kind_at(modify_span),
+                Some(WriteKind::Modify),
+                "expected Modify at {modify_span:?}"
+            );
+            assert!(region.is_write(modify_span));
+        }
+
+        for addr_span in [addr_x, addr_field] {
+            assert_eq!(
+                region.write_kind_at(addr_span),
+                Some(WriteKind::AddrOf),
+                "expected AddrOf at {addr_span:?}"
+            );
+            assert!(!region.is_write(addr_span));
+        }
+
+        for read_span in [send_rhs, read_x] {
+            assert_eq!(region.write_kind_at(read_span), None);
+            assert!(!region.is_write(read_span));
+        }
     }
 }

@@ -12,6 +12,7 @@ use super::navigation;
 use super::{Context, SourceRange};
 use crate::analysis::sema::{
     MemberDeclId, MethodOrigin, RegionView, SemanticObject, SemanticSession, SymbolOrigin, VarKind,
+    WriteKind,
 };
 use crate::syntax::{BlockTree, ExprId, ExprKind, Lexer, Parameter, StmtKind, TokenKind};
 use crate::text::SourceMap;
@@ -50,7 +51,10 @@ enum Class {
 #[derive(PartialEq, Eq)]
 enum Target<'a> {
     Object(SemanticObject<'a>),
-    Package(&'a str),
+    Package {
+        alias: &'a str,
+        import_path_span: [u32; 2],
+    },
     Singleton,
     Unresolved(&'a str),
 }
@@ -104,20 +108,21 @@ impl<'a> Context<'a> {
         };
         crate::error::check_cancelled(cancellation)?;
 
-        let mut import_aliases = Vec::new();
+        let mut import_specs = Vec::new();
         crate::syntax::visit_import_spans(source, |spec| {
-            if let Some(alias) = spec.alias
-                && matches!(&source[alias.clone()], name if name != "." && name != "_")
-            {
-                import_aliases.push(alias);
-            }
+            let alias = spec.alias.filter(
+                |alias| matches!(&source[alias.clone()], name if name != "." && name != "_"),
+            );
+            import_specs.push((alias, spec.path));
         });
 
         let mut candidates: Vec<Candidate<'_>> = scan
             .candidates
             .into_iter()
             .map(|(span, after_dot)| Candidate {
-                is_import_alias: import_aliases.contains(&span),
+                is_import_alias: import_specs
+                    .iter()
+                    .any(|(alias, _)| alias.as_ref() == Some(&span)),
                 is_package_clause: scan.package_name.as_ref() == Some(&span),
                 span,
                 after_dot,
@@ -209,8 +214,18 @@ impl<'a> Context<'a> {
         let printf_calls = format::calls_at(workspace, sema, file, source, offset);
         printf_rows(&printf_calls, source, offset, &mut rows);
         control_flow_rows(&functions, offset, &mut rows);
-        if let Target::Package(alias) = &target
-            && let Some(span) = import_spec_span(workspace, source, file, alias)
+        if let Target::Package {
+            alias,
+            import_path_span,
+        } = &target
+            && let Some(span) = import_spec_span(
+                workspace,
+                source,
+                file,
+                alias,
+                *import_path_span,
+                &import_specs,
+            )
         {
             rows.push((span, HighlightKind::Text));
         }
@@ -321,6 +336,13 @@ fn resolve_region_candidate<'a>(
         candidate.obj = Some(use_obj);
         candidate.def_site = false;
     }
+    match view.write_kind_at(key) {
+        Some(WriteKind::Assign | WriteKind::Modify) => candidate.in_writes = true,
+        // Address-of (`&x`) highlights as Read in gopls, not Write.
+        Some(WriteKind::AddrOf) => {}
+        None if view.is_write(key) => candidate.in_writes = true,
+        None => {}
+    }
 }
 
 fn cursor_target<'a>(
@@ -332,13 +354,28 @@ fn cursor_target<'a>(
         return (Target::Unresolved(spelling), Class::Text);
     }
     if let Some(obj) = cursor.obj {
-        if matches!(obj, SemanticObject::PkgName { .. }) {
-            return (Target::Package(spelling), Class::Text);
+        if let SemanticObject::PkgName {
+            import_path_span, ..
+        } = obj
+        {
+            return (
+                Target::Package {
+                    alias: spelling,
+                    import_path_span,
+                },
+                Class::Text,
+            );
         }
         return (Target::Object(obj), object_class(obj));
     }
     if cursor.is_import_alias && !cursor.is_package_clause && imported {
-        return (Target::Package(spelling), Class::Text);
+        return (
+            Target::Package {
+                alias: spelling,
+                import_path_span: [0, 0],
+            },
+            Class::Text,
+        );
     }
     if spelling == "_" && cursor.in_declarations {
         return (Target::Singleton, Class::Text);
@@ -397,7 +434,7 @@ fn target_tag(target: &Target<'_>) -> &'static str {
             | SemanticObject::BuiltinConst(_)
             | SemanticObject::Nil => "builtin",
         },
-        Target::Package(_) => "package",
+        Target::Package { .. } => "package",
         Target::Singleton => "singleton",
         Target::Unresolved(_) => "unresolved",
     }
@@ -412,7 +449,7 @@ fn candidate_matches<'a>(
 ) -> bool {
     match target {
         Target::Singleton => candidate.span == cursor_span,
-        Target::Package(_) => {
+        Target::Package { .. } => {
             !candidate.is_package_clause
                 && imported
                 && (candidate.is_import_alias
@@ -529,44 +566,34 @@ fn import_spec_span(
     source: &str,
     file: &Path,
     alias: &str,
+    import_path_span: [u32; 2],
+    import_specs: &[(Option<Range<usize>>, Range<usize>)],
 ) -> Option<Range<usize>> {
+    if import_path_span[0] < import_path_span[1] {
+        let path = import_path_span[0] as usize..import_path_span[1] as usize;
+        if let Some((explicit, _)) = import_specs.iter().find(|(_, p)| *p == path) {
+            return Some(explicit.clone().unwrap_or(path));
+        }
+        return Some(path);
+    }
     let stub = workspace.files.get(file)?;
     let import = stub
         .imports
         .iter()
         .find(|import| workspace.import_name(import) == Some(alias))?;
     let explicit = import.explicit_name();
-    let mut importing = false;
-    let mut grouped = false;
-    let mut alias_span = None;
-    for token in Lexer::new(source) {
-        match token.kind {
-            TokenKind::Import => {
-                importing = true;
-                grouped = false;
-                alias_span = None;
-            }
-            TokenKind::LParen if importing => grouped = true,
-            TokenKind::RParen if importing && grouped => {
-                importing = false;
-                grouped = false;
-            }
-            TokenKind::Semicolon if importing && !grouped => {
-                importing = false;
-                alias_span = None;
-            }
-            TokenKind::Ident if importing => alias_span = Some(token.span.clone()),
-            TokenKind::String if importing => {
-                let path = crate::syntax::decode_import_path(&source[token.span.clone()])?;
-                if path == import.path {
-                    return Some(match (explicit, alias_span.take()) {
-                        (Some(_), Some(span)) => span,
-                        _ => token.span,
-                    });
-                }
-                alias_span = None;
-            }
-            _ => {}
+    for (alias_span, path_span) in import_specs {
+        let Some(path) = source
+            .get(path_span.clone())
+            .and_then(crate::syntax::decode_import_path)
+        else {
+            continue;
+        };
+        if path == import.path {
+            return Some(match (explicit, alias_span) {
+                (Some(_), Some(span)) => span.clone(),
+                _ => path_span.clone(),
+            });
         }
     }
     None
@@ -763,12 +790,6 @@ impl<'s, 'f> BodyCollector<'s, 'f> {
                         }
                     }
                 }
-                StmtKind::Increment { expression, .. } => {
-                    self.mark_write(tree, base, *expression, slice);
-                }
-                StmtKind::Send { channel, .. } => {
-                    self.mark_write(tree, base, *channel, slice);
-                }
                 StmtKind::Declaration { keyword, names, .. } => {
                     if matches!(
                         self.source.get(base + keyword.start..base + keyword.end),
@@ -901,7 +922,7 @@ impl<'s, 'f> BodyCollector<'s, 'f> {
                 }
             }
             ExprKind::Unary { operator, operand } => {
-                if self.source.get(operator.start..operator.end) == Some("*") {
+                if self.source.get(base + operator.start..base + operator.end) == Some("*") {
                     self.mark_write(tree, base, *operand, slice);
                 }
             }
