@@ -1,7 +1,7 @@
 mod identifiers;
 
 use crate::bloom::BloomFilter;
-use crate::syntax::Import;
+use crate::syntax::{Import, TypeConstructor, TypeInfo};
 use crate::text::SourceMap;
 use identifiers::IdentifierFilter;
 use std::ops::Range;
@@ -124,6 +124,20 @@ pub struct IndexedFile {
     pub(crate) build_targets: u64,
     /// Minimum release implied by the leading build expression, without text.
     pub(crate) build_go_version: Option<u16>,
+    /// True when any type declaration in this file may contain interface methods
+    /// not covered by `declared_methods` (unparsed/parenthesized/incomplete
+    /// interfaces or unknown type constructors). Packed into existing padding.
+    pub(crate) methods_opaque: bool,
+    /// True when any type declaration in this file shadows a predeclared
+    /// universe type name (`int`, `error`, `any`, etc.). Packed into padding.
+    pub(crate) has_universe_shadow: bool,
+    /// True when any type declaration in this file is a type alias (`type A = B`).
+    /// Packed into existing padding.
+    pub(crate) has_type_alias: bool,
+    /// 64-bit method-name bitmask (`TypeInfo::method_name_bit`) of all receiver
+    /// methods (`func (R) M`) and direct interface methods declared in this file.
+    /// Used strictly as a sound necessary-condition negative filter (+8 bytes/file).
+    pub(crate) declared_methods: u64,
     pub(crate) identifiers: IdentifierFilter,
     pub(crate) import_paths: BloomFilter<1>,
     pub(crate) declarations: BloomFilter<4>,
@@ -140,6 +154,9 @@ pub struct IndexedFile {
     /// it to notice direct (agent/shell) edits without editor events.
     pub(crate) stamp: Option<DiskStamp>,
 }
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<IndexedFile>() <= 456);
 
 impl IndexedFile {
     pub(crate) fn rebuild_import_filter(&mut self) {
@@ -166,9 +183,37 @@ pub fn index_source(source: &str) -> IndexedFile {
     let map = SourceMap::new(source);
     let mut import_paths = BloomFilter::new();
     let mut declarations = BloomFilter::new();
+    let mut declared_methods = 0u64;
+    let mut methods_opaque = false;
+    let mut has_universe_shadow = false;
+    let mut has_type_alias = false;
     for symbol in &parsed.symbols {
         if symbol.receiver.is_none() {
             declarations.insert(symbol.name.as_bytes());
+        }
+        if symbol.kind == SymbolKind::Method {
+            if symbol.name != "_" {
+                declared_methods |= TypeInfo::method_name_bit(&symbol.name);
+            }
+        } else if symbol.kind == SymbolKind::Type {
+            if symbol.alias {
+                has_type_alias = true;
+            }
+            if is_universe_type_shadow(&symbol.name) {
+                has_universe_shadow = true;
+            }
+            if let Some(info) = &symbol.type_info {
+                declared_methods |= info.direct_methods_mask;
+            }
+            if symbol.constructor == TypeConstructor::Unknown
+                || (symbol.constructor == TypeConstructor::Interface
+                    && symbol
+                        .type_info
+                        .as_ref()
+                        .is_none_or(|info| !info.embeddings_complete))
+            {
+                methods_opaque = true;
+            }
         }
     }
     for import in &parsed.imports {
@@ -177,6 +222,10 @@ pub fn index_source(source: &str) -> IndexedFile {
     IndexedFile {
         build_targets: 0,
         build_go_version: crate::buildconstraint::minimum_go_version(source),
+        methods_opaque,
+        has_universe_shadow,
+        has_type_alias,
+        declared_methods,
         identifiers: IdentifierFilter::new(source),
         import_paths,
         declarations,
@@ -270,4 +319,127 @@ fn declaration_digest(source: &str, symbols: &[crate::syntax::Symbol]) -> u64 {
         }
     }
     hasher.finish()
+}
+
+fn is_universe_type_shadow(name: &str) -> bool {
+    matches!(
+        name,
+        "bool"
+            | "byte"
+            | "rune"
+            | "string"
+            | "int"
+            | "int8"
+            | "int16"
+            | "int32"
+            | "int64"
+            | "uint"
+            | "uint8"
+            | "uint16"
+            | "uint32"
+            | "uint64"
+            | "uintptr"
+            | "float32"
+            | "float64"
+            | "complex64"
+            | "complex128"
+            | "any"
+            | "error"
+            | "comparable"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IndexedFile, index_source};
+    use crate::syntax::TypeInfo;
+
+    #[test]
+    fn method_bitmasks_and_index_flags_match_declaration_semantics() {
+        for name in [
+            "Read", "Write", "Close", "Error", "String", "Len", "Less", "Swap",
+        ] {
+            assert_eq!(TypeInfo::method_name_bit(name).count_ones(), 1);
+        }
+
+        let stub = index_source(
+            "package p\n\
+             type Plain interface {\n\
+                 Read([]byte) (int, error)\n\
+                 Write([]byte) (int, error)\n\
+             }\n\
+             type StructWithField struct {\n\
+                 Read int\n\
+             }\n\
+             type Box[T any] struct { v T }\n\
+             func (b *Box[T]) Get() T { return b.v }\n\
+             func (StructWithField) _() {}\n\
+             type Alias = StructWithField\n",
+        );
+        assert!(!stub.methods_opaque);
+        assert!(!stub.has_universe_shadow);
+        assert!(stub.has_type_alias);
+
+        let plain = stub.symbols.iter().find(|s| s.name == "Plain").unwrap();
+        let plain_mask = plain.type_info.as_ref().unwrap().direct_methods_mask;
+        assert_eq!(
+            plain_mask,
+            TypeInfo::method_name_bit("Read") | TypeInfo::method_name_bit("Write")
+        );
+
+        let st = stub
+            .symbols
+            .iter()
+            .find(|s| s.name == "StructWithField")
+            .unwrap();
+        assert_eq!(st.type_info.as_ref().unwrap().direct_methods_mask, 0);
+
+        // File-level mask captures interface methods and receiver methods, skipping `_`.
+        let expected_file_mask = TypeInfo::method_name_bit("Read")
+            | TypeInfo::method_name_bit("Write")
+            | TypeInfo::method_name_bit("Get");
+        assert_eq!(stub.declared_methods, expected_file_mask);
+
+        // Interfaces with union / generic type elements still record direct
+        // explicit methods without mistaking union terms for methods, and mark
+        // the file opaque for conservative fallback.
+        let constraint = index_source(
+            "package p\n\
+             type Constraint interface {\n\
+                 ~int | string\n\
+                 Other[int]\n\
+                 Direct() int\n\
+             }\n\
+             type int struct{}\n",
+        );
+        assert!(constraint.methods_opaque);
+        assert!(constraint.has_universe_shadow);
+        let c_sym = constraint
+            .symbols
+            .iter()
+            .find(|s| s.name == "Constraint")
+            .unwrap();
+        let c_info = c_sym.type_info.as_ref().unwrap();
+        assert_eq!(
+            c_info.direct_methods_mask,
+            TypeInfo::method_name_bit("Direct")
+        );
+
+        // Unclosed malformed interfaces must leave direct_methods_mask = 0 and mark opaque.
+        let broken = index_source("package p\ntype Broken interface {\n\tFoo(\n");
+        assert!(broken.methods_opaque);
+        let b_sym = broken.symbols.iter().find(|s| s.name == "Broken").unwrap();
+        assert_eq!(b_sym.type_info.as_ref().unwrap().direct_methods_mask, 0);
+
+        // Parenthesized interfaces have no TypeInfo and mark the file opaque.
+        let paren = index_source("package p\ntype Paren (interface { Magic() })\n");
+        assert!(paren.methods_opaque);
+
+        // Permanent memory footprint stays strictly bounded.
+        #[cfg(target_pointer_width = "64")]
+        {
+            assert!(std::mem::size_of::<TypeInfo>() <= 128);
+            assert!(std::mem::size_of::<IndexedFile>() <= 456);
+        }
+    }
 }

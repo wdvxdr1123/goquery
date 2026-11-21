@@ -135,7 +135,7 @@ impl<'a> Context<'a> {
                 }
                 // The queried method itself is not an implementation of itself;
                 // gopls skips the object at the query position.
-                self.method_relation_locations(file, owner, name)?
+                self.method_relation_locations(file, owner, name, supers)?
             }
         };
         locations = bounded_sorted(locations);
@@ -157,8 +157,8 @@ impl<'a> Context<'a> {
         file: &'a Path,
         owner: &'a Symbol,
         name: &'a str,
+        supers: bool,
     ) -> Result<Vec<SourceLocation<'a>>, (i32, String)> {
-        let supers = !self.type_is_interface(file, owner);
         let mut locations: Vec<SourceLocation<'a>> = Vec::new();
         for target in self.method_relations(file, owner, supers, name)? {
             let Some(member) = self.with_sema(|sema| {

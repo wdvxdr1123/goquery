@@ -79,6 +79,11 @@ pub struct TypeInfo {
     /// Conservative proof for metadata-only negative embedding searches.
     /// False means the inventory may omit opaque or bounded member syntax.
     pub embeddings_complete: bool,
+    /// 64-bit method-name bitmask of proven direct explicit methods declared on
+    /// an interface body (`Ident (` at top level of a closed `interface { ... }`).
+    /// Always 0 for non-interface types and unclosed interfaces; used strictly as
+    /// a sound necessary-condition negative filter.
+    pub direct_methods_mask: u64,
     /// Named alias or defined underlying type, without a retained type tree.
     pub target: Option<TypeTarget>,
     /// Shallow named embeddings; search entries add no edges or substitutions.
@@ -89,9 +94,30 @@ pub struct TypeInfo {
     pub search_members: Vec<MemberName>,
 }
 
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<TypeInfo>() <= 128);
+
 impl TypeInfo {
     pub fn is_interface(&self) -> bool {
         self.constructor == TypeConstructor::Interface
+    }
+
+    /// Single-bit 64-bit mask for one Go method name, modeled after
+    /// `gopls/internal/cache/methodsets`. Used strictly as a sound
+    /// necessary-condition negative filter; positive hits still require exact
+    /// semantic verification.
+    pub fn method_name_bit(name: &str) -> u64 {
+        let mut hash = 0xcbf29ce484222325u64;
+        for &byte in name.as_bytes() {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+        }
+        // SplitMix64 avalanche spreads short Go method names evenly across 0..64.
+        hash ^= hash >> 30;
+        hash = hash.wrapping_mul(0xbf58476d1ce4e5b9);
+        hash ^= hash >> 27;
+        hash = hash.wrapping_mul(0x94d049bb133111eb);
+        hash ^= hash >> 31;
+        1u64 << (hash & 63)
     }
 }
 

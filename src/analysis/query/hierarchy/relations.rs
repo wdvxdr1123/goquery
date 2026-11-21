@@ -1,19 +1,15 @@
 //! Request-local implementation search. Closed source/type trees are not cached.
-use super::candidates::Candidates;
+use super::candidates::{Candidates, PackageReachability};
 use super::{Context, SymbolTarget};
 use crate::analysis::resolve::MemberDescription;
 use crate::analysis::resolve::{MemberId, MemberIds};
 use crate::analysis::sema::{DeclId, MethodOrigin, NamedObject, ObjectRef, Semantics};
 use crate::index::IndexedSymbol as Symbol;
-use crate::syntax::TypeConstructor;
-use crate::syntax::{Lexer, MemberKind, TokenKind};
+use crate::syntax::{MemberKind, TypeConstructor, TypeInfo};
 use crate::workspace::Workspace;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-
-/// Query-local memo for named-type spellings: (file, package, name) → target.
-type ResolveCache<'a> = HashMap<(&'a Path, &'a str, &'a str), Option<(&'a PathBuf, &'a Symbol)>>;
 
 struct MethodSet<'a> {
     file: &'a Path,
@@ -309,6 +305,18 @@ impl<'a, View> Context<'a, View> {
                 let id = crate::analysis::resolve::member_id(self.workspace, file, name);
                 target.members.get(&id)?.file()
             })
+            .or_else(|| {
+                // Any unexported required method on a queried interface can only
+                // be satisfied by types in its declaring package or transitive
+                // importers of that package.
+                (!supers).then(|| {
+                    target
+                        .members
+                        .iter()
+                        .find(|(id, _)| !crate::analysis::resolve::exported(id.name))
+                        .and_then(|(_, member)| member.file())
+                })?
+            })
             .and_then(|origin| view.dependent_packages(origin));
         let mut search = Search {
             workspace: self.workspace,
@@ -322,6 +330,12 @@ impl<'a, View> Context<'a, View> {
         // from stubs alone. This is keyed by receiver identity, not by a type's
         // spelling in the query, and cannot reject structural implementations.
         let required: Vec<_> = target.members.keys().map(|id| id.name).collect();
+        // 64-bit method-name bitmask works for any number of methods (including
+        // > 64) as a sound necessary-condition filter.
+        let required_bitmask = required
+            .iter()
+            .fold(0u64, |acc, name| acc | TypeInfo::method_name_bit(name));
+        let target_method_mask = if supers { required_bitmask } else { 0 };
         // A candidate can only provide names declared somewhere in its package
         // (or promoted from a declared embedding). One bounded mask per receiver
         // owner gives a sound negative filter for plain declarations.
@@ -337,36 +351,58 @@ impl<'a, View> Context<'a, View> {
         // expensive universe-name resolution below.
         let mut shadowing: HashSet<(Option<&Path>, &str)> = HashSet::new();
         let mut shadowing_complete = true;
-        let mut candidates = Candidates::new(self.resolver());
+        let mut candidates = Candidates::new(self.resolver(), required_bitmask);
         let detached_target = self.workspace.is_detached(file);
         // Receiver-name inventories only drive the subtype direction's coverage
         // and method-set narrowing; supertype candidates still need the shadow
         // inventory but not these indexes.
         let inventory = !supers;
+        let reachability = if inventory {
+            PackageReachability::build(
+                self.workspace,
+                file,
+                &required,
+                required_bitmask,
+                mask_enabled,
+            )
+        } else {
+            None
+        };
         for (path, stub) in &self.workspace.files {
             if self.workspace.is_detached(path) != detached_target
                 || !self.workspace.hierarchy_scope(file, path)
             {
                 continue;
             }
-            for symbol in &stub.symbols {
-                if symbol.is_type() && universe_shadow(&symbol.name) {
-                    if shadowing.len() < 4_096 {
-                        shadowing.insert((path.parent(), stub.package.as_str()));
-                    } else {
-                        shadowing_complete = false;
-                    }
+            if stub.has_universe_shadow {
+                if shadowing.len() < 4_096 {
+                    shadowing.insert((path.parent(), stub.package.as_str()));
+                } else {
+                    shadowing_complete = false;
                 }
-                if !inventory {
+            }
+            if !inventory {
+                continue;
+            }
+            let has_required_method = (stub.declared_methods & required_bitmask) != 0;
+            if !indexed && !has_required_method && !stub.has_type_alias {
+                continue;
+            }
+            for symbol in &stub.symbols {
+                if stub.has_type_alias && symbol.is_type() && symbol.alias {
+                    candidates.record_local_alias(path, stub.package.as_str(), symbol);
                     continue;
                 }
                 if let Some(receiver) = &symbol.receiver {
                     let owner = (path.parent(), stub.package.as_str(), receiver.as_ref());
-                    if mask_enabled
-                        && let Some(bit) = required
+                    let matching_bit = if has_required_method {
+                        required
                             .iter()
                             .position(|name| *name == symbol.name.as_str())
-                    {
+                    } else {
+                        None
+                    };
+                    if mask_enabled && let Some(bit) = matching_bit {
                         candidates.insert_restricted(
                             path,
                             stub.package.as_str(),
@@ -390,18 +426,19 @@ impl<'a, View> Context<'a, View> {
                             // candidates. Positive name hints stay bounded.
                             indexed = false;
                             candidates.receivers.clear();
-                        } else if required.contains(&symbol.name.as_str()) {
+                        } else if matching_bit.is_some() {
                             candidates.matching.insert(owner);
                         }
                         continue;
                     }
-                    if required.contains(&symbol.name.as_str())
-                        && candidates.matching.len() < 16_384
-                    {
+                    if matching_bit.is_some() && candidates.matching.len() < 16_384 {
                         candidates.matching.insert(owner);
                     }
                 }
             }
+        }
+        if inventory {
+            candidates.propagate_local_aliases(indexed);
         }
         let collect_time = collect_phase.elapsed();
         // The complete owner inventory is only a negative candidate filter;
@@ -447,9 +484,6 @@ impl<'a, View> Context<'a, View> {
         let mut coverage_impossible = 0usize;
         let mut shape_none = 0usize;
         let mut fast_mask_full = 0usize;
-        // Query-local named-type resolution cache: candidate metadata walks
-        // revisit the same unqualified target spellings within a package.
-        let mut resolve_cache: ResolveCache<'_> = HashMap::new();
         if self.workspace.trace.queries {
             eprintln!(
                 "type hierarchy: {} {} begins",
@@ -466,6 +500,26 @@ impl<'a, View> Context<'a, View> {
                     view.file_visible(path) && !packages.contains(path, stub)
                 })
             {
+                continue;
+            }
+            if let Some(reachability) = &reachability
+                && !reachability.package_may_implement(path, stub.package.as_str())
+            {
+                // Preserve the indexed candidate-type cap even when an entire
+                // unreachable package is pruned before inspecting its types.
+                if indexed {
+                    visited += stub
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.is_type())
+                        .count();
+                    if visited > 16_384 {
+                        return Err((
+                            crate::error::REQUEST_FAILED,
+                            "type hierarchy exceeds 16384 candidate types".into(),
+                        ));
+                    }
+                }
                 continue;
             }
             if self.workspace.trace.queries {
@@ -527,6 +581,7 @@ impl<'a, View> Context<'a, View> {
                 if !supers
                     && indexed
                     && leaf
+                    && !candidates.is_alias_unknown(path, stub.package.as_str())
                     && !candidates.receivers.contains(&(
                         path.parent(),
                         stub.package.as_str(),
@@ -558,11 +613,10 @@ impl<'a, View> Context<'a, View> {
                         TypeConstructor::Interface => {}
                         TypeConstructor::Unknown | TypeConstructor::Named => {
                             let phase = self.workspace.trace.queries.then(Instant::now);
-                            let possible = possible_interface(
+                            let possible = candidates.possible_interface(
                                 self.workspace,
                                 path,
                                 candidate,
-                                &mut resolve_cache,
                                 &shadowing,
                                 shadowing_complete,
                             );
@@ -575,6 +629,30 @@ impl<'a, View> Context<'a, View> {
                             }
                         }
                         _ => continue,
+                    }
+                    // O(1) 64-bit bitmask rejection on proven direct interface
+                    // methods, sound even when embeddings are incomplete.
+                    if let Some(info) = candidate.type_info.as_ref()
+                        && (target_method_mask & info.direct_methods_mask)
+                            != info.direct_methods_mask
+                    {
+                        continue;
+                    }
+                    // Transitive lower bound over embedded/defined interfaces.
+                    if candidate.type_info.as_ref().is_some_and(|info| {
+                        (info.is_interface() && !info.embedded.is_empty())
+                            || (!info.is_interface() && info.target.is_some())
+                    }) {
+                        let required_lb = candidates.interface_required_mask(
+                            self.workspace,
+                            path,
+                            candidate,
+                            &shadowing,
+                            shadowing_complete,
+                        );
+                        if (target_method_mask & required_lb) != required_lb {
+                            continue;
+                        }
                     }
                 }
                 // Every proved direct interface method is necessary. Unknown
@@ -597,6 +675,16 @@ impl<'a, View> Context<'a, View> {
                     continue;
                 }
                 if !supers {
+                    // O(1) 64-bit bitmask rejection for plain interfaces with no
+                    // embeddings (works for any required method count, even > 64).
+                    if let Some(info) = candidate.type_info.as_ref()
+                        && info.is_interface()
+                        && info.embeddings_complete
+                        && info.embedded.is_empty()
+                        && (info.direct_methods_mask & required_bitmask) != required_bitmask
+                    {
+                        continue;
+                    }
                     let restricted = if mask_enabled {
                         candidates.restricted_mask(
                             path,
@@ -1012,101 +1100,6 @@ impl<'a, View> Context<'a, View> {
     }
 }
 
-/// Follow only known named indirections. Unresolved/opaque shapes remain
-/// candidates; an incomplete shape cannot prove a negative structural result.
-fn possible_interface<'a>(
-    workspace: &'a Workspace,
-    mut file: &'a Path,
-    mut symbol: &'a Symbol,
-    cache: &mut ResolveCache<'a>,
-    shadows: &HashSet<(Option<&'a Path>, &'a str)>,
-    shadows_complete: bool,
-) -> bool {
-    for _ in 0..64 {
-        if symbol.constructor == TypeConstructor::Interface {
-            return true;
-        }
-        if !matches!(
-            symbol.constructor,
-            TypeConstructor::Unknown | TypeConstructor::Named
-        ) {
-            // Written struct/map/chan/func/pointer/array/slice underlying types
-            // cannot be interfaces.
-            return false;
-        }
-        let Some(info) = &symbol.type_info else {
-            return true;
-        };
-        if info.is_interface() {
-            return true;
-        }
-        let Some(target) = &info.target else {
-            return false;
-        };
-        // Constructor spellings cannot name an interface type. This is a
-        // metadata-only proof from the written underlying type, so it cannot
-        // hide a structural interface implemented by the candidate.
-        let spelling = target.name.trim_start();
-        match Lexer::new(spelling).next().map(|token| token.kind) {
-            Some(TokenKind::LBrack | TokenKind::Map | TokenKind::Chan) => return false,
-            Some(TokenKind::Func | TokenKind::Struct | TokenKind::Arrow | TokenKind::Mul) => {
-                return false;
-            }
-            Some(TokenKind::Interface) => return true,
-            _ => {}
-        }
-        // Unqualified predeclared names resolve to the universe unless some
-        // declaration in this package shadows that spelling. Dot imports cannot
-        // contribute unexported (lowercase) names, so the collected package set
-        // is a complete negative proof.
-        let name = target.name.trim();
-        if shadows_complete
-            && !name.contains('.')
-            && let Some(stub) = workspace.files.get(file)
-            && !shadows.contains(&(file.parent(), stub.package.as_str()))
-        {
-            if matches!(name, "any" | "error" | "comparable") {
-                return true;
-            }
-            if builtin(name) {
-                return false;
-            }
-        }
-        let Some((origin, next)) = resolve_named(workspace, file, &target.name, cache) else {
-            return !builtin(&target.name);
-        };
-        file = origin;
-        symbol = next;
-    }
-    true
-}
-
-/// Resolves one unqualified target spelling with a query-local memo. Import
-/// aliases stay per-file; unqualified names resolve inside the current package.
-fn resolve_named<'a>(
-    workspace: &'a Workspace,
-    file: &'a Path,
-    name: &'a str,
-    cache: &mut ResolveCache<'a>,
-) -> Option<(&'a PathBuf, &'a Symbol)> {
-    if name.contains('.') {
-        return crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
-    }
-    let package = workspace.files.get(file)?.package.as_str();
-    let directory = file.parent()?;
-    let key = (directory, package, name);
-    if let Some(value) = cache.get(&key) {
-        return *value;
-    }
-    let value = crate::analysis::resolve::resolve_type_declaration(workspace, file, name);
-    cache.insert(key, value);
-    value
-}
-
-fn universe_shadow(name: &str) -> bool {
-    builtin(name) || matches!(name, "any" | "error" | "comparable")
-}
-
 #[derive(Clone, Copy)]
 struct MethodShape {
     parameters: usize,
@@ -1114,11 +1107,14 @@ struct MethodShape {
     variadic: bool,
 }
 
-/// A declaration with no underlying named type and no embedded members exposes
-/// exactly the receiver methods declared on it.
+/// A declaration with complete embeddings, no underlying named type and no
+/// embedded members exposes only the receiver methods declared on it.
 fn plain_declaration(symbol: &Symbol) -> bool {
     symbol.type_info.as_ref().is_some_and(|info| {
-        info.target.is_none() && info.embedded.is_empty() && !info.is_interface()
+        info.embeddings_complete
+            && info.target.is_none()
+            && info.embedded.is_empty()
+            && !info.is_interface()
     })
 }
 
@@ -1173,29 +1169,4 @@ fn shape(parsed: &crate::syntax::Signature) -> Option<MethodShape> {
             .last()
             .is_some_and(|parameter| parameter.variadic),
     })
-}
-
-fn builtin(name: &str) -> bool {
-    matches!(
-        name,
-        "bool"
-            | "byte"
-            | "rune"
-            | "string"
-            | "int"
-            | "int8"
-            | "int16"
-            | "int32"
-            | "int64"
-            | "uint"
-            | "uint8"
-            | "uint16"
-            | "uint32"
-            | "uint64"
-            | "uintptr"
-            | "float32"
-            | "float64"
-            | "complex64"
-            | "complex128"
-    )
 }

@@ -20,6 +20,7 @@ pub(super) fn type_info(
             parameter_end,
             constructor,
             embeddings_complete: true,
+            direct_methods_mask: 0,
             target: Some(target),
             embedded: Vec::new(),
             members: Vec::new(),
@@ -50,6 +51,7 @@ pub(super) fn type_info(
             parameter_end,
             constructor,
             embeddings_complete: false,
+            direct_methods_mask: 0,
             target: None,
             embedded: Vec::new(),
             members: Vec::new(),
@@ -161,7 +163,7 @@ fn scan(source: &str) -> Option<Box<TypeInfo>> {
     }
     let mut embedded = Vec::new();
     let mut members = Vec::new();
-    let mut names = Vec::new();
+    let mut names: Vec<Token> = Vec::new();
     let mut leading = true;
     let mut expect_name = true;
     let mut member = Vec::new();
@@ -173,12 +175,19 @@ fn scan(source: &str) -> Option<Box<TypeInfo>> {
     let mut explicit_field = false;
     let mut bracket_field = false;
     let mut after_brackets = false;
+    let mut direct_methods_mask = 0u64;
     for token in tokens {
         if depth == 0 && matches!(token.kind, TokenKind::Semicolon | TokenKind::RBrace) {
             complete &= !opaque || method || explicit_field;
             if !opaque && let Some(name) = embedded_name(source, &member) {
                 embedded.push(name);
             } else {
+                if method && names.len() == 1 {
+                    let name = &source[names[0].span.clone()];
+                    if name != "_" {
+                        direct_methods_mask |= TypeInfo::method_name_bit(name);
+                    }
+                }
                 members.extend(
                     names
                         .drain(..)
@@ -249,6 +258,7 @@ fn scan(source: &str) -> Option<Box<TypeInfo>> {
             TypeConstructor::Struct
         },
         embeddings_complete: complete && closed,
+        direct_methods_mask: if closed { direct_methods_mask } else { 0 },
         target: None,
         embedded,
         members,
