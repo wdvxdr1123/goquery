@@ -295,18 +295,6 @@ impl TypeArena<'_> {
         Some(operand)
     }
 
-    pub(crate) fn binary_expr(
-        &mut self,
-        operator: &str,
-        left: Operand,
-        right: Operand,
-        expected: Option<TypeId>,
-        int_bits: u32,
-    ) -> Option<Operand> {
-        self.checked_binary_expr(operator, left, right, expected, int_bits)?
-            .ok()
-    }
-
     pub(crate) fn checked_binary_expr(
         &mut self,
         operator: &str,

@@ -3,11 +3,11 @@
 use std::ops::Range;
 
 use crate::analysis::engine::check::region::RecordMask;
-use crate::analysis::engine::check::{RegionChecker, collect_visible_type_env};
+use crate::analysis::engine::check::{ExprOutcome, RegionChecker, collect_visible_type_env};
 use crate::analysis::engine::obj::{MemberDeclId, MethodOrigin, ObjectRef};
 use crate::analysis::engine::scope::tree::LocalBindingKind;
-use crate::analysis::engine::types::{Mode, Operand, TypeId};
-use crate::syntax::{self, BlockTree, ExprId, ExprKind, Signature, StmtId};
+use crate::analysis::engine::types::{Mode, Operand, TypeArena, TypeId};
+use crate::syntax::{self, BlockTree, ExprId, ExprKind, Signature, StmtId, TypeNodeId};
 
 impl<'a, 'b> RegionChecker<'a, 'b> {
     pub(in crate::analysis::engine::check) fn sig_constraint_refs_valid(
@@ -95,18 +95,29 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         sig_base: usize,
         ann_range: &Range<usize>,
     ) -> bool {
-        let Some(text) = sig_slice.get(ann_range.clone()) else {
-            return false;
-        };
+        self.parse_and_check_sig_type(sig_slice, sig_base, ann_range)
+            .is_some()
+    }
+
+    /// Parse a signature parameter/result type once, verify references and
+    /// details, and return the parsed `TypeSyntax` + pre-evaluated constant
+    /// array-length expressions for single-pass lowering without re-parsing.
+    pub(in crate::analysis::engine::check) fn parse_and_check_sig_type(
+        &mut self,
+        sig_slice: &str,
+        sig_base: usize,
+        ann_range: &Range<usize>,
+    ) -> Option<(syntax::TypeSyntax, Vec<(ExprId, Operand)>)> {
+        let text = sig_slice.get(ann_range.clone())?;
         let mut parsed = syntax::parse_type(text);
         if !parsed.diagnostics.is_empty() {
             self.region.uses_complete = false;
-            return false;
+            return None;
         }
         let abs_start = sig_base + ann_range.start;
         let ok = self.check_type_references(text, abs_start, &parsed);
-        self.check_type_annotation_details(text, abs_start, &mut parsed);
-        ok
+        let const_exprs = self.check_type_annotation_details_inner(text, abs_start, &mut parsed);
+        ok.then_some((parsed, const_exprs))
     }
 
     pub(crate) fn resolve_type_syntax_span(&mut self, span: &Range<usize>) -> Option<TypeId> {
@@ -126,21 +137,48 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         }
 
         let refs_ok = self.check_type_references(text, abs_offset, &parsed);
-        self.check_type_annotation_details(text, abs_offset, &mut parsed);
+        let const_exprs = self.check_type_annotation_details_inner(text, abs_offset, &mut parsed);
         if !refs_ok {
             return None;
         }
 
-        self.resolve_type_text_parsed(text, abs_offset, &parsed)
+        self.resolve_type_text_parsed(text, abs_offset, &parsed, &const_exprs)
     }
 
-    pub(super) fn resolve_type_text_unverified(
+    pub(in crate::analysis::engine::check) fn lower_parsed_type_in_env(
         &mut self,
         text: &str,
         abs_offset: usize,
+        parsed: &syntax::TypeSyntax,
+        env_pairs: &[(&str, TypeId)],
+        const_exprs: &[(ExprId, Operand)],
     ) -> Option<TypeId> {
-        let parsed = syntax::parse_type(text);
-        self.resolve_type_text_parsed(text, abs_offset, &parsed)
+        let file = self.file;
+        let file_offset = Some(self.file_offset(abs_offset));
+        let decls = &mut *self.decls;
+        let mut const_eval = |arena: &mut TypeArena<'a>,
+                              origin: &std::path::Path,
+                              source: &str,
+                              parsed: &syntax::TypeSyntax,
+                              expr_id: ExprId| {
+            const_exprs
+                .iter()
+                .find(|(id, _)| *id == expr_id)
+                .map(|(_, op)| *op)
+                .or_else(|| decls.eval_const_expr(arena, origin, source, parsed, expr_id))
+        };
+        let ty = self
+            .arena
+            .lower_type_syntax_with_eval(
+                file,
+                text,
+                parsed,
+                file_offset,
+                env_pairs,
+                &mut const_eval,
+            )
+            .ok()?;
+        self.arena.validate_type(ty).map(|()| ty)
     }
 
     fn resolve_type_text_parsed(
@@ -148,15 +186,72 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         text: &str,
         abs_offset: usize,
         parsed: &syntax::TypeSyntax,
+        const_exprs: &[(ExprId, Operand)],
     ) -> Option<TypeId> {
         let env_pairs = collect_visible_type_env(self.region, &self.env, self.source, abs_offset);
-        let ty = self.arena.lower_type_syntax_in(
-            self.file,
-            text,
-            parsed,
-            Some(self.file_offset(abs_offset)),
-            &env_pairs,
-        )?;
+        let file = self.file;
+        let file_offset = Some(self.file_offset(abs_offset));
+        let decls = &mut *self.decls;
+        let mut const_eval = |arena: &mut TypeArena<'a>,
+                              origin: &std::path::Path,
+                              source: &str,
+                              parsed: &syntax::TypeSyntax,
+                              expr_id: ExprId| {
+            const_exprs
+                .iter()
+                .find(|(id, _)| *id == expr_id)
+                .map(|(_, op)| *op)
+                .or_else(|| decls.eval_const_expr(arena, origin, source, parsed, expr_id))
+        };
+        let ty = self
+            .arena
+            .lower_type_syntax_with_eval(
+                file,
+                text,
+                parsed,
+                file_offset,
+                &env_pairs,
+                &mut const_eval,
+            )
+            .ok()?;
+        self.arena.validate_type(ty).map(|()| ty)
+    }
+
+    fn lower_parsed_type_node(
+        &mut self,
+        text: &str,
+        abs_offset: usize,
+        parsed: &syntax::TypeSyntax,
+        node_id: TypeNodeId,
+        const_exprs: &[(ExprId, Operand)],
+    ) -> Option<TypeId> {
+        let env_pairs = collect_visible_type_env(self.region, &self.env, self.source, abs_offset);
+        let file = self.file;
+        let file_offset = Some(self.file_offset(abs_offset));
+        let decls = &mut *self.decls;
+        let mut const_eval = |arena: &mut TypeArena<'a>,
+                              origin: &std::path::Path,
+                              source: &str,
+                              parsed: &syntax::TypeSyntax,
+                              expr_id: ExprId| {
+            const_exprs
+                .iter()
+                .find(|(id, _)| *id == expr_id)
+                .map(|(_, op)| *op)
+                .or_else(|| decls.eval_const_expr(arena, origin, source, parsed, expr_id))
+        };
+        let ty = self
+            .arena
+            .lower_type_node_with_eval(
+                file,
+                text,
+                parsed,
+                node_id,
+                file_offset,
+                &env_pairs,
+                &mut const_eval,
+            )
+            .ok()?;
         self.arena.validate_type(ty).map(|()| ty)
     }
 
@@ -214,6 +309,16 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         abs_offset: usize,
         parsed: &mut syntax::TypeSyntax,
     ) {
+        let _ = self.check_type_annotation_details_inner(text, abs_offset, parsed);
+    }
+
+    fn check_type_annotation_details_inner(
+        &mut self,
+        text: &str,
+        abs_offset: usize,
+        parsed: &mut syntax::TypeSyntax,
+    ) -> Vec<(ExprId, Operand)> {
+        let mut const_exprs = Vec::new();
         let exprs = std::mem::take(&mut parsed.expressions);
         if !exprs.is_empty() {
             let mut is_child = vec![false; exprs.len()];
@@ -327,9 +432,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 child_env,
             );
             for root in roots {
-                let _ = child.check_expr_outcome(root, None);
+                if let ExprOutcome::Value(op) = child.check_expr_outcome(root, None)
+                    && op.mode == Mode::Constant
+                {
+                    const_exprs.push((root, op));
+                }
             }
             child.flush_untyped();
+            drop(child);
+            // Restore `parsed.expressions` so single-pass lowering can inspect
+            // array-length `ExprId` nodes without re-parsing.
+            parsed.expressions = expr_tree.expressions;
         }
 
         let owner_sym = self
@@ -338,44 +451,72 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             .filter(|d| d.symbol.is_type())
             .map(|d| d.symbol);
 
-        for field in &parsed.fields {
-            if field.embedded || text.get(field.name.clone()) == Some("_") {
-                continue;
-            }
-            let abs_span = [
-                (abs_offset + field.name.start) as u32,
-                (abs_offset + field.name.end) as u32,
-            ];
-            self.record_def(
-                abs_span,
-                ObjectRef::Field(MemberDeclId {
-                    file: self.file,
-                    owner: owner_sym,
-                    selection: abs_span,
-                    embedded: false,
-                    builtin: false,
-                }),
-            );
-            if self.record_mask.contains(RecordMask::TYPES)
-                && let Some(raw_ann) = text.get(field.annotation.clone())
-            {
-                let ann_text = raw_ann.trim();
-                if !ann_text.is_empty() {
-                    let lead = raw_ann.len() - raw_ann.trim_start().len();
-                    if let Some(ty) = self.resolve_type_text_unverified(
-                        ann_text,
-                        abs_offset + field.annotation.start + lead,
-                    ) {
-                        self.record_type_and_value(
-                            abs_span,
-                            Operand {
-                                mode: Mode::Variable,
-                                ty,
-                                value: None,
-                            },
-                        );
-                    }
+        let has_tree = !parsed.tree_overflowed() && parsed.root().is_some();
+
+        if has_tree {
+            for field in parsed.field_nodes() {
+                if field.embedded {
+                    continue;
                 }
+                let Some(name_r) = &field.name else {
+                    continue;
+                };
+                let name_range = name_r.start as usize..name_r.end as usize;
+                if text.get(name_range.clone()) == Some("_") {
+                    continue;
+                }
+                let abs_span = [
+                    (abs_offset + name_range.start) as u32,
+                    (abs_offset + name_range.end) as u32,
+                ];
+                self.record_def(
+                    abs_span,
+                    ObjectRef::Field(MemberDeclId {
+                        file: self.file,
+                        owner: owner_sym,
+                        selection: abs_span,
+                        embedded: false,
+                        builtin: false,
+                    }),
+                );
+                if self.record_mask.contains(RecordMask::TYPES)
+                    && let Some(ty) = self.lower_parsed_type_node(
+                        text,
+                        abs_offset,
+                        parsed,
+                        field.ty,
+                        &const_exprs,
+                    )
+                {
+                    self.record_type_and_value(
+                        abs_span,
+                        Operand {
+                            mode: Mode::Variable,
+                            ty,
+                            value: None,
+                        },
+                    );
+                }
+            }
+        } else {
+            for field in &parsed.fields {
+                if field.embedded || text.get(field.name.clone()) == Some("_") {
+                    continue;
+                }
+                let abs_span = [
+                    (abs_offset + field.name.start) as u32,
+                    (abs_offset + field.name.end) as u32,
+                ];
+                self.record_def(
+                    abs_span,
+                    ObjectRef::Field(MemberDeclId {
+                        file: self.file,
+                        owner: owner_sym,
+                        selection: abs_span,
+                        embedded: false,
+                        builtin: false,
+                    }),
+                );
             }
         }
 
@@ -402,65 +543,92 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             );
         }
 
-        for sig_name in &parsed.signature_names {
-            if text.get(sig_name.name.clone()) == Some("_") {
-                continue;
+        if has_tree {
+            for sig in parsed.sig_nodes() {
+                for (params_range, kind) in [
+                    (sig.params.clone(), LocalBindingKind::Param),
+                    (sig.results.clone(), LocalBindingKind::NamedResult),
+                ] {
+                    for param in parsed.sig_params(params_range) {
+                        let Some(name_r) = &param.name else {
+                            continue;
+                        };
+                        let name_range = name_r.start as usize..name_r.end as usize;
+                        if text.get(name_range.clone()) == Some("_") {
+                            continue;
+                        }
+                        let abs_span = [
+                            (abs_offset + name_range.start) as u32,
+                            (abs_offset + name_range.end) as u32,
+                        ];
+                        let Some(local_id) = self.region.scopes.signature_name(abs_span, kind)
+                        else {
+                            self.region.uses_complete = false;
+                            continue;
+                        };
+                        self.region.extend_binding_storage();
+                        if let Some(object) = self.local_object(local_id) {
+                            self.record_def(abs_span, object);
+                        }
+                        let ty = self
+                            .lower_parsed_type_node(
+                                text,
+                                abs_offset,
+                                parsed,
+                                param.ty,
+                                &const_exprs,
+                            )
+                            .and_then(|ty| {
+                                if param.variadic {
+                                    self.arena.slice_type(ty)
+                                } else {
+                                    Some(ty)
+                                }
+                            });
+                        if let Some(ty) = ty {
+                            self.region.set_local_type(
+                                local_id,
+                                Operand {
+                                    mode: Mode::Variable,
+                                    ty,
+                                    value: None,
+                                },
+                            );
+                            self.record_type_and_value(
+                                abs_span,
+                                Operand {
+                                    mode: Mode::Variable,
+                                    ty,
+                                    value: None,
+                                },
+                            );
+                        }
+                    }
+                }
             }
-            let abs_span = [
-                (abs_offset + sig_name.name.start) as u32,
-                (abs_offset + sig_name.name.end) as u32,
-            ];
-            let kind = match sig_name.kind {
-                syntax::SignatureNameKind::Parameter => LocalBindingKind::Param,
-                syntax::SignatureNameKind::Result => LocalBindingKind::NamedResult,
-            };
-            let Some(local_id) = self.region.scopes.signature_name(abs_span, kind) else {
-                self.region.uses_complete = false;
-                continue;
-            };
-            self.region.extend_binding_storage();
-            if let Some(object) = self.local_object(local_id) {
-                self.record_def(abs_span, object);
-            }
-            let Some(raw_ann) = text.get(sig_name.annotation.clone()) else {
-                continue;
-            };
-            let ann_text = raw_ann.trim();
-            if ann_text.is_empty() {
-                continue;
-            }
-            let lead = raw_ann.len() - raw_ann.trim_start().len();
-            let ann_offset = abs_offset + sig_name.annotation.start + lead;
-            let ty = if sig_name.variadic {
-                let elem_raw = ann_text.strip_prefix("...").unwrap_or(ann_text);
-                let elem_lead = elem_raw.len() - elem_raw.trim_start().len();
-                let elem_text = elem_raw.trim_start();
-                self.resolve_type_text_unverified(
-                    elem_text,
-                    ann_offset + (ann_text.len() - elem_raw.len()) + elem_lead,
-                )
-                .and_then(|elem| self.arena.slice_type(elem))
-            } else {
-                self.resolve_type_text_unverified(ann_text, ann_offset)
-            };
-            if let Some(ty) = ty {
-                self.region.set_local_type(
-                    local_id,
-                    Operand {
-                        mode: Mode::Variable,
-                        ty,
-                        value: None,
-                    },
-                );
-                self.record_type_and_value(
-                    abs_span,
-                    Operand {
-                        mode: Mode::Variable,
-                        ty,
-                        value: None,
-                    },
-                );
+        } else {
+            for sig_name in &parsed.signature_names {
+                if text.get(sig_name.name.clone()) == Some("_") {
+                    continue;
+                }
+                let abs_span = [
+                    (abs_offset + sig_name.name.start) as u32,
+                    (abs_offset + sig_name.name.end) as u32,
+                ];
+                let kind = match sig_name.kind {
+                    syntax::SignatureNameKind::Parameter => LocalBindingKind::Param,
+                    syntax::SignatureNameKind::Result => LocalBindingKind::NamedResult,
+                };
+                let Some(local_id) = self.region.scopes.signature_name(abs_span, kind) else {
+                    self.region.uses_complete = false;
+                    continue;
+                };
+                self.region.extend_binding_storage();
+                if let Some(object) = self.local_object(local_id) {
+                    self.record_def(abs_span, object);
+                }
             }
         }
+        const_exprs
     }
 }

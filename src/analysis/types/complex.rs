@@ -260,14 +260,6 @@ pub(super) fn converted(value: Constant, target: BasicKind) -> Option<Constant> 
 }
 
 impl TypeArena<'_> {
-    pub(crate) fn builtin_complex(
-        &mut self,
-        arguments: &[Operand],
-        int_bits: u32,
-    ) -> Option<Operand> {
-        self.checked_builtin_complex(arguments, int_bits)?.ok()
-    }
-
     pub(crate) fn checked_builtin_complex(
         &mut self,
         arguments: &[Operand],
@@ -332,10 +324,6 @@ impl TypeArena<'_> {
                 None
             },
         }))
-    }
-
-    pub(crate) fn builtin_component(&mut self, input: Operand, imaginary: bool) -> Option<Operand> {
-        self.checked_builtin_component(input, imaginary)?.ok()
     }
 
     pub(crate) fn checked_builtin_component(

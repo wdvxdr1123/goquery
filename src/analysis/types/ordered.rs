@@ -7,16 +7,6 @@ pub(crate) enum MinMaxError {
 }
 
 impl TypeArena<'_> {
-    pub(crate) fn builtin_minmax(
-        &mut self,
-        arguments: &[Operand],
-        maximum: bool,
-        int_bits: u32,
-    ) -> Option<Operand> {
-        self.checked_builtin_minmax(arguments, maximum, int_bits)?
-            .ok()
-    }
-
     pub(crate) fn checked_builtin_minmax(
         &mut self,
         arguments: &[Operand],

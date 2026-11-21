@@ -238,32 +238,51 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
 
         for param in &sig.parameters {
             let ann = sig_text(&param.annotation);
-            let p_ty = if ann.is_empty()
-                || !self.sig_type_refs_valid(sig_slice, sig_base, &param.annotation)
-            {
+            let p_ty = if ann.is_empty() {
                 None
-            } else if param.variadic {
-                let elem_text = ann.trim_start_matches("...").trim();
-                self.arena
-                    .parse_parameterized(
-                        self.file,
-                        elem_text,
-                        Some(self.file_offset(sig_base + param.annotation.end - elem_text.len())),
-                        &formals,
-                        recv_ann,
-                    )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
-                    .and_then(|elem| self.arena.slice_type(elem))
-            } else {
-                self.arena
-                    .parse_parameterized(
-                        self.file,
+            } else if let Some((parsed, const_exprs)) =
+                self.parse_and_check_sig_type(sig_slice, sig_base, &param.annotation)
+            {
+                if formals.is_empty() {
+                    let ty = self.lower_parsed_type_in_env(
                         ann,
-                        Some(self.file_offset(sig_base + param.annotation.start)),
-                        &formals,
-                        recv_ann,
-                    )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
+                        sig_base + param.annotation.start,
+                        &parsed,
+                        &[],
+                        &const_exprs,
+                    );
+                    if param.variadic {
+                        ty.and_then(|elem| self.arena.slice_type(elem))
+                    } else {
+                        ty
+                    }
+                } else if param.variadic {
+                    let elem_text = ann.trim_start_matches("...").trim();
+                    self.arena
+                        .parse_parameterized(
+                            self.file,
+                            elem_text,
+                            Some(
+                                self.file_offset(sig_base + param.annotation.end - elem_text.len()),
+                            ),
+                            &formals,
+                            recv_ann,
+                        )
+                        .filter(|&ty| self.arena.validate_type(ty).is_some())
+                        .and_then(|elem| self.arena.slice_type(elem))
+                } else {
+                    self.arena
+                        .parse_parameterized(
+                            self.file,
+                            ann,
+                            Some(self.file_offset(sig_base + param.annotation.start)),
+                            &formals,
+                            recv_ann,
+                        )
+                        .filter(|&ty| self.arena.validate_type(ty).is_some())
+                }
+            } else {
+                None
             };
             if let Some(name_range) = &param.name {
                 let name = sig_text(name_range);
@@ -284,20 +303,32 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             .is_some_and(|result| result.name.is_some());
         for res in &sig.results {
             let ann = sig_text(&res.annotation);
-            let r_ty = if ann.is_empty()
-                || !self.sig_type_refs_valid(sig_slice, sig_base, &res.annotation)
-            {
+            let r_ty = if ann.is_empty() {
                 None
-            } else {
-                self.arena
-                    .parse_parameterized(
-                        self.file,
+            } else if let Some((parsed, const_exprs)) =
+                self.parse_and_check_sig_type(sig_slice, sig_base, &res.annotation)
+            {
+                if formals.is_empty() {
+                    self.lower_parsed_type_in_env(
                         ann,
-                        Some(self.file_offset(sig_base + res.annotation.start)),
-                        &formals,
-                        recv_ann,
+                        sig_base + res.annotation.start,
+                        &parsed,
+                        &[],
+                        &const_exprs,
                     )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
+                } else {
+                    self.arena
+                        .parse_parameterized(
+                            self.file,
+                            ann,
+                            Some(self.file_offset(sig_base + res.annotation.start)),
+                            &formals,
+                            recv_ann,
+                        )
+                        .filter(|&ty| self.arena.validate_type(ty).is_some())
+                }
+            } else {
+                None
             };
             self.env.result_types.push(r_ty);
             if let Some(name_range) = &res.name {
@@ -326,20 +357,22 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
         let sig_text = |r: &Range<usize>| sig_slice.get(r.start..r.end).unwrap_or("");
         let abs_span = |r: &Range<usize>| [(sig_base + r.start) as u32, (sig_base + r.end) as u32];
 
-        let param_valid: Vec<bool> = sig
+        let param_parsed: Vec<_> = sig
             .parameters
             .iter()
             .map(|param| {
-                !sig_text(&param.annotation).is_empty()
-                    && self.sig_type_refs_valid(sig_slice, sig_base, &param.annotation)
+                (!sig_text(&param.annotation).is_empty())
+                    .then(|| self.parse_and_check_sig_type(sig_slice, sig_base, &param.annotation))
+                    .flatten()
             })
             .collect();
-        let result_valid: Vec<bool> = sig
+        let result_parsed: Vec<_> = sig
             .results
             .iter()
             .map(|res| {
-                !sig_text(&res.annotation).is_empty()
-                    && self.sig_type_refs_valid(sig_slice, sig_base, &res.annotation)
+                (!sig_text(&res.annotation).is_empty())
+                    .then(|| self.parse_and_check_sig_type(sig_slice, sig_base, &res.annotation))
+                    .flatten()
             })
             .collect();
 
@@ -352,30 +385,23 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             env_owned.iter().map(|(n, ty)| (n.as_str(), *ty)).collect();
 
         let mut pending_active: Vec<LocalId> = Vec::new();
-        for (param, refs_ok) in sig.parameters.iter().zip(param_valid) {
+        for (param, parsed) in sig.parameters.iter().zip(param_parsed) {
             let ann = sig_text(&param.annotation);
-            let p_ty = if !refs_ok {
-                None
-            } else if param.variadic {
-                let elem_text = ann.trim_start_matches("...").trim();
-                self.arena
-                    .parse_in_at(
-                        self.file,
-                        elem_text,
-                        self.file_offset(sig_base + param.annotation.end - elem_text.len()),
-                        &env_refs,
-                    )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
-                    .and_then(|elem| self.arena.slice_type(elem))
+            let p_ty = if let Some((parsed, const_exprs)) = parsed {
+                let ty = self.lower_parsed_type_in_env(
+                    ann,
+                    sig_base + param.annotation.start,
+                    &parsed,
+                    &env_refs,
+                    &const_exprs,
+                );
+                if param.variadic {
+                    ty.and_then(|elem| self.arena.slice_type(elem))
+                } else {
+                    ty
+                }
             } else {
-                self.arena
-                    .parse_in_at(
-                        self.file,
-                        ann,
-                        self.file_offset(sig_base + param.annotation.start),
-                        &env_refs,
-                    )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
+                None
             };
             if let Some(name_range) = &param.name {
                 let name = sig_text(name_range);
@@ -394,20 +420,17 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
             .results
             .first()
             .is_some_and(|result| result.name.is_some());
-        for (res, refs_ok) in sig.results.iter().zip(result_valid) {
+        for (res, parsed) in sig.results.iter().zip(result_parsed) {
             let ann = sig_text(&res.annotation);
-            let r_ty = if !refs_ok {
-                None
-            } else {
-                self.arena
-                    .parse_in_at(
-                        self.file,
-                        ann,
-                        self.file_offset(sig_base + res.annotation.start),
-                        &env_refs,
-                    )
-                    .filter(|&ty| self.arena.validate_type(ty).is_some())
-            };
+            let r_ty = parsed.and_then(|(parsed, const_exprs)| {
+                self.lower_parsed_type_in_env(
+                    ann,
+                    sig_base + res.annotation.start,
+                    &parsed,
+                    &env_refs,
+                    &const_exprs,
+                )
+            });
             self.env.result_types.push(r_ty);
             if let Some(name_range) = &res.name {
                 let name = sig_text(name_range);

@@ -1,4 +1,5 @@
 //! Complete unified interfaces (methods, embedded interfaces, unions, type terms).
+use super::lower::{ConstExprEval, default_const_eval};
 use super::ty::Term;
 use super::{
     BasicKind, CheckOutcome, MAX_BYTES, MAX_DEPTH, Operand, Ty, TypeArena, TypeId, UnknownReason,
@@ -43,12 +44,16 @@ impl<'a> TypeArena<'a> {
             return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
         };
         let parsed = crate::syntax::parse_constraint(source);
-        if !parsed.diagnostics.is_empty() || parsed.tree_overflowed() {
+        if parsed.tree_overflowed() {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        if !parsed.diagnostics.is_empty() {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         }
         let Some(root) = parsed.root() else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         };
+        let mut eval = default_const_eval;
         self.lower_constraint_node(
             origin,
             source,
@@ -56,6 +61,7 @@ impl<'a> TypeArena<'a> {
             root,
             file_offset,
             environment,
+            &mut eval,
             depth,
         )
     }
@@ -69,6 +75,7 @@ impl<'a> TypeArena<'a> {
         mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
     ) -> CheckOutcome<TypeId> {
         if depth >= MAX_DEPTH {
@@ -91,10 +98,9 @@ impl<'a> TypeArena<'a> {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
         let span = node.byte_range();
-        let Some(text) = source.get(span.clone()) else {
+        let Some(text) = source.get(span) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        let node_offset = file_offset.map(|base| base + span.start);
         match node.kind {
             TypeTreeKind::Missing => CheckOutcome::Unknown(UnknownReason::SyntaxError),
             TypeTreeKind::Union { ref terms } => {
@@ -111,6 +117,7 @@ impl<'a> TypeArena<'a> {
                         term_id,
                         file_offset,
                         environment,
+                        const_eval,
                         depth + 1,
                         &mut lowered,
                     ) {
@@ -143,6 +150,7 @@ impl<'a> TypeArena<'a> {
                     node_id,
                     file_offset,
                     environment,
+                    const_eval,
                     depth + 1,
                 ) {
                     CheckOutcome::Ok(term) => term,
@@ -172,6 +180,7 @@ impl<'a> TypeArena<'a> {
                 members.clone(),
                 file_offset,
                 environment,
+                const_eval,
                 depth + 1,
             ),
             TypeTreeKind::Name { .. }
@@ -194,7 +203,16 @@ impl<'a> TypeArena<'a> {
                 {
                     return CheckOutcome::Invalid(());
                 }
-                let ty = match self.parse_in_checked(origin, text, node_offset, environment) {
+                let ty = match self.lower_type_tree_node(
+                    origin,
+                    source,
+                    parsed,
+                    node_id,
+                    file_offset,
+                    environment,
+                    const_eval,
+                    depth + 1,
+                ) {
                     CheckOutcome::Ok(ty) => ty,
                     CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
                     CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
@@ -230,49 +248,8 @@ impl<'a> TypeArena<'a> {
         }
     }
 
-    pub(super) fn read_interface_at_checked(
-        &mut self,
-        origin: &Path,
-        source: &str,
-        file_offset: Option<usize>,
-        environment: &[(&str, TypeId)],
-        depth: usize,
-    ) -> CheckOutcome<TypeId> {
-        if depth >= MAX_DEPTH || source.len() > MAX_BYTES {
-            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
-        }
-        let Some(origin) = self
-            .workspace
-            .files
-            .get_key_value(origin)
-            .map(|(p, _)| p.as_path())
-        else {
-            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
-        };
-        let parsed = crate::syntax::parse_type(source);
-        if !parsed.diagnostics.is_empty() || parsed.tree_overflowed() {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        }
-        let Some(root) = parsed.root() else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        };
-        let Some(TypeTreeKind::Interface { members }) = parsed.tree_node(root).map(|n| &n.kind)
-        else {
-            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-        };
-        self.lower_interface_members_checked(
-            origin,
-            source,
-            &parsed,
-            members.clone(),
-            file_offset,
-            environment,
-            depth,
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
-    fn lower_interface_members_checked(
+    pub(super) fn lower_interface_members_checked(
         &mut self,
         origin: &'a Path,
         source: &str,
@@ -280,6 +257,7 @@ impl<'a> TypeArena<'a> {
         members_range: Range<u32>,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
     ) -> CheckOutcome<TypeId> {
         if depth >= MAX_DEPTH {
@@ -303,23 +281,21 @@ impl<'a> TypeArena<'a> {
                     if name == "_" || !explicit.insert(name) {
                         return CheckOutcome::Invalid(());
                     }
-                    let Some(sig_node) = parsed.sig_node(*sig) else {
-                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-                    };
-                    let sig_range = sig_node.span.start as usize..sig_node.span.end as usize;
-                    let Some(header) = source.get(sig_range.clone()) else {
-                        return CheckOutcome::Unknown(UnknownReason::SyntaxError);
-                    };
-                    let signature = crate::syntax::parse_method_signature(header);
-                    let Some(signature) = self.signature(
+                    let signature = match self.lower_sig_node_checked(
                         origin,
-                        header,
-                        file_offset.map(|base| base + sig_range.start),
-                        &signature,
+                        source,
+                        parsed,
+                        *sig,
+                        file_offset,
                         environment,
+                        const_eval,
                         depth + 1,
-                    ) else {
-                        return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                    ) {
+                        CheckOutcome::Ok(sig_ty) => sig_ty,
+                        CheckOutcome::Invalid(()) => {
+                            return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                        }
+                        CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
                     };
                     let selection = file_offset
                         .and_then(|base| {
@@ -346,6 +322,7 @@ impl<'a> TypeArena<'a> {
                         *emb_node,
                         file_offset,
                         environment,
+                        const_eval,
                         depth + 1,
                         &mut methods,
                         &mut embeddeds,
@@ -383,6 +360,7 @@ impl<'a> TypeArena<'a> {
         mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
         methods: &mut Vec<Method<'a>>,
         embeddeds: &mut Vec<TypeId>,
@@ -409,10 +387,9 @@ impl<'a> TypeArena<'a> {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
         let span = node.byte_range();
-        let Some(text) = source.get(span.clone()) else {
+        let Some(text) = source.get(span) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        let element_offset = file_offset.map(|base| base + span.start);
         match node.kind {
             TypeTreeKind::Missing => CheckOutcome::Unknown(UnknownReason::SyntaxError),
             TypeTreeKind::Union { ref terms } => {
@@ -430,6 +407,7 @@ impl<'a> TypeArena<'a> {
                         term_id,
                         file_offset,
                         environment,
+                        const_eval,
                         depth + 1,
                         &mut lowered,
                     ) {
@@ -452,6 +430,7 @@ impl<'a> TypeArena<'a> {
                     node_id,
                     file_offset,
                     environment,
+                    const_eval,
                     depth + 1,
                 ) {
                     CheckOutcome::Ok(term) => term,
@@ -481,7 +460,16 @@ impl<'a> TypeArena<'a> {
                 {
                     return CheckOutcome::Invalid(());
                 }
-                let ty = match self.parse_in_checked(origin, text, element_offset, environment) {
+                let ty = match self.lower_type_tree_node(
+                    origin,
+                    source,
+                    parsed,
+                    node_id,
+                    file_offset,
+                    environment,
+                    const_eval,
+                    depth + 1,
+                ) {
                     CheckOutcome::Ok(ty) => ty,
                     CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
                     CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
@@ -531,6 +519,7 @@ impl<'a> TypeArena<'a> {
         mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
         out: &mut Vec<Term>,
     ) -> CheckOutcome<()> {
@@ -559,6 +548,7 @@ impl<'a> TypeArena<'a> {
                     sub_id,
                     file_offset,
                     environment,
+                    const_eval,
                     depth + 1,
                     out,
                 ) {
@@ -578,6 +568,7 @@ impl<'a> TypeArena<'a> {
             node_id,
             file_offset,
             environment,
+            const_eval,
             depth + 1,
         ) {
             CheckOutcome::Ok(term) => term,
@@ -600,6 +591,7 @@ impl<'a> TypeArena<'a> {
         mut node_id: TypeNodeId,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
     ) -> CheckOutcome<Term> {
         if depth >= MAX_DEPTH {
@@ -630,10 +622,9 @@ impl<'a> TypeArena<'a> {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
         let span = node.byte_range();
-        let Some(term_str) = source.get(span.clone()) else {
+        let Some(term_str) = source.get(span) else {
             return CheckOutcome::Unknown(UnknownReason::SyntaxError);
         };
-        let term_offset = file_offset.map(|base| base + span.start);
         if matches!(node.kind, TypeTreeKind::Name { .. })
             && matches!(term_str, "any" | "comparable")
             && self.universe_constraint(origin, term_str, environment) == Some(true)
@@ -665,6 +656,7 @@ impl<'a> TypeArena<'a> {
                 members.clone(),
                 file_offset,
                 environment,
+                const_eval,
                 depth + 1,
             ) {
                 CheckOutcome::Ok(id) => id,
@@ -676,7 +668,16 @@ impl<'a> TypeArena<'a> {
                 approximate: false,
             });
         }
-        let ty = match self.parse_in_checked(origin, term_str, term_offset, environment) {
+        let ty = match self.lower_type_tree_node(
+            origin,
+            source,
+            parsed,
+            node_id,
+            file_offset,
+            environment,
+            const_eval,
+            depth + 1,
+        ) {
             CheckOutcome::Ok(ty) => ty,
             CheckOutcome::Invalid(()) => return CheckOutcome::Invalid(()),
             CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),

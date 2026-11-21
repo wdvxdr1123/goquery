@@ -78,6 +78,7 @@ impl<'a, 'b> RegionChecker<'a, 'b> {
                 let Some(type_args) = self.collect_explicit_type_args(arguments) else {
                     return ExprOutcome::invalid();
                 };
+                let _ = self.decls.generic_type_origin(self.arena, decl);
                 if let Some(inst_ty) = self
                     .arena
                     .push_named(decl, &type_args, decl.symbol.alias)

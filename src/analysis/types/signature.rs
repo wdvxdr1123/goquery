@@ -1,10 +1,13 @@
 //! Function signatures use bounded shared type-ID lists, without names or bodies.
 use super::constraints;
-use super::{MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId};
-use crate::syntax::Signature;
+use super::lower::{ConstExprEval, default_const_eval};
+use super::{
+    CheckOutcome, MAX_BYTES, MAX_DEPTH, MAX_NODES, Operand, Ty, TypeArena, TypeId, UnknownReason,
+};
+use crate::syntax::{Parameter, SigNodeId, Signature, TypeSyntax};
 use std::path::Path;
 
-impl TypeArena<'_> {
+impl<'a> TypeArena<'a> {
     /// Declaration-only generic functions use their true formal environment;
     /// calls use the instantiated checked signature instead.
     pub(crate) fn formal_function_signature(
@@ -108,6 +111,105 @@ impl TypeArena<'_> {
         Some(base)
     }
 
+    /// Lower a function type or interface method signature directly from an
+    /// already-parsed [`TypeSyntax`] [`SigNodeId`] in a single pass.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn lower_sig_node_checked(
+        &mut self,
+        origin: &Path,
+        source: &str,
+        parsed: &TypeSyntax,
+        sig_id: SigNodeId,
+        file_offset: Option<usize>,
+        environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
+        depth: usize,
+    ) -> CheckOutcome<TypeId> {
+        if depth >= MAX_DEPTH || source.len() > MAX_BYTES {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        let Some(sig) = parsed.sig_node(sig_id) else {
+            return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+        };
+        let param_nodes = parsed.sig_params(sig.params.clone());
+        let result_nodes = parsed.sig_params(sig.results.clone());
+        if param_nodes.len() > MAX_NODES || result_nodes.len() > MAX_NODES {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        }
+        let mut parameters = Vec::with_capacity(param_nodes.len());
+        for param in param_nodes {
+            let mut ty = match self.lower_type_tree_node(
+                origin,
+                source,
+                parsed,
+                param.ty,
+                file_offset,
+                environment,
+                const_eval,
+                depth + 1,
+            ) {
+                CheckOutcome::Ok(ty) => ty,
+                CheckOutcome::Invalid(()) => {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                }
+                CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+            };
+            if param.variadic {
+                let Some(slice) = self.push(Ty::Slice(ty)) else {
+                    return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+                };
+                ty = slice;
+            }
+            parameters.push(ty);
+        }
+        let mut results = Vec::with_capacity(result_nodes.len());
+        for res in result_nodes {
+            let ty = match self.lower_type_tree_node(
+                origin,
+                source,
+                parsed,
+                res.ty,
+                file_offset,
+                environment,
+                const_eval,
+                depth + 1,
+            ) {
+                CheckOutcome::Ok(ty) => ty,
+                CheckOutcome::Invalid(()) => {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                }
+                CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+            };
+            results.push(ty);
+        }
+        let Some(ty) = self.store_signature(parameters, results, sig.variadic) else {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
+        };
+        let mut sig_names = Signature::default();
+        sig_names.parameters.reserve(param_nodes.len());
+        for param in param_nodes {
+            sig_names.parameters.push(Parameter {
+                name: param
+                    .name
+                    .as_ref()
+                    .map(|r| r.start as usize..r.end as usize),
+                annotation: 0..0,
+                variadic: param.variadic,
+            });
+        }
+        sig_names.results.reserve(result_nodes.len());
+        for res in result_nodes {
+            sig_names.results.push(Parameter {
+                name: res.name.as_ref().map(|r| r.start as usize..r.end as usize),
+                annotation: 0..0,
+                variadic: false,
+            });
+        }
+        self.attach_signature_names(ty, source, &sig_names);
+        CheckOutcome::Ok(ty)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn read_signature_parts(
         &mut self,
         origin: &Path,
@@ -115,6 +217,7 @@ impl TypeArena<'_> {
         file_offset: Option<usize>,
         signature: &Signature,
         environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
         depth: usize,
     ) -> Option<(Vec<TypeId>, Vec<TypeId>, bool)> {
         if depth >= MAX_DEPTH || header.len() > MAX_BYTES || !signature.diagnostics.is_empty() {
@@ -133,11 +236,12 @@ impl TypeArena<'_> {
             for item in items {
                 let source = &header[item.annotation.clone()];
                 let mut ty = self
-                    .parse_in_checked(
+                    .parse_in_checked_with_eval(
                         origin,
                         source,
                         file_offset.map(|base| base + item.annotation.start),
                         environment,
+                        const_eval,
                     )
                     .ok()?;
                 if item.variadic {
@@ -158,6 +262,29 @@ impl TypeArena<'_> {
         environment: &[(&str, TypeId)],
         depth: usize,
     ) -> Option<TypeId> {
+        let mut eval = default_const_eval;
+        self.signature_with_eval(
+            origin,
+            header,
+            file_offset,
+            signature,
+            environment,
+            &mut eval,
+            depth,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn signature_with_eval(
+        &mut self,
+        origin: &Path,
+        header: &str,
+        file_offset: Option<usize>,
+        signature: &Signature,
+        environment: &[(&str, TypeId)],
+        const_eval: ConstExprEval<'_, 'a>,
+        depth: usize,
+    ) -> Option<TypeId> {
         if signature.type_parameters.iter().any(|parameter| {
             parameter.name.as_ref().is_none_or(|name| {
                 !environment
@@ -167,21 +294,41 @@ impl TypeArena<'_> {
         }) {
             return None;
         }
-        let (parameters, results, variadic) =
-            self.read_signature_parts(origin, header, file_offset, signature, environment, depth)?;
+        let (parameters, results, variadic) = self.read_signature_parts(
+            origin,
+            header,
+            file_offset,
+            signature,
+            environment,
+            const_eval,
+            depth,
+        )?;
         let ty = self.store_signature(parameters, results, variadic)?;
         self.attach_signature_names(ty, header, signature);
         Some(ty)
     }
 
     /// Resolve a generic function signature directly into the active pool so
-    /// `DeclCache` caches formal type parameters, bounds, and parts together.
+    /// `DeclResolver` caches formal type parameters, bounds, and parts together.
+    #[allow(dead_code)]
     pub(crate) fn resolve_generic_signature(
         &mut self,
         origin: &Path,
         header: &str,
         file_offset: Option<usize>,
         signature: &Signature,
+    ) -> Option<TypeId> {
+        let mut eval = default_const_eval;
+        self.resolve_generic_signature_with_eval(origin, header, file_offset, signature, &mut eval)
+    }
+
+    pub(crate) fn resolve_generic_signature_with_eval(
+        &mut self,
+        origin: &Path,
+        header: &str,
+        file_offset: Option<usize>,
+        signature: &Signature,
+        const_eval: ConstExprEval<'_, 'a>,
     ) -> Option<TypeId> {
         if !signature.diagnostics.is_empty()
             || !signature.receiver.is_empty()
@@ -205,8 +352,70 @@ impl TypeArena<'_> {
             .map(|(parameter, &param)| (param, &header[parameter.annotation.clone()]))
             .collect();
         self.import_parameter_bounds(origin, &bounds, &environment)?;
-        let (parameters, results, variadic) =
-            self.read_signature_parts(origin, header, file_offset, signature, &environment, 0)?;
+        let (parameters, results, variadic) = self.read_signature_parts(
+            origin,
+            header,
+            file_offset,
+            signature,
+            &environment,
+            const_eval,
+            0,
+        )?;
+        let ty = self.store_generic_signature(type_params, parameters, results, variadic)?;
+        self.attach_signature_names(ty, header, signature);
+        Some(ty)
+    }
+
+    /// Resolve a generic-receiver method signature directly into the active pool,
+    /// reusing the owner type's cached `DeclArena` origin template for bounds.
+    pub(crate) fn resolve_generic_receiver_signature_with_eval(
+        &mut self,
+        origin: &Path,
+        header: &str,
+        file_offset: Option<usize>,
+        signature: &Signature,
+        const_eval: ConstExprEval<'_, 'a>,
+    ) -> Option<TypeId> {
+        if !signature.diagnostics.is_empty() || !signature.type_parameters.is_empty() {
+            return None;
+        }
+        let receiver = signature.receiver.first()?;
+        let recv_spans =
+            crate::analysis::engine::scope::receiver_parameters(header, &receiver.annotation);
+        if recv_spans.is_empty() || recv_spans.len() > self.active_node_limit() {
+            return None;
+        }
+        let origin_path = self.workspace.files.get_key_value(origin)?.0.as_path();
+        let mut type_params = Vec::with_capacity(recv_spans.len());
+        let mut environment = Vec::with_capacity(recv_spans.len());
+        for (index, span) in recv_spans.iter().enumerate() {
+            let name = header.get(span.clone())?;
+            if name.is_empty()
+                || name == "_"
+                || environment.iter().any(|(existing, _)| *existing == name)
+            {
+                return None;
+            }
+            let idx = u16::try_from(index).ok()?;
+            let selection = file_offset
+                .and_then(|base| base.checked_add(span.start))
+                .and_then(|off| u32::try_from(off).ok())
+                .unwrap_or(u32::MAX);
+            let param = self.push_named_type_param(origin_path, selection, idx, name, true)?;
+            type_params.push(param);
+            environment.push((name, param));
+        }
+        let recv_ann = header.get(receiver.annotation.clone())?;
+        self.import_receiver_parameters(origin_path, recv_ann, &environment)?;
+        let (parameters, results, variadic) = self.read_signature_parts(
+            origin_path,
+            header,
+            file_offset,
+            signature,
+            &environment,
+            const_eval,
+            0,
+        )?;
         let ty = self.store_generic_signature(type_params, parameters, results, variadic)?;
         self.attach_signature_names(ty, header, signature);
         Some(ty)

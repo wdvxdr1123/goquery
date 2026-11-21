@@ -140,20 +140,6 @@ impl<'a> TypeArena<'a> {
         }
     }
 
-    /// Lower an already-parsed `TypeSyntax` directly with an environment of
-    /// local types and type parameters (zero `LocalTypeDefinition` reconstruction).
-    pub(crate) fn lower_type_syntax_in(
-        &mut self,
-        origin: &Path,
-        text: &str,
-        parsed_syntax: &crate::syntax::TypeSyntax,
-        file_offset: Option<usize>,
-        environment: &[(&str, TypeId)],
-    ) -> Option<TypeId> {
-        self.lower_type_syntax_checked(origin, text, parsed_syntax, file_offset, environment)
-            .ok()
-    }
-
     /// Register query-local local-type facts and parse one written annotation in
     /// that environment. Identity is `(file, selection)`; the spelling is display only.
     #[allow(dead_code)]

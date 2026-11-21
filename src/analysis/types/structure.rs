@@ -1,9 +1,12 @@
 //! Complete bounded struct fields, shared by identity, substitution and relations.
-use super::{MAX_BYTES, MAX_DEPTH, Tags, Ty, TypeArena, TypeId};
-use super::{PromotionIndices, Selection, SelectionKind};
+use super::lower::ConstExprEval;
+use super::{
+    CheckOutcome, MAX_BYTES, MAX_DEPTH, PromotionIndices, Selection, SelectionKind, Tags, Ty,
+    TypeArena, TypeId, UnknownReason,
+};
 use crate::analysis::engine::obj::{MemberDeclId, ObjectRef};
 use crate::analysis::engine::types::declaration_body;
-use crate::syntax::{Lexer, TokenKind};
+use crate::syntax::{Lexer, TokenKind, TypeNodeId, TypeSyntax, TypeTreeKind};
 use std::ops::Range;
 use std::path::Path;
 
@@ -17,81 +20,106 @@ pub(super) struct Field {
 }
 
 impl<'a> TypeArena<'a> {
-    pub(super) fn read_struct_at(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn lower_struct_fields_checked(
         &mut self,
         origin: &Path,
         source: &str,
+        parsed: &TypeSyntax,
+        fields_range: Range<u32>,
         file_offset: Option<usize>,
         environment: &[(&str, TypeId)],
-        _depth: usize,
-    ) -> Option<TypeId> {
-        let parsed = crate::syntax::parse_type(source);
-        if !parsed.diagnostics.is_empty() {
-            return None;
+        const_eval: ConstExprEval<'_, 'a>,
+        depth: usize,
+    ) -> CheckOutcome<TypeId> {
+        if depth >= MAX_DEPTH {
+            return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
         }
-        let brace = Lexer::new(source).nth(1)?.span.start;
-        let origin = self.workspace.files.get_key_value(origin)?.0.as_path();
+        let Some(origin) = self
+            .workspace
+            .files
+            .get_key_value(origin)
+            .map(|(p, _)| p.as_path())
+        else {
+            return CheckOutcome::Unknown(UnknownReason::MissingMetadata);
+        };
         let mut fields = Vec::new();
         let mut bytes = 0;
-        for field in parsed
-            .fields
-            .iter()
-            .filter(|field| field.container == brace)
-        {
+        for field in parsed.struct_fields(fields_range) {
             if fields.len() >= self.active_node_limit() {
-                return None;
+                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
             }
-            let annotation = &source[field.annotation.clone()];
+            if field.embedded
+                && self.is_embedded_env_type_param(source, parsed, field.ty, environment)
+            {
+                return CheckOutcome::Unknown(UnknownReason::Unsupported);
+            }
+            let ty = match self.lower_type_tree_node(
+                origin,
+                source,
+                parsed,
+                field.ty,
+                file_offset,
+                environment,
+                const_eval,
+                depth + 1,
+            ) {
+                CheckOutcome::Ok(ty) => ty,
+                CheckOutcome::Invalid(()) => {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                }
+                CheckOutcome::Unknown(reason) => return CheckOutcome::Unknown(reason),
+            };
+            let Some(name_span) = &field.name else {
+                return CheckOutcome::Unknown(UnknownReason::Unsupported);
+            };
+            let name_range = name_span.start as usize..name_span.end as usize;
+            let Some(name) = source.get(name_range.clone()) else {
+                return CheckOutcome::Unknown(UnknownReason::SyntaxError);
+            };
+            if name != "_" && fields.iter().any(|existing: &Field| existing.name == name) {
+                return CheckOutcome::Unknown(UnknownReason::Unsupported);
+            }
             if field.embedded {
-                let mut root = Lexer::new(annotation).filter(|token| token.kind != TokenKind::Mul);
-                let name = root.next()?;
-                if name.kind == TokenKind::Ident
-                    && root
-                        .next()
-                        .is_none_or(|token| token.kind != TokenKind::Period)
-                    && environment
-                        .iter()
-                        .any(|(parameter, _)| *parameter == &annotation[name.span.clone()])
-                {
-                    return None;
+                let Some(unaliased) = self.unalias(ty) else {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                };
+                let Some((base, pointer)) = (match self.node(unaliased) {
+                    Some(Ty::Pointer(element)) => self.unalias(*element).map(|b| (b, true)),
+                    Some(_) => Some((unaliased, false)),
+                    None => None,
+                }) else {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
+                };
+                if self.embedded_base(base, pointer, 0).is_none() {
+                    return CheckOutcome::Unknown(UnknownReason::Unsupported);
                 }
             }
-            let ty = self
-                .parse_in_checked(
-                    origin,
-                    annotation,
-                    file_offset.map(|base| base + field.annotation.start),
-                    environment,
-                )
-                .ok()?;
-            let name = &source[field.name.clone()];
-            if name != "_" && fields.iter().any(|field: &Field| field.name == name) {
-                return None;
-            }
-            if field.embedded {
-                let ty = self.unalias(ty)?;
-                let (base, pointer) = match self.node(ty)? {
-                    Ty::Pointer(element) => (self.unalias(*element)?, true),
-                    _ => (ty, false),
-                };
-                self.embedded_base(base, pointer, 0)?;
-            }
-            let raw_tag = field.tag.as_ref().map(|span| &source[span.clone()]);
+            let raw_tag = match &field.tag {
+                Some(span) => match source.get(span.start as usize..span.end as usize) {
+                    Some(text) => Some(text),
+                    None => return CheckOutcome::Unknown(UnknownReason::SyntaxError),
+                },
+                None => None,
+            };
             let next_bytes = bytes + name.len() + raw_tag.map_or(0, str::len);
             // Preflight before decoding/duplicating a shared grouped-field tag.
             if next_bytes > MAX_BYTES {
-                return None;
+                return CheckOutcome::Unknown(UnknownReason::BudgetExceeded);
             }
             let tag = match raw_tag {
-                Some(tag) => crate::syntax::decode_string_literal(tag)?,
+                Some(tag) => match crate::syntax::decode_string_literal(tag) {
+                    Some(decoded) => decoded,
+                    None => return CheckOutcome::Unknown(UnknownReason::SyntaxError),
+                },
                 None => Vec::new(),
             };
             bytes += name.len() + tag.len();
             let selection = file_offset
                 .and_then(|base| {
                     Some([
-                        u32::try_from(base + field.name.start).ok()?,
-                        u32::try_from(base + field.name.end).ok()?,
+                        u32::try_from(base + name_range.start).ok()?,
+                        u32::try_from(base + name_range.end).ok()?,
                     ])
                 })
                 .unwrap_or([0, 0]);
@@ -103,7 +131,39 @@ impl<'a> TypeArena<'a> {
                 selection,
             });
         }
-        self.store_struct(origin, fields)
+        match self.store_struct(origin, fields) {
+            Some(id) => CheckOutcome::Ok(id),
+            None => CheckOutcome::Unknown(UnknownReason::BudgetExceeded),
+        }
+    }
+
+    fn is_embedded_env_type_param(
+        &self,
+        source: &str,
+        parsed: &TypeSyntax,
+        mut node_id: TypeNodeId,
+        environment: &[(&str, TypeId)],
+    ) -> bool {
+        for _ in 0..MAX_DEPTH {
+            let Some(node) = parsed.tree_node(node_id) else {
+                return false;
+            };
+            match &node.kind {
+                TypeTreeKind::Pointer(inner) | TypeTreeKind::Parenthesized(inner) => {
+                    node_id = *inner;
+                }
+                TypeTreeKind::Name { span } => {
+                    let Some(name) = source.get(span.start as usize..span.end as usize) else {
+                        return false;
+                    };
+                    return environment.iter().any(|(parameter, ty)| {
+                        *parameter == name && matches!(self.node(*ty), Some(Ty::TypeParam(_)))
+                    });
+                }
+                _ => return false,
+            }
+        }
+        false
     }
 
     // Match go/types' single dereference followed by underlying classification.

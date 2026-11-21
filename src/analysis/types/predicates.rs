@@ -404,15 +404,6 @@ impl<'s, 'a> TypeRelations<'s, 'a> {
         Err(mismatch)
     }
 
-    pub(crate) fn convert(
-        &mut self,
-        input: Operand,
-        target: TypeId,
-        int_bits: u32,
-    ) -> Option<Operand> {
-        self.checked_conversion(input, target, int_bits)?.ok()
-    }
-
     pub(crate) fn checked_conversion(
         &mut self,
         input: Operand,
@@ -644,17 +635,6 @@ impl TypeStore<'_> {
         TypeEval::from_store(self)
             .relations()
             .check_assignment(source, target, int_bits)
-    }
-
-    pub(crate) fn convert(
-        &mut self,
-        input: Operand,
-        target: TypeId,
-        int_bits: u32,
-    ) -> Option<Operand> {
-        TypeEval::from_store(self)
-            .relations()
-            .convert(input, target, int_bits)
     }
 
     pub(crate) fn checked_conversion(
